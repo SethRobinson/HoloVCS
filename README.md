@@ -1,18 +1,17 @@
-***HoloVCS***
-
 HoloVCS - The Stella Atari 2600 emulator running under Unreal Engine and modified to display Pitfall! in 3D on a Looking Glass Portrait
 
 License:  BSD style attribution, see LICENSE.md
 
 [A twitter movie of it in action](https://twitter.com/rtsoft/status/1426128382639501320)
 
-You a player? Then you probably want to visit the [user page](codedojo.com), it has the ready to [run download version](codedojo.com).
+You a player? Then you probably want to visit the [user page](https://www.codedojo.com/?p=2704), it has the ready to [run download version](https://www.rtsoft.com/files/HoloVCS_Win64.zip).
 
 You a developer and want to compile the project?  Read on
 
 **Steps to compile**
 
 * You should have Visual Studio 2019 installed (I use the free community edition)
+* You should have Unreal Engine installed.  (I used 4.26)
 * Download the [Holoplay plugin for Unreal Engine](https://lookingglassfactory.com/software)
 * Created a plugins subdir in the HoloVCS dir and drag the Holoplay folder into it
 * Contact Seth to get two missing source files - (SynthComponentSethHack.cpp and SynthComponentSethHack.h) - You must have accepted the UE4 developer license before I can share those as they contain engine code, it's a legal thing.  What am I doing with engine code? It's a method I used to work around a UE4 bug with changing audio sample rate on the fly, an alternative is you can just rename things to use SynthComponent instead, it's pretty easy to do, you just want be able to change the same rate of the synth generator buffer.

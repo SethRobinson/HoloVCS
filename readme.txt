@@ -19,6 +19,8 @@ Return: Reset game
 Num 0 through 5:  Set frameskip (higher makes the game run faster)
 A: Adjust audio to match game speed (experimental but can help with audio problems)
 -/+:  Zoom in/out.  Hoping this will help with other Looking Glass sizes.
+S: Save state
+L: Load state
 
 Speed is a bit too slow even on my 3090, so good luck.
 
@@ -28,12 +30,15 @@ If you have problems, check the log.txt file.  (created in the root dir where Ho
 
 Q. Does it support other games besides Pitfall!?
 
-A. Well, yes and no, yes it should emulate any VCS game, but the 3D layer processing is designed for Pitfall! so I'm sure it would be... quite the experience
+A. Well, yes and no, yes it should emulate any VCS game, but the 3D layer processing is designed for Pitfall! so I’m sure it would be… quite the experience
 
-Q. I noticed you're using Stella's libretro interface, does this mean I can pop in a NES emulator or whatever by replacing the dll?
+Q. I noticed you’re using Stella’s libretro interface, does this mean I can pop in a NES emulator or whatever by replacing the dll?
 
-A.  In theory yes, but because pixel sizes/input/etc are kind of hard coded for the VCS I'm sure it's going
-     to hilariously explode. 
+A. In theory yes, but because pixel sizes/input/etc are kind of hard coded for the VCS I’m sure it’s going to hilariously explode.
+
+Q. The snake is mostly invisible!
+
+A. This is a known bug, sorry. I mean, it’s a ghost snake now
 
 If you want to help add support for more games and cores, please check out the project's github.
 
