@@ -423,7 +423,7 @@ void LibretroManager::Init(ALibretroManagerActor * pLibretroManagedActor)
 #if WITH_EDITOR
 	LogMsg("We're running in the editor");
 #else
-	m_rootDirPath += "../";
+	m_rootPath += "../";
 	LogMsg("We're running the standalone game, adding ../ because of the directory layout difference");
 #endif
 
@@ -529,11 +529,11 @@ void retro_video_refresh_callback(const void* data, unsigned width, unsigned hei
 
 #ifdef UE_BUILD_DEBUG
 		//hack to show the pixel color of the bottomt middle pixel of the area of a selected pass, so I know what to use for a colorkey
-		if (pass == BLIT_PASS2)
+		/*if (pass == BLIT_PASS0)
 		{
 			pSrc = (uint8*)data + (pBlitPass->m_blitSrcRect.Min.Y * pitch) + (pBlitPass->m_blitSrcRect.Min.X + ((pBlitPass->m_blitSrcRect.Max.X - pBlitPass->m_blitSrcRect.Min.X) / 2));
 			LogMsg("Center color is %d, %d, %d", pSrc[0], pSrc[1], pSrc[2]);
-		}
+		}*/
 #endif
 
 		for (int y = pBlitPass->m_blitSrcRect.Min.Y; y < pBlitPass->m_blitSrcRect.Max.Y; y++)

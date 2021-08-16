@@ -21,6 +21,7 @@ echo Copy some other stuff we need
 copy Binaries\Win64\stella_libretro.dll %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\%APP_NAME%\Binaries\Win64
 copy readme.txt %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor
 xcopy atari2600 %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\atari2600\ /E /F /Y
+copy "Put the pitfall rom in atari2600 dir!.txt" %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor
 del %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\Manifest_NonUFSFiles_Win64.txt
 del %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\log.txt
 :Better remove those test roms, don't want to commit a crime here!

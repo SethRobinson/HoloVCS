@@ -125,13 +125,17 @@ void APlayerPawn::OnSKey()
 {
 	g_pLibretroManager->SaveStateToFile();
 }
+
 void APlayerPawn::OnLKey()
 {
 	g_pLibretroManager->LoadStateFromFile();
 }
+
 // Called to bind functionality to input
 void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+
 	// Respond every frame to the values of our two movement axes, "MoveX" and "MoveY".
 	InputComponent->BindAxis("MoveX", this, &APlayerPawn::Move_XAxis);
 	InputComponent->BindAxis("MoveY", this, &APlayerPawn::Move_YAxis);
@@ -158,6 +162,5 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	InputComponent->BindKey(EKeys::S, IE_Pressed, this, &APlayerPawn::OnSKey);
 	InputComponent->BindKey(EKeys::L, IE_Pressed, this, &APlayerPawn::OnLKey);
 
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
 }
 
