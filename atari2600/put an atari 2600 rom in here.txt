@@ -1,0 +1,1 @@
+It will load the first .a26 or .bin it finds
