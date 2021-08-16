@@ -1,0 +1,79 @@
+ src/emucore/tia/TIA.hxx   |  4 ++++
+ src/libretro/libretro.cxx | 41 ++++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 44 insertions(+), 1 deletion(-)
+
+diff --git a/src/emucore/tia/TIA.hxx b/src/emucore/tia/TIA.hxx
+index d12dd62fd..8733dc5ef 100644
+--- a/src/emucore/tia/TIA.hxx
++++ b/src/emucore/tia/TIA.hxx
+@@ -783,7 +783,11 @@ class TIA : public Device
+     /**
+      * The various TIA objects.
+      */
++
++    //SETH I need myBackground to be public
++    public:
+     Background myBackground;
++    private:
+     Playfield myPlayfield;
+     Missile myMissile0;
+     Missile myMissile1;
+diff --git a/src/libretro/libretro.cxx b/src/libretro/libretro.cxx
+index 55c82bfe0..8a4eba6fd 100644
+--- a/src/libretro/libretro.cxx
++++ b/src/libretro/libretro.cxx
+@@ -367,6 +367,44 @@ static void update_variables(bool init = false)
+     }
+   }
+ 
++  RETRO_GET("stella_video_flags")
++  {
++      if (stella.getVideoReady() && stella.osystem().hasConsole())
++      {
++          if (strlen(var.value) < 6) return;
++
++          //expects something like "1110000" (a 1 or 0 for each digit, on or off)
++          stella.osystem().console().tia().toggleBit(TIABit::M0Bit, var.value[0] == '1'); //missile0
++          stella.osystem().console().tia().toggleBit(TIABit::M1Bit, var.value[1] == '1'); //missile1
++          stella.osystem().console().tia().toggleBit(TIABit::P0Bit, var.value[2] == '1'); //player0
++          stella.osystem().console().tia().toggleBit(TIABit::P1Bit, var.value[3] == '1'); //player1
++          stella.osystem().console().tia().toggleBit(TIABit::BLBit, var.value[4] == '1'); //ball
++          stella.osystem().console().tia().toggleBit(TIABit::PFBit, var.value[5] == '1'); //playfield
++                                                                                          //background
++
++          //Note:  Seth hacked the source so stella.osystem().console().tia().myBackground is public so I could
++          //grab it to use it this way.  If you get an error, go find where it's defined and move it to the Public:
++          //section.
++
++          if (var.value[6] == '1')
++          {
++              //enable the background
++              stella.osystem().console().tia().myBackground.enableDebugColors(false);
++          }
++          else
++          {
++              //easiest way to get rid of the background?  Force debug mode so it's black because I don't know another way
++              stella.osystem().console().tia().myBackground.enableDebugColors(true);
++              stella.osystem().console().tia().myBackground.setDebugColor(0);
++          }
++
++          stella.osystem().console().tia().clearFrameBuffer();
++
++      }
++
++  }
++
++
+   RETRO_GET("stella_paddle_joypad_sensitivity")
+   {
+     int value = 0;
+@@ -516,7 +554,8 @@ void retro_set_environment(retro_environment_t cb)
+     { "stella_phosphor", "Phosphor mode; auto|off|on" },
+     { "stella_phosphor_blend", "Phosphor blend %; 60|65|70|75|80|85|90|95|100|0|5|10|15|20|25|30|35|40|45|50|55" },
+     { "stella_paddle_joypad_sensitivity", "Paddle joypad sensitivity; 3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|1|2" },
+-    { NULL, NULL },
++	{ "stella_video_flags", "Various rendering flags; 1111111|0000000" }, //SETH
++   { NULL, NULL },
+   };
+ 
+   environ_cb(RETRO_ENVIRONMENT_SET_VARIABLES, variables);
