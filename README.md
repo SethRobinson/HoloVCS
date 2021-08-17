@@ -1,10 +1,12 @@
 HoloVCS - The Stella Atari 2600 emulator running under Unreal Engine and modified to display Pitfall! in 3D on a Looking Glass Portrait
 
+![](https://www.codedojo.com/wp-content/uploads/2021/08/holovcs.gif)
+
 License:  BSD style attribution, see LICENSE.md
 
 [A twitter movie of it in action](https://twitter.com/rtsoft/status/1426128382639501320)
 
-You a player? Then you probably want to visit the [user page](https://www.codedojo.com/?p=2704), it has the ready to [run download version](https://www.rtsoft.com/files/HoloVCS_Win64.zip).
+**You a player?** Then you probably want to visit the [user page](https://www.codedojo.com/?p=2704), it has the ready to run [download version](https://www.rtsoft.com/files/HoloVCS_Win64.zip).
 
 You a developer and want to compile the project?  Read on
 
