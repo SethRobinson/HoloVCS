@@ -1,1 +1,0 @@
-Exact filename doesn't matter, it will load the first *.a26 or *.bin it finds in there.

@@ -6,19 +6,71 @@
 #include "LibretroManager.h"
 #include "LibretroManagerActor.h"
 #include "StatusDisplayActor.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
+#include "Components/StaticMeshComponent.h"
 
 // Sets default values
 APlayerPawn::APlayerPawn()
 {
  	// Set this pawn to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
-}
+	ConstructorHelpers::FObjectFinder<UMaterial> newMat(TEXT("/Game/Textures/castlevania_backdrop_Mat"));
+	m_pPicBG = newMat.Object;
+
+	ConstructorHelpers::FObjectFinder<UMaterial> newMat2(TEXT("/Game/Textures/BGLayer_NoShadow"));
+	m_pBGNoShadowMat = newMat2.Object;
+
+} 
 
 // Called when the game starts or when spawned
 void APlayerPawn::BeginPlay()
 {
 	Super::BeginPlay();
+
+	
+	auto crap = GetActorByTag(GetWorld(), "LayerBG");
+	if (crap != NULL)
+	{
+		m_pMesh = (UStaticMeshComponent*) GetComponentByTag(crap, "StaticMeshComponent");
+		if (m_pMesh)
+		{
+			auto pMat = m_pMesh->GetMaterial(0);
+			m_pBGMat = UMaterialInstanceDynamic::Create(pMat, NULL);
+		}
+		else
+		{
+			LogMsg("Error, couldn't find LayerBG's mesh");
+		}
+	}
+
+	m_pBGMatNoShadow = UMaterialInstanceDynamic::Create(m_pBGNoShadowMat, NULL);
 }
+
+void APlayerPawn::SetTintBG(FVector color, float strength, bool bAllowShadows)
+{
+	if (bAllowShadows)
+	{
+		m_pMesh->SetMaterial(0, m_pBGMat);
+		m_pBGMat->SetScalarParameterValue(TEXT("TintStrength"), strength);
+		m_pBGMat->SetVectorParameterValue("ColorTint", color);
+	}
+	else
+	{
+		m_pMesh->SetMaterial(0, m_pBGMatNoShadow);
+		m_pBGMatNoShadow->SetScalarParameterValue(TEXT("TintStrength"), strength);
+		m_pBGMatNoShadow->SetVectorParameterValue("ColorTint", color);
+	}
+
+}
+
+void APlayerPawn::SetBGPic()
+{
+	//uh, add a way to dynamically load the texture?  Currently it's just a moon
+	if (m_pMesh)
+		m_pMesh->SetMaterial(0, m_pPicBG);
+}
+
 
 // Called every frame
 void APlayerPawn::Tick(float DeltaTime)
@@ -53,6 +105,28 @@ void APlayerPawn::JoyPad_B_Released()
 }
 
 
+void APlayerPawn::JoyPad_A_Pressed()
+{
+	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_A] = true;
+
+}
+
+void APlayerPawn::JoyPad_A_Released()
+{
+	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_A] = false;
+}
+
+
+void APlayerPawn::JoyPad_Y_Pressed()
+{
+	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_Y] = true;
+}
+
+void APlayerPawn::JoyPad_Y_Released()
+{
+	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_Y] = false;
+}
+
 void APlayerPawn::JoyPad_Start_Pressed()
 {
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START] = true;
@@ -63,6 +137,15 @@ void APlayerPawn::JoyPad_Start_Released()
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START] = false;
 }
 
+void APlayerPawn::JoyPad_Select_Pressed()
+{
+	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_SELECT] = true;
+}
+
+void APlayerPawn::JoyPad_Select_Released()
+{
+	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_SELECT] = false;
+}
 
 void APlayerPawn::OnAKey()
 {
@@ -90,32 +173,15 @@ void APlayerPawn::OnNum5Key()
 	g_pLibretroManager->SetFrameSkip(4);
 }
 
-void APlayerPawn::ScaleLayersXY(float scaleMod)
-{
-	//Good thing we've previously marked all things we want to scale with a tag called "Scalable"
-	TArray<AActor*> actors;
-	AddActorsByTag(&actors, GetWorld(), "Scalable");
-	
-	for (int i = 0; i < actors.Num(); i++)
-	{
-		FVector vScale = actors[i]->GetActorScale();
-		//LogMsg((string("Scale is ") + toString(vScale)).c_str());
-		vScale.X *= scaleMod;
-		vScale.Y *= scaleMod;
-		actors[i]->SetActorScale3D(vScale);
-	}
-
-}
-
 void APlayerPawn::OnAddKey()
 {
-	ScaleLayersXY(1.05f);
+	g_pLibretroManager->m_pLibretroManagedActor->ScaleLayersXY(1.05f);
 	ShowStatusMessage("Zooming in");
 }
 
 void APlayerPawn::OnSubtractKey()
 {
-	ScaleLayersXY(0.95f);
+	g_pLibretroManager->m_pLibretroManagedActor->ScaleLayersXY(0.95f);
 	ShowStatusMessage("Zooming out");
 }
 
@@ -131,6 +197,22 @@ void APlayerPawn::OnLKey()
 	g_pLibretroManager->LoadStateFromFile();
 }
 
+void APlayerPawn::OnCommaKey()
+{
+	g_pLibretroManager->ModRom(-1);
+}
+
+void APlayerPawn::OnPeriodKey()
+{
+	g_pLibretroManager->ModRom(1);
+}
+
+void APlayerPawn::OnResetGame()
+{
+	LogMsg("Resetting game");
+	g_pLibretroManager->ResetRom();
+}
+
 // Called to bind functionality to input
 void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
@@ -139,12 +221,20 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	// Respond every frame to the values of our two movement axes, "MoveX" and "MoveY".
 	InputComponent->BindAxis("MoveX", this, &APlayerPawn::Move_XAxis);
 	InputComponent->BindAxis("MoveY", this, &APlayerPawn::Move_YAxis);
+	InputComponent->BindAction("JoyPad_A", IE_Pressed, this, &APlayerPawn::JoyPad_A_Pressed);
+	InputComponent->BindAction("JoyPad_A", IE_Released, this, &APlayerPawn::JoyPad_A_Released);
 	InputComponent->BindAction("JoyPad_B", IE_Pressed, this, &APlayerPawn::JoyPad_B_Pressed);
 	InputComponent->BindAction("JoyPad_B", IE_Released, this, &APlayerPawn::JoyPad_B_Released);
+	InputComponent->BindAction("JoyPad_Y", IE_Pressed, this, &APlayerPawn::JoyPad_Y_Pressed);
+	InputComponent->BindAction("JoyPad_Y", IE_Released, this, &APlayerPawn::JoyPad_Y_Released);
 	InputComponent->BindAction("JoyPad_Start", IE_Pressed, this, &APlayerPawn::JoyPad_Start_Pressed);
 	InputComponent->BindAction("JoyPad_Start", IE_Released, this, &APlayerPawn::JoyPad_Start_Released);
-	
-	//I only bound what's needed to play Pitfall.  It's setup for gamepad, arrow keys, and WASD.  Enter or Start on the controller for game reset.
+	InputComponent->BindAction("JoyPad_Select", IE_Pressed, this, &APlayerPawn::JoyPad_Select_Pressed);
+	InputComponent->BindAction("JoyPad_Select", IE_Released, this, &APlayerPawn::JoyPad_Select_Released);
+
+	//I only bound things for Atari and NES.   It's setup for gamepad, arrow keys, and WASD.  Enter or Start on the controller for game reset.
+
+	//well now, I guess I need a few more things for the NES too
 
 	//I didn't bother to bind actions in the editor for this, this is code only stuff
 
@@ -161,6 +251,10 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 
 	InputComponent->BindKey(EKeys::S, IE_Pressed, this, &APlayerPawn::OnSKey);
 	InputComponent->BindKey(EKeys::L, IE_Pressed, this, &APlayerPawn::OnLKey);
+
+	InputComponent->BindKey(EKeys::Comma, IE_Pressed, this, &APlayerPawn::OnCommaKey);
+	InputComponent->BindKey(EKeys::Period, IE_Pressed, this, &APlayerPawn::OnPeriodKey);
+	InputComponent->BindKey(EKeys::R, IE_Pressed, this, &APlayerPawn::OnResetGame);
 
 }
 

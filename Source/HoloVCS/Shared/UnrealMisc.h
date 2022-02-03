@@ -1,5 +1,7 @@
 #pragma once
 
+
+
 #include <string>
 #include <iostream>
 #include <sstream>
@@ -12,7 +14,7 @@
 #include "Windows/WindowsHWrapper.h"
 
 using namespace std;
-
+typedef std::basic_string<TCHAR> tstring;
 
 #ifndef SAFE_DELETE
 #define SAFE_DELETE(p)      { if(p) { delete (p); (p)=NULL; } }
@@ -44,6 +46,8 @@ const uint32 PURE_WHITE = MAKE_RGBA(255, 255, 255, 255);
 //fix problem for webOS compiles
 #define UINT_MAX      0xffffffff
 #endif
+
+typedef unsigned char byte;
 
 
 #define rt_min(rangeMin,rangeMax)    (((rangeMin) < (rangeMax)) ? (rangeMin) : (rangeMax))
@@ -89,6 +93,14 @@ std::string toString(TArray<FVector> value)
 }
 
 
+template<> inline
+std::string toString(FString value)
+{
+	return string(StringCast<ANSICHAR>(*value).Get());
+}
+
+
+
 void LogMsg(const char* traceStr, ...);
 void LogMsg(WIDECHAR* traceStr, ...);
 string GetFileExtension(string fileName);
@@ -96,9 +108,24 @@ string ModifyFileExtension(const string fileName, const string extension);
 string GetPathFromString(const string& path);
 string GetFileNameWithoutExtension(const string fileName);
 string GetFileNameFromString(const string& path);
+uint32 HashString(const char* str, int32 len = 0); //if 0, stops on null, like for a string
+bool IsInString(const std::string& s, const char* search);
 
+//Don't use these, the names given by the engine are not consistent.  Use a tag instead, you'll need to tag them in the
+//editor though!  I wrote these before I knew that
+
+/*
 UActorComponent* GetComponentByName(const AActor* pRootActor, const FString& name);
 UActorComponent* GetComponentByName(const AActor* pRootActor, const char* name);
 AActor* GetActorByName(UWorld* pWorld, char* name); //don't use this, names change between runs!
-AActor* GetActorByTag(UWorld* pWorld, char* tag); //safe, but .. yeah, you need to add an actor tag
+*/
+UActorComponent* GetComponentByTag(const AActor* pRootActor, const char* tagName);
+UActorComponent* GetComponentByTag(const AActor* pRootActor, const FString& tagName);
+
+AActor* GetActorByTag(UWorld* pWorld, char* tagName); //safe, but .. yeah, you need to add an actor tag
 void AddActorsByTag(TArray<AActor*>* pActors, UWorld* pWorld, char* tag);
+void ToLowerCase(char* pCharArray);
+void ToUpperCase(char* pCharArray);
+std::string ToLowerCaseString(const std::string& s);
+std::string ToUpperCaseString(const std::string& s);
+

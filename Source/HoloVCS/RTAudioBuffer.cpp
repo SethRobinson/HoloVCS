@@ -63,7 +63,7 @@ int32 RTBufferGenerator::OnGenerateAudio(float* OutAudio, int32 NumSamples)
     {
         //filling the rest with blanks, if we don't it will gve
         //"Procedural USoundWave is reinitializing even though it is actively generating audio. Sound must be stopped before playing again."
-#ifdef UE_BUILD_DEBUG
+#if UE_BUILD_DEBUG
        // LogMsg("Buffer underrun - wrote %d samples although %d was requested", samplesWritten, NumSamples);
 #endif
         while (samplesWritten < NumSamples)

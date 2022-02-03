@@ -14,7 +14,7 @@ ALibretroManagerActor::ALibretroManagerActor()
 
 const bool C_INIT_TEXTURES_EVERY_FRAME = true; //slightly slower, but safer in theory?
 
-
+ 
 bool ALibretroManagerActor::SetupLayer(LayerInfo* pLayer, char* pActorName)
 {
 	//hardcoded to work with the Stella 2600 emulator, but in theory with some tweaks we could support any
@@ -73,6 +73,62 @@ bool ALibretroManagerActor::SetupLayer(LayerInfo* pLayer, char* pActorName)
 	return true;
 }
 
+
+void ALibretroManagerActor::ScaleLayersXY(float scaleMod)
+{
+	//Good thing we've previously marked all things we want to scale with a tag called "Scalable"
+	TArray<AActor*> actors;
+	AddActorsByTag(&actors, GetWorld(), "Scalable");
+
+	for (int i = 0; i < actors.Num(); i++)
+	{
+		FVector vScale = actors[i]->GetActorScale();
+		//LogMsg((string("Scale is ") + toString(vScale)).c_str());
+		vScale.X *= scaleMod;
+		vScale.Y *= scaleMod;
+		actors[i]->SetActorScale3D(vScale);
+	}
+
+}
+
+void ALibretroManagerActor::SetLayersPosXY(float posX, float posY)
+{
+	//Good thing we've previously marked all things we want to scale with a tag called "Scalable"
+	TArray<AActor*> actors;
+	AddActorsByTag(&actors, GetWorld(), "Layers");
+	check(actors.Num() == 1);
+
+	for (int i = 0; i < actors.Num(); i++)
+	{
+		FVector vPos = actors[i]->GetActorLocation();
+
+		vPos.Y = posX;
+		vPos.Z = posY;
+		//LogMsg((string("Scale is ") + toString(vScale)).c_str());
+
+		actors[i]->SetActorLocation(vPos);
+	}
+
+}
+
+
+void ALibretroManagerActor::SetScaleLayersXY(float scaleX, float scaleY)
+{
+	//Good thing we've previously marked all things we want to scale with a tag called "Scalable"
+	TArray<AActor*> actors;
+	AddActorsByTag(&actors, GetWorld(), "Scalable");
+
+	for (int i = 0; i < actors.Num(); i++)
+	{
+		FVector vScale = actors[i]->GetActorScale();
+		//LogMsg((string("Scale is ") + toString(vScale)).c_str());
+		vScale.X = scaleX;
+		vScale.Y = scaleY;
+		actors[i]->SetActorScale3D(vScale);
+	}
+
+}
+
 // Called when the game starts or when spawned
 void ALibretroManagerActor::BeginPlay()
 {
@@ -83,20 +139,18 @@ void ALibretroManagerActor::BeginPlay()
 	FAudioDevice* MainAudioDevice = GEngine->GetMainAudioDeviceRaw();
 	LogMsg("Main audio device sample rate is %f", MainAudioDevice->GetSampleRate());
 
-	m_pRTAudioBufferComponent = NewObject<USynthComponentRTAudioBuffer>(this, USynthComponentRTAudioBuffer::StaticClass());
-	m_pRTAudioBufferComponent->Initialize();
-	m_pRTAudioBufferComponent->Start(); //Note, this requires Seth's bugfixed unreal source which can't be legally shared to be able to change sample rate on the fly.
-	//as a work around, you have to change the windows target overall mixing framerate.  See the USynthComponentRTAudioBuffer source for more info
+	if (m_pRTAudioBufferComponent == NULL)
+	{
+		m_pRTAudioBufferComponent = NewObject<USynthComponentRTAudioBuffer>(this, USynthComponentRTAudioBuffer::StaticClass());
+		m_pRTAudioBufferComponent->Initialize();
+		m_pRTAudioBufferComponent->Start(); //Note, this requires Seth's bugfixed unreal source which can't be legally shared to be able to change sample rate on the fly.
+		//as a work around, you have to change the windows target overall mixing framerate.  See the USynthComponentRTAudioBuffer source for more info
+
+	}
 
 	LogMsg("Started audio renderer thread");
 
-	m_libretroManager.Init(this);
-
-	if (!m_libretroManager.IsCoreLoaded())
-	{
-		return;
-	}
-
+	
 	//Prepare each layer we're going to dynamically write visuals to
 	for (int i = 0; i < C_LAYER_COUNT; i++)
 	{
@@ -106,9 +160,43 @@ void ALibretroManagerActor::BeginPlay()
 		}
 	}
 
+
+	if (!m_pHoloPlayCapture)
+	{
+		LogMsg("Couldn't find HoloPlayActor");
+	}
+	else
+	{
+		LogMsg("Found HoloPlayActor");
+		//m_pHoloPlayCapture->EndPlay(EEndPlayReason::RemovedFromWorld);
+		//m_pHoloPlayCapture->GetWorld()->DestroyActor(m_pHoloPlayCapture);
+		//m_pHoloPlayCapture = NULL;
+	}
+
 	//internal FPS counter for some reason, not really needed
 	m_framesRendered = 0;
 	m_timeOfNextFPSUpdate = GetWorld()->GetRealTimeSeconds() + 1.0f;
+
+	OnWasRestartedInEditor();
+	m_libretroManager.Init(this);
+
+	if (!m_libretroManager.IsCoreLoaded())
+	{
+		return;
+	}
+
+
+#if UE_BUILD_DEBUG
+	//Kill splash screen
+	TArray<AActor*> actors;
+	AddActorsByTag(&actors, GetWorld(), "SplashScreen");
+	
+	if (actors.Num() > 0)
+	{
+		actors[0]->Destroy();
+	}
+
+#endif
 
 }
 
@@ -127,13 +215,28 @@ void ALibretroManagerActor::SetSampleRate(int sampleRate)
 			m_pRTAudioBufferComponent->Start(sampleRate);
 		}, 0.2f, false);
 
-	
+}
+ 
+void ALibretroManagerActor::KillStuff()
+{
+	for (int i = 0; i < C_LAYER_COUNT; i++)
+	{
+		if (m_layerInfo[i].m_pDynamicTexture)
+		{
+			m_layerInfo[i].m_pDynamicTexture->ReleaseResource();
+			m_layerInfo[i].m_pDynamicTexture = 0;
+			SAFE_DELETE_ARRAY(m_layerInfo[i].m_pTextData);
+		}
+	}  
 }
 
 void ALibretroManagerActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	LogMsg("Ending play...");
 	m_libretroManager.Kill();
+	KillStuff();
 	Super::EndPlay(EndPlayReason);
+	
 }
 
 using FDataCleanupFunc = TFunction<void(uint8*, const FUpdateTextureRegion2D*)>;

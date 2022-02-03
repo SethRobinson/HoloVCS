@@ -1,14 +1,70 @@
 #include "LibretroManager.h"
 #include "LibretroManagerActor.h"
+#include "PlayerPawn.h"
+
 #include "StatusDisplayActor.h" //so we can show messages on screen
+
+//SETH:  If I don't set these, we can't get SetProcessDpiAwareness
+
+#if UE_BUILD_DEBUG
+const int C_DEFAULT_ROM_ID = 1;
+bool g_loadStateOnFirstLoad = true;
+string g_partialRomNameToLoadOnStartup = "mario";
+#else
+const int C_DEFAULT_ROM_ID = 0;
+bool g_loadStateOnFirstLoad = false;
+string g_partialRomNameToLoadOnStartup = "";
+#endif
+
+#if PLATFORM_WINDOWS
+#include "Windows/WindowsHWrapper.h"
+#include "Windows/AllowWindowsPlatformTypes.h"
+
+#ifdef WINVER
+#undef WINVER
+#endif
+ 
+#ifdef _WIN32_WINNT
+#undef _WIN32_WINNT
+#endif
+
+#define WINVER 0x0A00
+#define _WIN32_WINNT 0x0A00
+
+THIRD_PARTY_INCLUDES_START
+#include "Windows/PreWindowsApi.h"
+#include <objbase.h>
+#include <assert.h>
+#include <stdio.h>
+#include "shellscalingapi.h"
+#include "Windows/PostWindowsApi.h"
+#include "Windows/MinWindows.h"
+
+THIRD_PARTY_INCLUDES_END
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
+
+#include "Shared/UnrealMisc.h"
+
+#pragma warning(disable:4191)
 
 const unsigned short ASYNC_BUTTON_DOWN_MSB = 0x8000;
 
-string G_VERSION_STRING = "HoloVCS V0.5";
+string G_VERSION_STRING = "HoloVCS V0.6";
 
 LibretroManager* g_pLibretroManager = NULL; //I don't want to fool with caring how to get Unreal globals correctly
 void retro_video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch);
 #include <thread>
+
+//when starting/stopping in the editor, globals don't get reverted back, so we'll do it manually and trust this is called at some point
+
+void OnWasRestartedInEditor()
+{
+#if UE_BUILD_DEBUG
+	
+	g_loadStateOnFirstLoad = true;
+#endif
+}
 
 void JoyPadButtonStates::Clear()
 {
@@ -30,49 +86,57 @@ LibretroManager::~LibretroManager()
 {
 	Kill();
 	g_pLibretroManager = NULL;
-}
-
-void LibretroManager::Kill()
-{
-
-	if (m_core.m_bActive && m_dllHandle != NULL)
-	{
-		m_core.retro_unload_game();
-		m_core.retro_deinit();
-		m_core.m_bActive = false;
-	}
-
-	if (m_dllHandle != NULL)
-	{
-		LogMsg("Unloading dll");
-
-		if (!FreeLibrary(m_dllHandle))
-		{
-			LogMsg("Error unloading core dll");
-		}
-
-		m_dllHandle = NULL;
-	}
 
 	for (int i = 0; i < C_SAVE_STATE_COUNT; i++)
 	{
 		SAFE_DELETE_ARRAY(m_pSaveStateBuffer[i]);
 	}
+}
+
+void LibretroManager::Kill()
+{
+
+	FreeEmulatorIfNeeded();
+
 
 }
 
+void LibretroManager::ModEmulatorType(int mod)
+{
+	LogMsg("Modding emu by %d", mod);
+}
+
+void LibretroManager::ModRom(int mod)
+{
+	LogMsg("Modding rom by %d", mod);
+	m_activeRomIndex += mod;
+	if (m_activeRomIndex >= m_romNameFileList.Num())
+	{
+		m_activeRomIndex = 0;
+	}
+
+	if (m_activeRomIndex < 0)
+	{
+		m_activeRomIndex = m_romNameFileList.Num() - 1;
+	}
+
+	//trigger the whole reload thing
+	InitEmulator();
+}
+ 
 void LibretroManager::DisableBlitPass(int blitPassIndex)
 {
 	m_blitPass[blitPassIndex].m_bActive = false;
 }
 
-void LibretroManager::SetupBlitPass(int blitPassIndex, int layer, FIntRect srcRect, eColorKeyStyle colorKeyStyle, FLinearColor colorKey)
+void LibretroManager::SetupBlitPass(int blitPassIndex, int layer, FIntRect srcRect, eColorKeyStyle colorKeyStyle, FLinearColor colorKey, FLinearColor colorKey2)
 {
 	m_blitPass[blitPassIndex].m_bActive = true;
 	m_blitPass[blitPassIndex].m_activeLayerIndex = layer;
 	m_blitPass[blitPassIndex].m_blitColorKeyStyle = colorKeyStyle;
 	m_blitPass[blitPassIndex].m_blitSrcRect = srcRect;
 	m_blitPass[blitPassIndex].m_blitColorKey = colorKey;
+	m_blitPass[blitPassIndex].m_blitColorKey2 = colorKey2;
 }
 
 #define GET_VARIABLE_NAME(Variable) (#Variable)
@@ -95,9 +159,28 @@ FARPROC MapFunction(HINSTANCE m_dllHandle, char* varName)
 	return temp;
 }
 
+void LibretroManager::FreeEmulatorIfNeeded()
+{
+	if (m_core.m_bActive && m_dllHandle != NULL)
+	{
+		LogMsg("Unloading emulator");
+		m_core.retro_unload_game();
+		m_core.retro_deinit();
+		m_core.m_bActive = false;
+	} 
+
+	if (m_dllHandle)
+	{
+		LogMsg("Freeing emulator dll");
+		FreeLibrary(m_dllHandle);
+	}
+
+	m_dllHandle = NULL;
+}
+ 
 bool LibretroManager::LoadCore(string fileName)
 {
-	check(!m_dllHandle);
+	FreeEmulatorIfNeeded();
 
 	m_dllHandle = LoadLibraryA(fileName.c_str());
 
@@ -111,6 +194,7 @@ bool LibretroManager::LoadCore(string fileName)
 	m_core.retro_get_system_info = (decltype(m_core.retro_get_system_info))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_get_system_info));
 	m_core.retro_init = (decltype(m_core.retro_init))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_init));
 	m_core.retro_deinit = (decltype(m_core.retro_deinit))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_deinit));
+	m_core.retro_reset = (decltype(m_core.retro_reset))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_reset)); 
 	m_core.retro_set_environment = (decltype(m_core.retro_set_environment))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_set_environment));
 	m_core.retro_set_video_refresh = (decltype(m_core.retro_set_video_refresh))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_set_video_refresh));
 	m_core.retro_set_audio_sample = (decltype(m_core.retro_set_audio_sample))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_set_audio_sample));
@@ -138,7 +222,7 @@ void libretro_log(enum retro_log_level level, const char* traceStr, ...)
 	vsnprintf_s(buffer, logSize, logSize, traceStr, argsVA);
 	va_end(argsVA);
 
-	LogMsg("%d - %s", buffer);
+	LogMsg("Libretro: %s", buffer);
 }
 
 bool retro_environment_callback(unsigned cmd, void* data)
@@ -159,13 +243,33 @@ bool retro_environment_callback(unsigned cmd, void* data)
 
 		if (strcmp(pVar->key, "stella_video_flags") == 0)
 		{
-			pVar->value = g_pLibretroManager->m_stellaRenderFlags;
+			pVar->value = g_pLibretroManager->m_coreRenderFlags;
 			return true;
-		} 
+		}
+		else
+			if (strcmp(pVar->key, "fceumm_video_flags") == 0)
+			{
+				pVar->value = g_pLibretroManager->m_coreRenderFlags;
+				return true;
+			}
 		
+
+		    //here we change the palette to pure RGB, easier to setup colorkeys as I can also set
+		    //mesen to "RGB (Nestopia)" and the palettes will exactly match
+			if (strcmp(pVar->key, "fceumm_palette") == 0)
+			{
+				pVar->value = "rgb";
+				return true;
+			}
 		return false;
 	}
 	break;
+
+	case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE:
+		//LogMsg("AV enabled msg");
+		return false; //signal unhandled
+		break;
+
 
 	case RETRO_ENVIRONMENT_SET_VARIABLES:
 	{
@@ -186,6 +290,10 @@ bool retro_environment_callback(unsigned cmd, void* data)
 	}
 
 	break;
+
+	case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS:
+		return false; //not handled
+		break;
 
 	case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
 	{
@@ -238,20 +346,39 @@ bool retro_environment_callback(unsigned cmd, void* data)
 
 bool LibretroManager::LoadRom(string fileName)
 {
-
 	retro_game_info ginfo;
 	memset(&ginfo, 0, sizeof(ginfo));
+	
+	m_romDataArray.Empty();
 
-	//string finalPath = GetBaseAppPath() + fileName; 
+	FFileHelper::LoadFileToArray(m_romDataArray, ANSI_TO_TCHAR(fileName.c_str()));
+	ginfo.data = m_romDataArray.GetData();
+	ginfo.size = m_romDataArray.Num();
 
-	ginfo.path = fileName.c_str();
-	LogMsg("Loading rom %s", ginfo.path);
-	if (!m_core.retro_load_game(&ginfo))
+	if (ginfo.size == 0 || ginfo.data == NULL)
 	{
-		LogMsg("Error loading rom");
+		LogMsg("Error loading rom (can't find it)");
 		return false;
 	}
 
+	int headerSizeToSkipForRomHash = 0;
+
+	//calculate checksum, needed to recognize which game we're running
+	if (m_emulatorType == EMULATOR_NES)
+	{
+		headerSizeToSkipForRomHash = 16;
+	}
+
+	m_romHash = TCHAR_TO_UTF8(*FMD5::HashBytes((uint8*)&((byte*)ginfo.data)[headerSizeToSkipForRomHash], ginfo.size - headerSizeToSkipForRomHash));
+	
+	
+	ginfo.path = fileName.c_str();
+	LogMsg("Loading rom %s, has a MD5 hash of %s", ginfo.path, m_romHash.c_str());
+	if (!m_core.retro_load_game(&ginfo))
+	{
+		LogMsg("Error: loading rom");
+		return false;
+	}
 	m_joyPad.Clear();
 
 	memset(&m_game_av_info, 0, sizeof(m_game_av_info));
@@ -259,6 +386,8 @@ bool LibretroManager::LoadRom(string fileName)
 	LogMsg("Core says screen is %d, %d, but max is %d, %d.", m_game_av_info.geometry.base_width, m_game_av_info.geometry.base_height,
 		m_game_av_info.geometry.max_width, m_game_av_info.geometry.max_height);
 	
+	m_profManager.InitGame(m_romHash);
+
 	return true;
 }
 
@@ -278,12 +407,12 @@ void LibretroManager::SetSampleRate()
 	{
 		//Sorry, I refuse to use the fstring stuff
 		char st[256];
-		sprintf(st, "Try again in %.2f seconds, we need more time to measure audio speed", SECONDS_REQUIRED - timeTaken);
+		sprintf_s(st, "Try again in %.2f seconds, we need more time to measure audio speed", SECONDS_REQUIRED - timeTaken);
 		ShowStatusMessage(st);
 		return;
 	}
 
-	m_framesWrittenInLastPeriod = m_framesWrittenInPeriod / (FPlatformTime::Seconds() - m_audioStatisticsTimer);
+	m_framesWrittenInLastPeriod = (double)m_framesWrittenInPeriod / (FPlatformTime::Seconds() - m_audioStatisticsTimer);
 	ShowStatusMessage(string("Samplerate: ") + toString(m_framesWrittenInLastPeriod));
 	m_framesWrittenInPeriod = 0;
 	
@@ -302,7 +431,6 @@ void LibretroManager::UpdateAudioStatistics(int framesWritten)
 {
 	m_framesWrittenInPeriod += framesWritten;
 }
-
 
 size_t retro_audio_sample_batch_callback(const int16_t* data, size_t frames)
 {
@@ -327,7 +455,7 @@ size_t retro_audio_sample_batch_callback(const int16_t* data, size_t frames)
 			chunk.validSamples = sampleSize;
 
 			//copy it into the buffer
-			for (int i = 0; i < frames; i++)
+			for (unsigned int i = 0; i < frames; i++)
 			{
 				//LogMsg(" %d - %.2f", (int)data[i * 2], (float)fFrame);
 				chunk.pSampleData[i] = ((float)data[i * 2]) / (32768.0f * 2);
@@ -370,33 +498,116 @@ int16_t retro_input_state_callback(unsigned port, unsigned device, unsigned inde
 	}
 	return 0;
 }
+ 
 
-void LibretroManager::Init(ALibretroManagerActor * pLibretroManagedActor)
+void LibretroManager::SetEmulatorData(eEmulatorType emu)
 {
-	g_pLibretroManager = this;
-	m_pLibretroManagedActor = pLibretroManagedActor;
-	LogMsg("Let's init shit");
-	strcpy(m_stellaRenderFlags, "1111111");
-
-	if (m_core.m_bActive)
+	m_emulatorType = emu;
+	string rom = "unset";
+	
+	switch (emu)
 	{
-		LogMsg("Huh, it's already initted?");
+
+	case EMULATOR_ATARI:
+		m_coreName = "stella_libretro.dll";
+		m_surfaceSourceType = SURFACE_SOURCE_RGBA_32;
+		m_romDir = "atari2600";
+		m_romFileExtension1 = ".a26";
+		m_romFileExtension2 = ".bin";
+		m_coreLayerScale = FVector2D(4.45, 3.5);
+		m_corePosition = FVector2D(103.0, 213);
+		break;
+
+	case EMULATOR_NES:
+		m_coreName = "fceumm_libretro.dll";
+		m_surfaceSourceType = SURFACE_SOURCE_RGB_565_16;
+		m_romDir = "nes";
+		m_romFileExtension1 = ".nes";
+		m_romFileExtension2 = ".unusedcrap";
+		m_coreLayerScale = FVector2D(2.8, 2.8);
+		m_corePosition = FVector2D(23.0, 213);
+		break;
+
+	default:
+		LogMsg("Error, unknown emulator type");
+		return;
+		break;
+	}
+
+}
+
+void LibretroManager::DisableAllBlitPasses()
+{
+	for (int i = 0; i < C_MAX_BLITPASS_COUNT; i++)
+	{
+		DisableBlitPass(i); //just make sure nothing will actually render
+	}
+
+}
+
+bool LibretroManager::SetRomToLoadByPartialFileName(string name)
+{
+	//rom = "Super Mario Bros. (World).nes";
+	//rom = "Castlevania (USA) (Rev A).nes";
+	//rom = "Pitfall! (1982) (Activision) [!].a26";
+
+	name = ToUpperCaseString(name);
+
+	for (int i = 0; i < m_romNameFileList.Num(); i++)
+	{
+		if (IsInString(ToUpperCaseString( toString(m_romNameFileList[i]) ), name.c_str() ))
+		{
+			m_activeRomIndex = i;
+			LogMsg("Loading %s by partial match to the word %s", toString(m_romNameFileList[i]).c_str(), name.c_str());
+			return true;
+		}
+
+	}
+
+	LogMsg("Couldn't find any rom with the word %s in it", name.c_str());
+
+	//didn't find it
+	return false;
+}
+
+void LibretroManager::InitEmulator()
+{
+	m_profManager.Init(this);
+
+	if (m_romNameFileList.Num() == 0)
+	{
+		MessageBox(NULL, (LPCWSTR)L"No game roms found.\nPut some in the atari2600 or nes dir first!\nCheck readme for which games are supported.",
+			(LPCWSTR)L"Add game roms!",
+			MB_ICONWARNING | MB_OK | MB_DEFAULT_DESKTOP_ONLY);
+		
 		return;
 	}
 
-	string coreName = "stella_libretro.dll";
-
-	if (!LoadCore(coreName.c_str()))
+	if (g_loadStateOnFirstLoad && !g_partialRomNameToLoadOnStartup.empty())
 	{
-		string msg = string("ERROR: Can't find core ") + coreName;
+		SetRomToLoadByPartialFileName(g_partialRomNameToLoadOnStartup);
+	}
+
+	SetEmulatorData((eEmulatorType) m_emulatorIDList[m_activeRomIndex]);
+	
+	if (m_romNameFileList.Num() > 0)
+	{
+		m_curRomName = toString(m_romNameFileList[m_activeRomIndex]);
+	}
+	strcpy_s(m_coreRenderFlags, "1111111");
+
+	if (!LoadCore(m_coreName.c_str()))
+	{
+		string msg = string("ERROR: Can't find core ") + m_coreName;
 		LogMsg(msg.c_str());
 		ShowStatusMessage(msg.c_str(), 100);
 		return;
 	}
 	else
 	{
-		LogMsg("libretro core %s loaded.", coreName.c_str());
+		LogMsg("libretro core %s loaded.", m_coreName.c_str());
 	}
+
 	int apiVer = m_core.retro_api_version();
 	LogMsg("API of course is %d", apiVer);
 
@@ -415,52 +626,31 @@ void LibretroManager::Init(ALibretroManagerActor * pLibretroManagedActor)
 
 	m_core.retro_init();
 
-	string romFileName;
+	m_romPath = m_rootPath + m_romDir + "/";
 
-	FString FullPath = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*FPaths::ProjectDir());
-	m_rootPath = StringCast<ANSICHAR>(*FullPath).Get();
-	
-#if WITH_EDITOR
-	LogMsg("We're running in the editor");
-#else
-	m_rootPath += "../";
-	LogMsg("We're running the standalone game, adding ../ because of the directory layout difference");
-#endif
-
-	m_romPath = m_rootPath+ "atari2600/";
-	//get list of roms and play the first one
-	TArray< FString > fileList;
-
-	IFileManager::Get().FindFiles(fileList, ANSI_TO_TCHAR(m_romPath.c_str()), TEXT(".a26"));
-	IFileManager::Get().FindFiles(fileList, ANSI_TO_TCHAR(m_romPath.c_str()), TEXT(".bin"));
-	LogMsg("Found %d roms, grabbing first one", fileList.Num());
-
-	
-	if (fileList.Num() > 0)
+	if (!LoadRom(m_romPath + m_curRomName))
 	{
-		m_curRomName = string(StringCast<ANSICHAR>(*fileList[0]).Get());
-		
-	}
-
-	if (!LoadRom(m_romPath+m_curRomName))
-	{
-		char* pMsg = "ERROR: Place rom (.a26 or .bin) in atari2600 dir!";
-		ShowStatusMessage(pMsg, 100);
-		LogMsg(pMsg);
+		string msg = "ERROR: Place rom (";
+		msg += m_romFileExtension1 + ") in " + m_romPath + " dir!";
+		ShowStatusMessage(msg.c_str(), 100);
+		LogMsg(msg.c_str());
 		return;
 	}
+	m_nesHacker.Reset();
 
-	ShowStatusMessage(G_VERSION_STRING+ " Loaded "+ m_curRomName, 4);
-	
+	ShowStatusMessage(G_VERSION_STRING + " Loaded " + m_curRomName, 4);
+
 	m_maxSaveStateSize = m_core.retro_serialize_size();
 	if (m_maxSaveStateSize > 0)
 	{
-		m_maxSaveStateSize += 150000; //it will fail because it's a couple bytes
-		//off sometimes, a libretro_stella bug?  whatever, I'll give it tons
-		LogMsg("Preparing save state buffer of %d bytes", m_maxSaveStateSize);
+		if (m_emulatorType == EMULATOR_ATARI)
+			m_maxSaveStateSize += 2048; //it will fail because it's a couple bytes
+		//off sometimes, a libretro_stella bug?  whatever, I'll give it some extra
+
+		LogMsg("Preparing save state buffers for this emulator, each is %d bytes", m_maxSaveStateSize);
 		for (int i = 0; i < C_SAVE_STATE_COUNT; i++)
 		{
-			check(m_pSaveStateBuffer[i] == NULL);
+			SAFE_DELETE_ARRAY(m_pSaveStateBuffer[i]);
 			m_pSaveStateBuffer[i] = new uint8[m_maxSaveStateSize];
 		}
 	}
@@ -471,14 +661,131 @@ void LibretroManager::Init(ALibretroManagerActor * pLibretroManagedActor)
 	}
 
 	m_core.m_bActive = true;
-	DisableBlitPass(BLIT_PASS0); //just make sure nothing will actually render
+	
+	DisableAllBlitPasses();
 
 	//setup timing based on what the core tells us
 	m_audioStatisticsTimer = FPlatformTime::Seconds();
 	m_framesWrittenInPeriod = 0;
 
+
+
+
+	if (g_loadStateOnFirstLoad)
+	{
+		g_loadStateOnFirstLoad = false;
+		LoadStateFromFile();
+	}
+
+	if (m_emulatorType == EMULATOR_ATARI)
+	{
+		SetFrameSkip(1);
+	}
+	 
+	if (m_emulatorType == EMULATOR_NES)
+	{
+		SetFrameSkip(0);
+		m_pLibretroManagedActor->SetSampleRate(44100);
+		m_audioStatisticsTimer = FPlatformTime::Seconds();
+		m_framesWrittenInPeriod = 0;
+	}
+
 	m_core.retro_run();
 	SaveState(0);
+	ClearAllLayers(); //don't want leftovers from previous games/renders showing up
+	
+	m_pLibretroManagedActor->SetScaleLayersXY(m_coreLayerScale.X, m_coreLayerScale.Y);
+	m_pLibretroManagedActor->SetLayersPosXY(m_corePosition.X, m_corePosition.Y);
+}
+
+void LibretroManager::ClearAllLayers()
+{
+	for (int i = 0; i < C_LAYER_COUNT; i++)
+	{
+		LayerInfo* pDestLayer = g_pLibretroManager->m_pLibretroManagedActor->GetLayer(i);
+		if (!pDestLayer->GetPixelBuffer()) continue;
+		uint8* pDst = pDestLayer->GetPixelBuffer();
+		
+		memset(pDst, 0, pDestLayer->m_texWidth * pDestLayer->m_texHeight * 4);
+	}
+}
+
+void LibretroManager::ResetRom()
+{
+	m_nesHacker.Reset();
+	LoadState(0);
+	m_core.retro_reset();
+	m_core.retro_run();
+	SaveState(0);
+}
+
+void LibretroManager::LoadRomList()
+{
+
+	string romFileName;
+
+	FString FullPath = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*FPaths::ProjectDir());
+	m_rootPath = StringCast<ANSICHAR>(*FullPath).Get();
+	FString testPath = FullPath + "atari2600";
+
+	if (!FPaths::DirectoryExists(testPath))
+	{
+		m_rootPath += "../";
+		LogMsg("Adding ../ to path due to detected release dir layout");
+	}
+
+	m_romNameFileList.Empty();
+	m_emulatorIDList.Empty();
+
+	for (int i = 0; i < EMULATOR_COUNT; i++)
+	{
+		SetEmulatorData((eEmulatorType)i);
+		m_romPath = m_rootPath + m_romDir + "/";
+		//get list of roms and play the first one
+		int romCountBeforeAdding = m_romNameFileList.Num();
+		
+		IFileManager::Get().FindFiles(m_romNameFileList, ANSI_TO_TCHAR(m_romPath.c_str()), ANSI_TO_TCHAR(m_romFileExtension1.c_str()));
+		IFileManager::Get().FindFiles(m_romNameFileList, ANSI_TO_TCHAR(m_romPath.c_str()), ANSI_TO_TCHAR(m_romFileExtension2.c_str()));
+
+		int romsFound = m_romNameFileList.Num() - romCountBeforeAdding;
+
+		LogMsg("Scanning %s dir (for %s), found %d roms (%d total)", m_romPath.c_str(), m_coreName.c_str(), romsFound, m_romNameFileList.Num());
+
+		for (int j = 0; j < romsFound; j++)
+		{
+			m_emulatorIDList.Add(i);
+		}
+	} 
+
+}
+
+void LibretroManager::SetRomByIndex(int index)
+{
+	m_activeRomIndex = index;
+}
+
+void LibretroManager::Init(ALibretroManagerActor * pLibretroManagedActor)
+{
+	g_pLibretroManager = this;
+	m_pLibretroManagedActor = pLibretroManagedActor;
+	m_pPlayerPawn = (APlayerPawn*)GetActorByTag(m_pLibretroManagedActor->GetWorld(), "PlayerPawn");
+
+	LogMsg("Let's init the emu core we want from its dll!");
+	
+	HMONITOR primaryHandle = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
+	UINT dpiX, dpiY;
+	HRESULT temp2 = GetDpiForMonitor(primaryHandle, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
+	double scalingFactor = dpiY / 96.0;
+	if (scalingFactor != 1.0f)
+	{
+		MessageBox(NULL, (LPCWSTR)L"Uh oh, your Looking Glass has a windows scaling\nfactor set!  Change to 100% scaling to fix visual glitches.\n(open Display Settings, then click the Looking Glass monitor)",
+			(LPCWSTR)L"Monitor scaling detected!",
+			MB_ICONWARNING | MB_OK | MB_DEFAULT_DESKTOP_ONLY);
+	}
+	LoadRomList();
+	SetRomByIndex(C_DEFAULT_ROM_ID);
+	InitEmulator();
+	
 }
 
 bool LibretroManager::SaveState(int index)
@@ -493,6 +800,18 @@ bool LibretroManager::SaveState(int index)
 	return true;
 }
 
+bool LibretroManager::CopyState(int fromState, int toState)
+{
+
+	assert(fromState < C_SAVE_STATE_COUNT);
+	assert(toState < C_SAVE_STATE_COUNT);
+
+	memcpy(m_pSaveStateBuffer[toState], m_pSaveStateBuffer[fromState], m_maxSaveStateSize);
+
+	return true;
+}
+
+
 bool LibretroManager::LoadState(int index)
 {
 	if (!m_core.retro_unserialize(m_pSaveStateBuffer[index], m_maxSaveStateSize))
@@ -502,6 +821,13 @@ bool LibretroManager::LoadState(int index)
 	}
 
 	return true;
+}
+
+uint32 ARGB1555toARGB8888(unsigned short c)
+{
+	const uint32 a = c & 0x8000, r = c & 0x7C00, g = c & 0x03E0, b = c & 0x1F;
+	const uint32 rgb = (r << 9) | (g << 6) | (b << 3);
+	return (a * 0x1FE00) | rgb | ((rgb >> 5) & 0x070707);
 }
 
 void retro_video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch)
@@ -526,9 +852,8 @@ void retro_video_refresh_callback(const void* data, unsigned width, unsigned hei
 
 		check(height <= pDestLayer->m_texHeight);
 
-
-#ifdef UE_BUILD_DEBUG
-		//hack to show the pixel color of the bottomt middle pixel of the area of a selected pass, so I know what to use for a colorkey
+#if UE_BUILD_DEBUG
+		//hack to show the pixel color of the bottom middle pixel of the area of a selected pass, so I know what to use for a colorkey
 		/*if (pass == BLIT_PASS0)
 		{
 			pSrc = (uint8*)data + (pBlitPass->m_blitSrcRect.Min.Y * pitch) + (pBlitPass->m_blitSrcRect.Min.X + ((pBlitPass->m_blitSrcRect.Max.X - pBlitPass->m_blitSrcRect.Min.X) / 2));
@@ -536,69 +861,190 @@ void retro_video_refresh_callback(const void* data, unsigned width, unsigned hei
 		}*/
 #endif
 
-		for (int y = pBlitPass->m_blitSrcRect.Min.Y; y < pBlitPass->m_blitSrcRect.Max.Y; y++)
+		if (g_pLibretroManager->m_surfaceSourceType == SURFACE_SOURCE_RGBA_32)
 		{
-			pDst = pDestLayer->GetPixelBuffer() + (y * pDestLayer->m_texPitchBytes);
-			pSrc = (uint8*)data + (y * pitch);
-
-			//skip ahead a bit
-			pSrc += pBlitPass->m_blitSrcRect.Min.X * 4;
-			pDst += pBlitPass->m_blitSrcRect.Min.X * 4;
-
-
-
-			//OPTIMIZE:  These copies could be sped up a lot, but considering this isn't where my slowdown is I'm not
-			//really caring now
-			for (int x = pBlitPass->m_blitSrcRect.Min.X; x < pBlitPass->m_blitSrcRect.Max.X; x++)
+			for (int y = pBlitPass->m_blitSrcRect.Min.Y; y < pBlitPass->m_blitSrcRect.Max.Y; y++)
 			{
-				pDst[0] = pSrc[0]; //red
-				pDst[1] = pSrc[1]; //green
-				pDst[2] = pSrc[2]; //blue
+				pDst = pDestLayer->GetPixelBuffer() + (y * pDestLayer->m_texPitchBytes);
+				pSrc = (uint8*)data + (y * pitch);
 
-				switch (pBlitPass->m_blitColorKeyStyle)
+				//skip ahead a bit
+				pSrc += pBlitPass->m_blitSrcRect.Min.X * 4;
+				pDst += pBlitPass->m_blitSrcRect.Min.X * 4;
+
+				//OPTIMIZE:  These copies could be sped up a lot, but considering this isn't where my slowdown is I'm not
+				//really caring now
+				for (int x = pBlitPass->m_blitSrcRect.Min.X; x < pBlitPass->m_blitSrcRect.Max.X; x++)
 				{
+					pDst[0] = pSrc[0]; //red
+					pDst[1] = pSrc[1]; //green
+					pDst[2] = pSrc[2]; //blue
 
-				case COLOR_KEY_STYLE_BLACK:
+					switch (pBlitPass->m_blitColorKeyStyle)
+					{
 
-					if (pSrc[0] == 0 && pSrc[1] == 0 && pSrc[2] == 0)
-					{
-						pDst[3] = 0; //transparent
-					}
-					else
-					{
+					case COLOR_KEY_STYLE_BLACK:
+
+						if (pSrc[0] == 0 && pSrc[1] == 0 && pSrc[2] == 0)
+						{
+							pDst[3] = 0; //transparent
+						}
+						else
+						{
+							pDst[3] = 255; //alpha
+						}
+						break;
+
+					case COLOR_KEY_STYLE_1COLOR:
+
+						if (pSrc[0] == pBlitPass->m_blitColorKey.R && pSrc[1] == pBlitPass->m_blitColorKey.G
+							&& pSrc[2] == pBlitPass->m_blitColorKey.B)
+						{
+							pDst[3] = 0; //transparent
+						}
+						else
+						{
+							pDst[3] = 255; //alpha
+						}
+						break;
+
+					default:
 						pDst[3] = 255; //alpha
+
+						break;
 					}
-					break;
 
-				case COLOR_KEY_STYLE_1COLOR:
-
-					if (pSrc[0] == pBlitPass->m_blitColorKey.R && pSrc[1] == pBlitPass->m_blitColorKey.G
-						&& pSrc[2] == pBlitPass->m_blitColorKey.B)
-					{
-						pDst[3] = 0; //transparent
-					}
-					else
-					{
-						pDst[3] = 255; //alpha
-					}
-					break;
-
-				default:
-					pDst[3] = 255; //alpha
-
-					break;
+					pDst += 4;
+					pSrc += 4;
 				}
-
-				pDst += 4;
-				pSrc += 4;
 			}
 		}
+
+		if (g_pLibretroManager->m_surfaceSourceType == SURFACE_SOURCE_RGB_565_16)
+		{
+			for (int y = pBlitPass->m_blitSrcRect.Min.Y; y < pBlitPass->m_blitSrcRect.Max.Y; y++)
+			{
+				pDst = pDestLayer->GetPixelBuffer() + (y * pDestLayer->m_texPitchBytes);
+				pSrc = (uint8*)data + (y * pitch);
+
+				//skip ahead a bit?
+				pSrc += pBlitPass->m_blitSrcRect.Min.X * 2;
+				pDst += pBlitPass->m_blitSrcRect.Min.X * 4;
+
+				//OPTIMIZE:  These copies could be sped up a lot, but considering this isn't where my slowdown is I'm not
+				//really caring now
+				uint8_t r, g, b;
+
+				for (int x = pBlitPass->m_blitSrcRect.Min.X; x < pBlitPass->m_blitSrcRect.Max.X; x++)
+				{
+
+					uint16 color = *((uint16*)&pSrc[0]);
+
+					r = ((((color >> 11) & 0x1F) * 527) + 23) >> 6;
+					g = ((((color >> 5) & 0x3F) * 259) + 33) >> 6;
+					b = (((color & 0x1F) * 527) + 23) >> 6;
+
+				
+					switch (pBlitPass->m_blitColorKeyStyle)
+					{
+
+					case COLOR_KEY_STYLE_BLACK:
+
+						if (r == 0 && g == 0 && b == 0)
+						{
+							//pDst[3] = 0; //transparent
+						}
+						else
+						{
+							pDst[2] = r;
+							pDst[1] = g;
+							pDst[0] = b;
+
+							pDst[3] = 255; //alpha
+						}
+						break;
+
+					case COLOR_KEY_STYLE_1COLOR:
+
+						if (r == pBlitPass->m_blitColorKey.R && g == pBlitPass->m_blitColorKey.G
+							&& b == pBlitPass->m_blitColorKey.B)
+						{
+							//pDst[3] = 0; //transparent
+						}
+						else
+						{
+							pDst[2] = r;
+							pDst[1] = g;
+							pDst[0] = b;
+
+							pDst[3] = 255; //alpha
+						}
+						break;
+
+					case COLOR_KEY_STYLE_FILL:
+
+							pDst[2] = pBlitPass->m_blitColorKey.R;
+							pDst[1] = pBlitPass->m_blitColorKey.G;
+							pDst[0] = pBlitPass->m_blitColorKey.B;
+							pDst[3] = pBlitPass->m_blitColorKey.A;
+
+						break;
+
+
+					case COLOR_KEY_STYLE_2COLOR:
+
+						if (r == pBlitPass->m_blitColorKey.R && g == pBlitPass->m_blitColorKey.G
+							&& b == pBlitPass->m_blitColorKey.B
+							||
+							r == pBlitPass->m_blitColorKey2.R && g == pBlitPass->m_blitColorKey2.G
+							&& b == pBlitPass->m_blitColorKey2.B)
+						{
+							//pDst[3] = 0; //transparent
+						}
+						else
+						{
+							pDst[2] = r;
+							pDst[1] = g;
+							pDst[0] = b;
+
+							pDst[3] = 255; //alpha
+						}
+						break;
+
+					default:
+						pDst[2] = r;
+						pDst[1] = g;
+						pDst[0] = b;
+
+						pDst[3] = 255; //alpha
+
+						break;
+					}
+
+					pDst += 4;
+					pSrc += 2;
+				}
+			}
+		}
+
 	}
+}
+
+void ClearLayers()
+{
+	for (int i = 0; i < C_LAYER_COUNT; i++)
+	{
+		LayerInfo* pDestLayer = g_pLibretroManager->m_pLibretroManagedActor->GetLayer(i);
+		uint8* pDst = pDestLayer->GetPixelBuffer();
+		memset(pDst, 0, pDestLayer->mDataSize);
+	}
+	
+	
 }
 
 void LibretroManager::RenderFrame(const char* pRenderFlags)
 {
-	strcpy(m_stellaRenderFlags, pRenderFlags);
+	strcpy_s(m_coreRenderFlags, pRenderFlags);
 	m_core.retro_run(); 
 }
 
@@ -661,69 +1107,19 @@ void LibretroManager::LoadStateFromFile()
 
 	ShowStatusMessage("Loaded state.");
 	memcpy(m_pSaveStateBuffer[C_SAVE_STATE_USER_SLOT], data.GetData(), data.Num());
+	m_nesHacker.Reset();
 	LoadState(C_SAVE_STATE_USER_SLOT);
 	SaveState(0); //we load from state 0 every frame to reset the gamelogic we've broken due to multiple renderings for the layers
 }
+
+
 
 void LibretroManager::Update()
 {
 	if (!m_core.m_bActive) return;
 	
-	LoadState(0);
-
 	m_useAudio = true;
-	FIntRect rectPartial = FIntRect(0, 0, 160, 77); //77
-	FIntRect rectFull = FIntRect(0, 0, 160, m_game_av_info.geometry.base_height);
 
-	DisableBlitPass(BLIT_PASS0); //a junk render to speed up time
-	for (int i = 0; i < m_frameSkip; i++)
-	{
-		RenderFrame("1111111"); //m0 m1 p0 p1 b pl bg
-	}
-	
-	//advance another tick
-	SaveState(1); //a copy for the visual tricks we're going to do later
-	
-	///*** Note, these blits below are setup for Pitfall, but it would be easy to customize for other roms.
-	//The SetupBlitPass tells it what parts of the screen to copy to which Unreal dynamical textures when
-	//RenderFrame is called. Most use only one pass.  The parms to render frame tell our modified version of Stella
-	//which VCS hardware sprites to render for that pass.
-
-	//to play in 2d normally, we could just blit the full screen instead			  
-  
-	SetupBlitPass(BLIT_PASS0, 4, FIntRect(0, 0, 160, 77), COLOR_KEY_STYLE_1COLOR, FLinearColor(54, 147, 99, 0)); 
-	SetupBlitPass(BLIT_PASS1, 4, FIntRect(0, 200, 80, 228), COLOR_KEY_STYLE_BLACK, FLinearColor(54, 147, 99, 0));
-	
-	
-	RenderFrame("1111111"); //m0 m1 p0 p1 b pl bg
-	DisableBlitPass(BLIT_PASS1); //don't need the second render pass anymore
-
-	SaveState(0); //the real one we're going to save for the next frame
-	m_useAudio = false;  //don't process any more audio
-
-	//LogMsg("Plat time: %f, which should be more than %f", FPlatformTime::Seconds(), m_frameStartTime);
-
-	//b = vines, ladder, stairs
-	//p0 = player
-	//p1 = enemies, logs, some walls
-
-	//backdrop colors
-	LoadState(1);
-	SetupBlitPass(BLIT_PASS0, 0, FIntRect(0, 0, 160, 160), COLOR_KEY_STYLE_NONE, FLinearColor(0, 0, 0, 0));
-	RenderFrame("0000011"); //m0 m1 p0 p1 b pl bg
-	//main bg
-	LoadState(1);
-	SetupBlitPass(BLIT_PASS0, 1, FIntRect(0, 70, 160, 200), COLOR_KEY_STYLE_BLACK, FLinearColor(0, 0, 0, 0));
-	RenderFrame("0000010"); //m0 m1 p0 p1 b pl bg
-	
-	//ladder/vine
-	LoadState(1);
-	SetupBlitPass(BLIT_PASS0, 2, FIntRect(0, 70, 160, 200), COLOR_KEY_STYLE_BLACK, FLinearColor(0, 0, 0, 0));
-	RenderFrame("0000100"); //m0 m1 p0 p1 b pl bg
-
-	//characters
-	LoadState(1);
-	SetupBlitPass(BLIT_PASS0, 3, FIntRect(0, 80, 160, 200), COLOR_KEY_STYLE_BLACK, FLinearColor(0, 0, 0, 0));
-	RenderFrame("0011000"); //m0 m1 p0 p1 b pl bg
+	m_profManager.Update();
 
 }

@@ -1,46 +1,68 @@
-HoloVCS - The Stella Atari 2600 emulator running under Unreal Engine and modified to display Pitfall! in 3D on a Looking Glass Portrait
+HoloVCS - Atari 2600 and NES emulation that can play specific pre-setup games in a weird psuedo 3D on the Looking Glass Portrait
 
 To run this, you need:
 
 - A Looking Glass holographic display device connected to a Windows computer via hdmi
 - The Holoplay driver installed
 - A beefy ass graphics card
-- The pitfall 2600 rom (.a26 file) which needs to be put in the /atari2600 dir.
+- A game rom (.a26 or .nes file) which needs to be put in the /atari2600 dir or /nes dir, depending on the system its for.
+
+If you don't have a holographic device the screen will look like blurry garbage.  If you want a build that works in 2D for some reason, I guess I could do one though...
+
+Supported games:
+
+  Pitfall! (Atari 2600)
+  Super Mario Bros (NES)
+  Castlevania (NES)
+
+The actual filenames don't matter, it detects supported games by checksum.  Note: There are two versions of Castlevania NES roms out there, if it's not detected and playing in 3D you might have the wrong one.
+
+It will run unsupported games in a normal 2D mode.
 
 I've only tested with the Looking Glass Portrait and the OG 8.9.
 
 ** SETUP **
 
-When it starts, it will show a menu with the hotkeys, but here they:
+When it starts, it will show a menu with the hotkeys:
 
-Gamepad/Arrow keys: Move
-Ctrl/Button A: Jump
+Arrow keys: Move
+Ctrl, Space, Enter: A and B and Start buttons (gamepad supported too)
 Return: Reset game
-Num 0 through 5:  Set frameskip (higher makes the game run faster)
+Num 0 through 5:  Set frameskip (higher makes the game run faster by not showing every frame)
 A: Adjust audio to match game speed (experimental but can help with audio problems)
 -/+:  Zoom in/out.  Hoping this will help with other Looking Glass sizes.
 S: Save state
 L: Load state
+> and <:  Cycle through detected games (any roms you've placed in the atari2600 and nes directories)
 
-Speed is a bit too slow even on my 3090, so good luck.
+About speed: I can get 60 fps with NES games but only around 45 on 2600 games.  (5ghz with Nvidia 3090)  If a game is too slow, press 1 or 2 for frame skipping modes.  If audio is weird, press A to cause
+audio to sync with the recent framerate.  (gets rid of pops and scratches usually, but pitch/speed will be wrong)
 
-If you have problems, check the log.txt file.  (created in the root dir where HoloVCS.exe is)
+If you have problems, check the log.txt file for clues.  (created in the root dir where HoloVCS.exe is)
 
--Seth A. Robinson (seth@rtsoft.com)
+Q. Does it support other games besides these?
 
-Q. Does it support other games besides Pitfall!?
+A. It will play unsupported games without 3d plane effects, so not really
 
-A. Well, yes and no, yes it should emulate any VCS game, but the 3D layer processing is designed for Pitfall! so I’m sure it would be… quite the experience
+Q. I noticed you’re using emulators via a libretro dll interface, does this mean I can pop in more emulator types?
 
-Q. I noticed you’re using Stella’s libretro interface, does this mean I can pop in a NES emulator or whatever by replacing the dll?
+A. Yes!  Will, no.  I mean, each requires customizations to work properly and do 3d stuff.
 
-A. In theory yes, but because pixel sizes/input/etc are kind of hard coded for the VCS I’m sure it’s going to hilariously explode.
-
-Q. The snake is mostly invisible!
+Q. The snake in Pitfall! is mostly invisible!
 
 A. This is a known bug, sorry. I mean, it’s a ghost snake now
 
+Q. Why do some levels look weird or broken?
+
+A. Sorry, I only made it so the first levels works, didn't worry about later stuff.  It is possible to detect current level/environments via PPU memory and adjust rendering to match the situation though.
+
+Q. Why is it called HoloVCS?
+
+A. It originally only supported Atari VCS emulation.  Too lazy to change it
+
 If you want to help add support for more games and cores, please check out the project's github.
+
+-Seth A. Robinson (seth@rtsoft.com)
 
 www.rtsoft.com
 www.codedojo.com

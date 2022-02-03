@@ -9,8 +9,11 @@
 #include "Engine/TextRenderActor.h"
 #include "Components/TextRenderComponent.h"
 #include "RTAudioBUffer.h"
-
+#include "HoloVCS.h"
+#include "Game/HoloPlayCapture.h"
 #include "LibretroManagerActor.generated.h"
+
+void OnWasRestartedInEditor();
 
 class LayerInfo
 {
@@ -21,8 +24,11 @@ public:
 		SAFE_DELETE_ARRAY(m_pTextData);
 	}
 	uint8* m_pTextData = 0;
+	UPROPERTY()
 	UMaterialInstanceDynamic* pUMatDyn = 0;
+	UPROPERTY()
 	UTexture2D* m_pDynamicTexture = 0;
+	UPROPERTY()
 	FUpdateTextureRegion2D* mUpdateTextureRegion = 0;
 	unsigned int m_texWidth = 256;
 	unsigned int m_texHeight = 256;
@@ -45,6 +51,10 @@ public:
 	bool SetupLayer(LayerInfo* pLayer, char* pActorName);
 	USynthComponentRTAudioBuffer* m_pRTAudioBufferComponent = NULL;
 	void SetSampleRate(int sampleRate);
+	void KillStuff();
+	void ScaleLayersXY(float scaleMod);
+	void SetScaleLayersXY(float scaleX, float scaleY);
+	void SetLayersPosXY(float posX, float posY);
 
 protected:
 	// Called when the game starts or when spawned
@@ -57,7 +67,9 @@ public:
 	LayerInfo* GetLayer(int index) { return &m_layerInfo[index]; }
 	LibretroManager m_libretroManager;
 	LayerInfo m_layerInfo[C_LAYER_COUNT];
-
+	
+	UPROPERTY(EditAnywhere)
+	AHoloPlayCapture *m_pHoloPlayCapture = NULL;
 	int m_framesRendered = 0;
 	float m_timeOfNextFPSUpdate = 0;
 

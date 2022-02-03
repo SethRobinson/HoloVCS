@@ -8,6 +8,35 @@
 
 using namespace std;
 
+//taken from Gamedeveloper magazine's InnerProduct (Sean Barrett 2005-03-15)
+
+// circular shift hash -- produces good results if modding by a prime;
+// longword at a time would be faster (need alpha-style "is any byte 0"),
+// or just use the first longword
+
+uint32 HashString(const char* str, int32 len)
+{
+	if (!str) return 0;
+
+	unsigned char* n = (unsigned char*)str;
+	uint32 acc = 0x55555555;
+
+	if (len == 0)
+	{
+		while (*n)
+			acc = (acc >> 27) + (acc << 5) + *n++;
+	}
+	else
+	{
+		for (int32 i = 0; i < len; i++)
+		{
+			acc = (acc >> 27) + (acc << 5) + *n++;
+		}
+	}
+	return acc;
+}
+
+
 string GetFileNameFromString(const string& path)
 {
 	if (path.empty()) return "";
@@ -83,11 +112,11 @@ void AppendStringToFile(const string filename, const string text)
 	}
 	else*/
 	{
-		fp = fopen(filename.c_str(), "ab");
+		fopen_s(&fp, filename.c_str(), "ab");
 
 		if (!fp)
 		{
-			fp = fopen(filename.c_str(), "wb");
+			fopen_s(&fp, filename.c_str(), "wb");
 		}
 	}
 
@@ -181,7 +210,7 @@ void LogMsg(WIDECHAR* traceStr, ...)
 
 }
 
-UActorComponent* GetComponentByName(const AActor* pRootActor, const FString& name)
+UActorComponent* GetComponentByTag(const AActor* pRootActor, const FString& tagName)
 {
 	if (!pRootActor) return NULL;
 
@@ -190,12 +219,13 @@ UActorComponent* GetComponentByName(const AActor* pRootActor, const FString& nam
 	//old way, but deprecated
 	//children = pRootActor->GetComponentsByClass(UActorComponent::StaticClass());	
 	pRootActor->GetComponents(children, true);
-	
+	FName fTemp(tagName);
+
 
 	for (int i = 0; i < children.Num(); i++)
 	{
 		//LogMsg(TEXT("Name: %s"), *children[i]->GetName());
-		if (children[i]->GetName() == name) return children[i];
+		if (children[i]->ComponentHasTag(fTemp)) return children[i];
 	}
 
 	//LogMsg("Found %d components total.", children.Num());
@@ -204,12 +234,11 @@ UActorComponent* GetComponentByName(const AActor* pRootActor, const FString& nam
 	return NULL;
 }
 
-UActorComponent* GetComponentByName(const AActor* pRootActor, const char* name)
+UActorComponent* GetComponentByTag(const AActor* pRootActor, const char* tagName)
 {
-	const FString ftemp(name);
-	return GetComponentByName(pRootActor, ftemp);
+	const FString ftemp(tagName);
+	return GetComponentByTag(pRootActor, ftemp);
 }
-
 
 //returns first actor we happen to see with this tag
 AActor* GetActorByTag(UWorld* pWorld, char* tag)
@@ -281,3 +310,47 @@ AActor* GetActorByName(UWorld *pWorld, char *name)
 
 	return NULL;
 }
+
+
+void ToLowerCase(char* pCharArray)
+{
+	for (int i = 0; pCharArray[i]; i++)
+	{
+		pCharArray[i] = tolower(pCharArray[i]);
+	}
+}
+
+void ToUpperCase(char* pCharArray)
+{
+	for (int i = 0; pCharArray[i]; i++)
+	{
+		pCharArray[i] = toupper(pCharArray[i]);
+	}
+}
+
+string ToLowerCaseString(const string& s)
+{
+	string d(s);
+	for (unsigned int i = 0; i < d.length(); i++)
+	{
+		d[i] = tolower(d[i]);
+	}
+	return d;
+}  // end of tolower
+
+string ToUpperCaseString(const string& s)
+{
+	string d(s);
+	for (unsigned int i = 0; i < d.length(); i++)
+	{
+		d[i] = toupper(d[i]);
+	}
+	return d;
+}  // end of tolower
+
+bool IsInString(const string& s, const char* search)
+{
+	if (s.find(search) != string::npos) return true;
+	return false;
+}
+

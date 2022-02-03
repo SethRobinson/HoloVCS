@@ -1,40 +1,40 @@
 {
-  "Category": "",
-  "Description": "",
-  "EngineAssociation": "4.26",
-  "FileVersion": 3,
-  "Modules": [
-    {
-      "AdditionalDependencies": [
-        "Engine"
-      ],
-      "LoadingPhase": "Default",
-      "Name": "HoloVCS",
-      "Type": "Runtime"
-    }
-  ],
-  "Plugins": [
-    {
-      "Enabled": false,
-      "Name": "OculusVR",
-      "SupportedTargetPlatforms": [
-        "Win32",
-        "Win64",
-        "Android"
-      ]
-    },
-    {
-      "Enabled": false,
-      "Name": "SteamVR",
-      "SupportedTargetPlatforms": [
-        "Win32",
-        "Win64",
-        "Linux"
-      ]
-    },
-    {
-      "Enabled": true,
-      "Name": "HoloPlay"
-    }
-  ]
+	"Category": "",
+	"Description": "",
+	"EngineAssociation": "4.27",
+	"FileVersion": 3,
+	"Modules": [
+		{
+			"AdditionalDependencies": [
+				"Engine"
+			],
+			"LoadingPhase": "Default",
+			"Name": "HoloVCS",
+			"Type": "Runtime"
+		}
+	],
+	"Plugins": [
+		{
+			"Enabled": false,
+			"Name": "OculusVR",
+			"SupportedTargetPlatforms": [
+				"Win32",
+				"Win64",
+				"Android"
+			]
+		},
+		{
+			"Enabled": false,
+			"Name": "SteamVR",
+			"SupportedTargetPlatforms": [
+				"Win32",
+				"Win64",
+				"Linux"
+			]
+		},
+		{
+			"Enabled": true,
+			"Name": "HoloPlay"
+		}
+	]
 }

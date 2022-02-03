@@ -11,6 +11,9 @@
 #define LibretroManager_h__
 #include "libretro.h"
 #include "Shared/UnrealMisc.h"
+#include "NesHacker.h"
+#include "GameProfileManager.h"
+
 using namespace std;
 const int C_SAVE_STATE_COUNT = 3;
 const int C_SAVE_STATE_USER_SLOT = 2;
@@ -18,8 +21,27 @@ enum eColorKeyStyle
 {
 	COLOR_KEY_STYLE_NONE,
 	COLOR_KEY_STYLE_BLACK,
-	COLOR_KEY_STYLE_1COLOR
+	COLOR_KEY_STYLE_1COLOR,
+	COLOR_KEY_STYLE_2COLOR,
+	COLOR_KEY_STYLE_FILL
 };
+
+enum eEmulatorType
+{
+	EMULATOR_ATARI,
+	EMULATOR_NES,
+
+	//add more above here
+	EMULATOR_COUNT
+};
+
+enum eSurfaceSourceType
+{
+	SURFACE_SOURCE_RGBA_32,
+	SURFACE_SOURCE_ARGB_1555_16,
+	SURFACE_SOURCE_RGB_565_16
+};
+
 
 const int C_MAX_JOYPAD_BUTTONS = 16;
 
@@ -37,9 +59,11 @@ public:
 
 };
 
-
 class ALibretroManagerActor;
-//typedef int(__stdcall* f_funci)();
+class APlayerPawn;
+class GameProfileManager;
+
+
 class CoreInterface
 {
 public:
@@ -48,6 +72,7 @@ public:
 	void (*retro_get_system_info)(struct retro_system_info* info);
 	void (*retro_init)(void);
 	void (*retro_deinit)(void);
+	void (*retro_reset)(void);
 	void (*retro_set_environment)(retro_environment_t);
 	void (*retro_set_video_refresh)(retro_video_refresh_t);
 	void (*retro_set_audio_sample)(retro_audio_sample_t);
@@ -76,15 +101,27 @@ public:
 	FIntRect m_blitSrcRect;
 	eColorKeyStyle m_blitColorKeyStyle;
 	FLinearColor m_blitColorKey = FLinearColor(0, 0, 0, 0);
+	FLinearColor m_blitColorKey2 = FLinearColor(0, 0, 0, 0);
 	int m_activeLayerIndex = 0;
 
 };
 
-const int C_MAX_BLITPASS_COUNT=3;
+enum eBlitPass
+{
+	BLIT_PASS0,
+	BLIT_PASS1,
+	BLIT_PASS2,
+	BLIT_PASS3,
 
-const int BLIT_PASS0 = 0;
-const int BLIT_PASS1 = 1;
-const int BLIT_PASS2 = 2;
+	
+	C_MAX_BLITPASS_COUNT
+};
+
+typedef struct {
+	void* v;
+	uint32 s;
+	char desc[5];
+} SFORMAT;
 
 class LibretroManager
 {
@@ -92,48 +129,89 @@ public:
 	LibretroManager();
 	virtual ~LibretroManager();
 
+	void FreeEmulatorIfNeeded();
+
 	bool LoadCore(string fileName);
 	bool LoadRom(string fileName);
+	void SetRomByIndex(int index);
 	void Init(ALibretroManagerActor* pLibretroManagedActor);
 	bool SaveState(int index);
+	bool CopyState(int fromState, int toState);
 	bool LoadState(int index);
 	void RenderFrame(const char* pRenderFlags);
 	void SetFrameSkip(int frameSkip);
+	void UpdateAtari();
 	void Update();
 	void Kill();
+	void ModEmulatorType(int mod);
+	void ModRom(int mod);
 
 	void DisableBlitPass(int blitPassIndex);
 	bool IsCoreLoaded() { return m_core.m_bActive; }
+	void SetupBlitPass(int blitPassIndex, int layer, FIntRect srcRect, eColorKeyStyle colorKeyStyle, FLinearColor colorKey, FLinearColor colorKey2 = FLinearColor(0, 0, 0, 0));
+	void UpdateAudioStatistics(int framesWritten);
+	void SetSampleRate();
+	void SaveStateToFile();
+	void LoadStateFromFile();
+	void ResetRom();
+	void DisableAllBlitPasses();
+
 	ALibretroManagerActor* m_pLibretroManagedActor = NULL;
+	APlayerPawn* m_pPlayerPawn = NULL;
 	CoreInterface m_core;
 	retro_system_av_info m_game_av_info;
 	retro_system_info m_game_system_info;
 	HINSTANCE m_dllHandle = NULL;
-	char m_stellaRenderFlags[12];
+	char m_coreRenderFlags[12];
 	int m_maxSaveStateSize = 0;
-	void SetupBlitPass(int blitPassIndex, int layer, FIntRect srcRect, eColorKeyStyle colorKeyStyle, FLinearColor colorKey);
 	BlitPass m_blitPass[C_MAX_BLITPASS_COUNT];
 	bool m_useAudio = true;
 	int m_frameSkip = 1; //default to 1 skip, good for the portrait screen
 
 	JoyPadButtonStates m_joyPad;
-	void UpdateAudioStatistics(int framesWritten);
 	float m_audioStatisticsTimer = 0;
-	void SetSampleRate();
 	int m_framesWrittenInPeriod;
-	void SaveStateToFile();
-	void LoadStateFromFile();
+	
 	string m_rootPath;
 	string m_romPath;
 	string m_curRomName;
+	string m_romFileExtension1;
+	string m_romFileExtension2;
+	string m_romDir;
+	string m_coreName;
+	FVector2D m_coreLayerScale;
+	FVector2D m_corePosition;
+	string m_romHash;
+	
+	eEmulatorType m_emulatorType = EMULATOR_ATARI;
+	eSurfaceSourceType m_surfaceSourceType = SURFACE_SOURCE_RGBA_32;
+	TArray<uint8> m_romDataArray;
+	TArray< FString > m_romNameFileList;
+	TArray< int > m_emulatorIDList;
+	int m_activeRomIndex = 0;
+
+	NesHacker m_nesHacker;
+	GameProfileManager m_profManager;
+	uint8* m_pSaveStateBuffer[C_SAVE_STATE_COUNT];
 
 protected:
 
-	uint8* m_pSaveStateBuffer[C_SAVE_STATE_COUNT];
+	void SetEmulatorData(eEmulatorType emu);
+
+
+	bool SetRomToLoadByPartialFileName(string name);
+
+	void InitEmulator();
+	void ClearAllLayers();
+	void LoadRomList();
+
 		int m_framesWrittenInLastPeriod;
 	
 private:
 };
+
+
+void ClearLayers();
 
 //Yes, I cheat and use globals.  Shhh
 extern LibretroManager* g_pLibretroManager;
