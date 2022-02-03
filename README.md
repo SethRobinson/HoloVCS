@@ -4,7 +4,7 @@ HoloVCS - Atari 2600 and NES games with 3D layers on the Looking Glass Portrait 
 
 License:  BSD style attribution, see LICENSE.md
 
-[A twitter movie of it in action](https://twitter.com/rtsoft/status/1426128382639501320)
+[A twitter movie of it in action](https://twitter.com/rtsoft/status/1489125302877900806)
 
 **You a player?** Then you probably want to visit the [user page](https://www.codedojo.com/?p=2704), it has the ready to run [download version](https://www.rtsoft.com/files/HoloVCS_Win64.zip).
 
