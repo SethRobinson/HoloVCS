@@ -1,10 +1,12 @@
 HoloVCS - Atari 2600 and NES games with 3D layers on the Looking Glass Portrait holographic device
 
+![](https://www.codedojo.com/wp-content/uploads/2021/08/holovcs.gif)
+
 License:  BSD style attribution, see LICENSE.md
 
 [A twitter movie of it in action](https://twitter.com/rtsoft/status/1426128382639501320)
 
-You a player? Then you probably want to visit the [user page](https://www.codedojo.com/?p=2704), it has the ready to [run download version](https://www.rtsoft.com/files/HoloVCS_Win64.zip).
+**You a player?** Then you probably want to visit the [user page](https://www.codedojo.com/?p=2704), it has the ready to run [download version](https://www.rtsoft.com/files/HoloVCS_Win64.zip).
 
 
 You a developer and want to compile the project?  Read on
@@ -15,7 +17,7 @@ You a developer and want to compile the project?  Read on
 * You should have Unreal Engine installed.  (I used 4.27.2)
 * Download the [Holoplay plugin for Unreal Engine](https://lookingglassfactory.com/software)
 * Created a plugins subdir in the HoloVCS dir and drag the Holoplay folder into it
-* Contact Seth to get two missing source files - (SynthComponentSethHack.cpp and SynthComponentSethHack.h) - You must have accepted the UE4 developer license before I can share those as they contain engine code, it's a legal thing.  What am I doing with engine code? It's a method I used to work around a UE4 bug with changing audio sample rate on the fly, an alternative is you can just rename things to use SynthComponent instead, it's pretty easy to do, you just want be able to change the same rate of the synth generator buffer.
+* Contact Seth to get two missing source files - (SynthComponentSethHack.cpp and SynthComponentSethHack.h) - You must have accepted the UE4 developer license before I can share those as they contain engine code, it's a legal thing.  What am I doing with engine code? It's a method I used to work around a UE4 bug with changing audio sample rate on the fly, an alternative is you can just rename things to use SynthComponent instead, it's pretty easy to do, you just want be able to change the sample rate of the synth generator buffer.
 * Right click the HoloVCS.uproject file and choose "Generate VStudio project"
 * Open the HoloVCS.sln file and make sure the active project is HoloVCS 64bit, set to Development_Editor and press F5 to run.
 
