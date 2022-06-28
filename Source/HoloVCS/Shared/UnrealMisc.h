@@ -32,6 +32,7 @@ typedef std::basic_string<TCHAR> tstring;
 
 #define MAKE_RGB(r, g, b)      ( ((uint32)(r) << 8) + ((uint32)(g) << 16) + ((uint32)(b) << 24) )
 #define MAKE_RGBA(r, g, b, a) ( ((uint32)(r) << 8) + ((uint32)(g) << 16) + ((uint32)(b) << 24) + ((uint32)(a)))
+#define MAKE_RGBA_UNREAL(r, g, b, a) ( ((uint32)(g) << 8) + ((uint32)(r) << 16) + ((uint32)(a) << 24) + ((uint32)(b)))
 const uint32 PURE_WHITE = MAKE_RGBA(255, 255, 255, 255);
 
 #define GET_BLUE(p)        ( (p)               >> 24)
@@ -123,6 +124,8 @@ UActorComponent* GetComponentByTag(const AActor* pRootActor, const char* tagName
 UActorComponent* GetComponentByTag(const AActor* pRootActor, const FString& tagName);
 
 AActor* GetActorByTag(UWorld* pWorld, char* tagName); //safe, but .. yeah, you need to add an actor tag
+int DeleteActorsByTag(UWorld* pWorld, char* tag); //returns how many actors were deleted
+
 void AddActorsByTag(TArray<AActor*>* pActors, UWorld* pWorld, char* tag);
 void ToLowerCase(char* pCharArray);
 void ToUpperCase(char* pCharArray);

@@ -30,6 +30,7 @@ enum eEmulatorType
 {
 	EMULATOR_ATARI,
 	EMULATOR_NES,
+	EMULATOR_VB,
 
 	//add more above here
 	EMULATOR_COUNT
@@ -37,9 +38,10 @@ enum eEmulatorType
 
 enum eSurfaceSourceType
 {
-	SURFACE_SOURCE_RGBA_32,
+	SURFACE_SOURCE_RGBA_32, //ARGB
 	SURFACE_SOURCE_ARGB_1555_16,
-	SURFACE_SOURCE_RGB_565_16
+	SURFACE_SOURCE_RGB_565_16,
+	SURFACE_SOURCE_RGBA_32_UNREAL //RGBA already formatted like our unreal layer so a memcpy across the whole thing can be used
 };
 
 
@@ -75,6 +77,7 @@ public:
 	void (*retro_reset)(void);
 	void (*retro_set_environment)(retro_environment_t);
 	void (*retro_set_video_refresh)(retro_video_refresh_t);
+	void (*retro_set_video_refresh_ex)(retro_video_refresh_ex_t);
 	void (*retro_set_audio_sample)(retro_audio_sample_t);
 	void (*retro_set_audio_sample_batch)(retro_audio_sample_batch_t);
 	void (*retro_set_input_poll)(retro_input_poll_t);
@@ -138,6 +141,7 @@ public:
 	bool SaveState(int index);
 	bool CopyState(int fromState, int toState);
 	bool LoadState(int index);
+	void ResetBlitInformation();
 	void RenderFrame(const char* pRenderFlags);
 	void SetFrameSkip(int frameSkip);
 	void UpdateAtari();
@@ -155,6 +159,8 @@ public:
 	void LoadStateFromFile();
 	void ResetRom();
 	void DisableAllBlitPasses();
+	bool GetGamePaused() { return m_bGamePaused; }
+	void SetGamePaused(bool bNew);
 
 	ALibretroManagerActor* m_pLibretroManagedActor = NULL;
 	APlayerPawn* m_pPlayerPawn = NULL;
@@ -166,12 +172,15 @@ public:
 	int m_maxSaveStateSize = 0;
 	BlitPass m_blitPass[C_MAX_BLITPASS_COUNT];
 	bool m_useAudio = true;
-	int m_frameSkip = 1; //default to 1 skip, good for the portrait screen
-
+	int m_frameSkip = 0; //0 means no skipping, normal
+	double m_targetFPS = 0; //0 means no limit
+	double m_mainTimer = 0;
+	double m_timeOfLastFrame = 0;
 	JoyPadButtonStates m_joyPad;
 	float m_audioStatisticsTimer = 0;
 	int m_framesWrittenInPeriod;
-	
+	bool m_bGamePaused = false;
+
 	string m_rootPath;
 	string m_romPath;
 	string m_curRomName;
@@ -179,8 +188,6 @@ public:
 	string m_romFileExtension2;
 	string m_romDir;
 	string m_coreName;
-	FVector2D m_coreLayerScale;
-	FVector2D m_corePosition;
 	string m_romHash;
 	
 	eEmulatorType m_emulatorType = EMULATOR_ATARI;
@@ -193,7 +200,7 @@ public:
 	NesHacker m_nesHacker;
 	GameProfileManager m_profManager;
 	uint8* m_pSaveStateBuffer[C_SAVE_STATE_COUNT];
-
+	
 protected:
 
 	void SetEmulatorData(eEmulatorType emu);

@@ -26,9 +26,11 @@ del /s "dist\%APP_BUILD_DIR%\*.pdb"
 echo Copy some other stuff we need
 copy Binaries\Win64\stella_libretro.dll %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\%APP_NAME%\Binaries\Win64
 copy Binaries\Win64\fceumm_libretro.dll %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\%APP_NAME%\Binaries\Win64
+copy Binaries\Win64\beetle-vb-libretro.dll %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\%APP_NAME%\Binaries\Win64
 copy readme.txt %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor
 xcopy atari2600 %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\atari2600\ /E /F /Y
 xcopy nes %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\nes\ /E /F /Y
+xcopy vb %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\vb\ /E /F /Y
 copy "Put the pitfall rom in atari2600 dir!.txt" %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor
 del %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\Manifest_NonUFSFiles_Win64.txt
 del %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\Manifest_DebugFiles_Win64.txt
@@ -36,8 +38,8 @@ del %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\log.txt
 :Better remove those test roms, don't want to commit a crime here!
 del %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\atari2600\*.a26
 del %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\nes\*.nes
-
-
+del %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\vb\*.vb
+del %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\*.sav0
 echo Signing .exe's...
 
 call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\%APP_NAME%.exe
@@ -46,6 +48,7 @@ call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEdi
 call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\%APP_NAME%\Binaries\Win64\stella_libretro.dll "%APP_NAME%"
 call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\%APP_NAME%\Binaries\Win64\turbojpeg.dll "%APP_NAME%"
 call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\%APP_NAME%\Binaries\Win64\fceumm_libretro.dll "%APP_NAME%"
+call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\%APP_NAME%\Binaries\Win64\beetle-vb-libretro.dll "%APP_NAME%"
 
 echo "Waiting 4 seconds because NSIS does something and ruins the signing if I don't"
 timeout 4
@@ -63,6 +66,7 @@ move dist\%APP_BUILD_DIR%\%ZIP_FILE_NAME%.zip ./
 echo Ok, now that we're done packing, let's move some roms into the dist dir so we can easily test it
 copy atari2600\*.a26 %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\atari2600
 copy nes\*.nes %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\nes
+copy vb\*.vb %APP_PATH%\dist\%APP_BUILD_DIR%\WindowsNoEditor\vb
 
 echo All done!
 pause

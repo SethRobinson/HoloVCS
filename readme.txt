@@ -5,15 +5,28 @@ To run this, you need:
 - A Looking Glass holographic display device connected to a Windows computer via hdmi
 - The Holoplay driver installed
 - A beefy ass graphics card
-- A game rom (.a26 or .nes file) which needs to be put in the /atari2600 dir or /nes dir, depending on the system its for.
+- A game rom (.a26/.nes/.vb file) which needs to be put in the /atari2600/vb/ness dir, depending on the system it's for.
 
 If you don't have a holographic device the screen will look like blurry garbage.  If you want a build that works in 2D for some reason, I guess I could do one though...
 
-Supported games:
+Supported games (doesn't mean they are perfect but... work 'enough'):
 
   Pitfall! (Atari 2600)
   Super Mario Bros (NES)
   Castlevania (NES)
+
+ -= Virtual Boy =-
+
+  Because the 3D data is not hand coded (it comes from the game itself) they all do 'something', but some work better than others.
+
+  Games that look half decent:
+
+  Jack Bros
+  Panic Bomer
+  Teleroboxer (flickers between rounds)
+  Vertical Force
+  Wario Land
+  
 
 The actual filenames don't matter, it detects supported games by checksum.  Note: There are two versions of Castlevania NES roms out there, if it's not detected and playing in 3D you might have the wrong one.
 

@@ -24,14 +24,19 @@ public:
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	
 	UPROPERTY()
-	UMaterialInstanceDynamic* m_pBGMat = NULL;
-	UPROPERTY()
-	UMaterialInstanceDynamic* m_pBGMatNoShadow = NULL;
+		UMaterialInstanceDynamic* m_pBGMat = NULL;
+
 	UPROPERTY()
 	UMaterial* m_pPicBG = NULL;
-	UPROPERTY()
-	UMaterial* m_pBGNoShadowMat = NULL;
+	UPROPERTY(EditAnywhere)
+	UMaterial *m_pBGNoShadowMat;
+	
+	UPROPERTY(EditAnywhere)
+		UMaterial *m_pBGMatNormal;
+
+	
 
 	UPROPERTY()
 	UStaticMeshComponent* m_pMesh = NULL;
@@ -49,24 +54,31 @@ public:
 
 	void Move_XAxis(float AxisValue);
 	void Move_YAxis(float AxisValue);
+	void RMove_XAxis(float AxisValue);
+	void RMove_YAxis(float AxisValue);
 
 	void JoyPad_B_Pressed();
 	void JoyPad_B_Released();
 
 	void JoyPad_A_Pressed();
-
 	void JoyPad_A_Released();
 
 	void JoyPad_Y_Pressed();
-
 	void JoyPad_Y_Released();
+
+	void JoyPad_X_Pressed();
+	void JoyPad_X_Released();
 
 	void JoyPad_Start_Pressed();
 	void JoyPad_Start_Released();
 
 	void JoyPad_Select_Pressed();
-
 	void JoyPad_Select_Released();
+
+	void JoyPad_LShoulder_Pressed();
+	void JoyPad_LShoulder_Released();
+	void JoyPad_RShoulder_Pressed();
+	void JoyPad_RShoulder_Released();
 
 	void OnAKey();
 	void OnNum1Key();
@@ -74,7 +86,11 @@ public:
 	void OnNum3Key();
 	void OnNum4Key();
 	void OnNum5Key();
+	void OnNum6Key();
+	void OnNum7Key();
+	void OnNum8Key();
 
+	void OnPKey();
 	void OnAddKey();
 	void OnSKey();
 	void OnLKey();

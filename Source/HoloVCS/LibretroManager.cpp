@@ -1,16 +1,17 @@
 #include "LibretroManager.h"
 #include "LibretroManagerActor.h"
 #include "PlayerPawn.h"
-
 #include "StatusDisplayActor.h" //so we can show messages on screen
 
 //SETH:  If I don't set these, we can't get SetProcessDpiAwareness
 
-#if UE_BUILD_DEBUG
+#if UE_BUILD_DEVELOPMENT
 const int C_DEFAULT_ROM_ID = 1;
 bool g_loadStateOnFirstLoad = true;
-string g_partialRomNameToLoadOnStartup = "mario";
+string g_partialRomNameToLoadOnStartup = "wario";
+//string g_partialRomNameToLoadOnStartup = "";
 #else
+
 const int C_DEFAULT_ROM_ID = 0;
 bool g_loadStateOnFirstLoad = false;
 string g_partialRomNameToLoadOnStartup = "";
@@ -50,10 +51,11 @@ THIRD_PARTY_INCLUDES_END
 
 const unsigned short ASYNC_BUTTON_DOWN_MSB = 0x8000;
 
-string G_VERSION_STRING = "HoloVCS V0.6";
+string G_VERSION_STRING = "HoloVCS V1.2";
 
 LibretroManager* g_pLibretroManager = NULL; //I don't want to fool with caring how to get Unreal globals correctly
 void retro_video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch);
+void retro_video_refresh_callback_ex(const void* data, unsigned width, unsigned height, size_t pitch, const void* extradata);
 #include <thread>
 
 //when starting/stopping in the editor, globals don't get reverted back, so we'll do it manually and trust this is called at some point
@@ -61,7 +63,6 @@ void retro_video_refresh_callback(const void* data, unsigned width, unsigned hei
 void OnWasRestartedInEditor()
 {
 #if UE_BUILD_DEBUG
-	
 	g_loadStateOnFirstLoad = true;
 #endif
 }
@@ -95,10 +96,7 @@ LibretroManager::~LibretroManager()
 
 void LibretroManager::Kill()
 {
-
 	FreeEmulatorIfNeeded();
-
-
 }
 
 void LibretroManager::ModEmulatorType(int mod)
@@ -137,6 +135,8 @@ void LibretroManager::SetupBlitPass(int blitPassIndex, int layer, FIntRect srcRe
 	m_blitPass[blitPassIndex].m_blitSrcRect = srcRect;
 	m_blitPass[blitPassIndex].m_blitColorKey = colorKey;
 	m_blitPass[blitPassIndex].m_blitColorKey2 = colorKey2;
+	if (layer < m_pLibretroManagedActor->m_layerInfo.size())
+		m_pLibretroManagedActor->GetLayer(layer)->m_bUsedThisFrame = true; //alerts the renderex system to it being used already
 }
 
 #define GET_VARIABLE_NAME(Variable) (#Variable)
@@ -197,6 +197,7 @@ bool LibretroManager::LoadCore(string fileName)
 	m_core.retro_reset = (decltype(m_core.retro_reset))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_reset)); 
 	m_core.retro_set_environment = (decltype(m_core.retro_set_environment))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_set_environment));
 	m_core.retro_set_video_refresh = (decltype(m_core.retro_set_video_refresh))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_set_video_refresh));
+	m_core.retro_set_video_refresh_ex = (decltype(m_core.retro_set_video_refresh_ex))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_set_video_refresh_ex));
 	m_core.retro_set_audio_sample = (decltype(m_core.retro_set_audio_sample))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_set_audio_sample));
 	m_core.retro_set_audio_sample_batch = (decltype(m_core.retro_set_audio_sample_batch))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_set_audio_sample_batch));
 	m_core.retro_set_input_poll = (decltype(m_core.retro_set_input_poll))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_set_input_poll));
@@ -252,7 +253,38 @@ bool retro_environment_callback(unsigned cmd, void* data)
 				pVar->value = g_pLibretroManager->m_coreRenderFlags;
 				return true;
 			}
+			else
+				if (strcmp(pVar->key, "vb_video_flags") == 0)
+				{
+					pVar->value = g_pLibretroManager->m_coreRenderFlags;
+					return true;
+				}
+
+		//virtual boy vb settings
 		
+		if (strcmp(pVar->key, "vb_3dmode") == 0)
+		{
+			pVar->value = "3dlayered";
+			//pVar->value = "anaglyph";
+			return true;
+		}
+
+		if (strcmp(pVar->key, "vb_anaglyph_preset") == 0)
+		{
+			//if v_3dmode is set to anaglyph, we can set the mode here.  disabled means just a normal 2d version,
+			//red & blue means setup for 3d glasses
+			pVar->value = "disabled";
+			//pVar->value = "red & blue";
+			return true;
+		}
+		
+		if (strcmp(pVar->key, "holo_3d_layer_count") == 0)
+		{
+			static char layers[12];
+			sprintf_s(layers, 12, "%d", g_pLibretroManager->m_pLibretroManagedActor->GetLayerCount());
+			pVar->value = layers;
+			return true;
+		}
 
 		    //here we change the palette to pure RGB, easier to setup colorkeys as I can also set
 		    //mesen to "RGB (Nestopia)" and the palettes will exactly match
@@ -269,7 +301,6 @@ bool retro_environment_callback(unsigned cmd, void* data)
 		//LogMsg("AV enabled msg");
 		return false; //signal unhandled
 		break;
-
 
 	case RETRO_ENVIRONMENT_SET_VARIABLES:
 	{
@@ -385,9 +416,9 @@ bool LibretroManager::LoadRom(string fileName)
 	m_core.retro_get_system_av_info(&m_game_av_info);
 	LogMsg("Core says screen is %d, %d, but max is %d, %d.", m_game_av_info.geometry.base_width, m_game_av_info.geometry.base_height,
 		m_game_av_info.geometry.max_width, m_game_av_info.geometry.max_height);
-	
-	m_profManager.InitGame(m_romHash);
 
+	m_profManager.InitGame(m_romHash);
+	//ShowStatusMessage(fileName.c_str());
 	return true;
 }
 
@@ -489,6 +520,7 @@ int16_t retro_input_state_callback(unsigned port, unsigned device, unsigned inde
 	{
 		if (id < C_MAX_JOYPAD_BUTTONS)
 		{
+			//LogMsg("Scanning button %d which is %d", id, (int)g_pLibretroManager->m_joyPad.m_button[id]);
 			return g_pLibretroManager->m_joyPad.m_button[id];
 		}
 		else
@@ -505,6 +537,25 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 	m_emulatorType = emu;
 	string rom = "unset";
 	
+	//defaults for all emulators
+	m_pLibretroManagedActor->m_layerCount = 5;
+	m_pLibretroManagedActor->m_total3dDepth = 150;
+	m_pLibretroManagedActor->m_depthOffsetForAllLayers = -25;
+	m_pLibretroManagedActor->SetTextureSmoothingToUse(false);
+	m_pLibretroManagedActor->m_layerWidth = 256;
+	m_pLibretroManagedActor->m_layerHeight = 256;
+	m_pLibretroManagedActor->m_depthOffsetForAllLayers = 0;
+	m_pLibretroManagedActor->m_coreLayerScale= FVector2D(4.46, 2.965);
+	m_pLibretroManagedActor->m_corePosition = FVector2D(0,0);
+	m_pLibretroManagedActor->m_curLightingMode = LIGHTING_MODE_NORMAL;
+
+
+	m_pLibretroManagedActor->m_bg_color = FVector(0, 0, 0);
+	m_pLibretroManagedActor->m_bg_color_strength = 1;
+	m_pLibretroManagedActor->m_bgAllowShadows = true;
+	m_bGamePaused = false;
+	m_targetFPS = 0; //the device itself is limited to 60 so we don't worry about it mostly
+	
 	switch (emu)
 	{
 
@@ -514,8 +565,12 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 		m_romDir = "atari2600";
 		m_romFileExtension1 = ".a26";
 		m_romFileExtension2 = ".bin";
-		m_coreLayerScale = FVector2D(4.45, 3.5);
-		m_corePosition = FVector2D(103.0, 213);
+		m_pLibretroManagedActor->m_coreLayerScale = FVector2D(4.45, 3.5);
+		m_pLibretroManagedActor->m_corePosition = FVector2D(69, 0);
+		m_pLibretroManagedActor->SetTextureSmoothingToUse(true);
+		m_pLibretroManagedActor->m_total3dDepth = 100; //more compressed
+		
+
 		break;
 
 	case EMULATOR_NES:
@@ -524,8 +579,33 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 		m_romDir = "nes";
 		m_romFileExtension1 = ".nes";
 		m_romFileExtension2 = ".unusedcrap";
-		m_coreLayerScale = FVector2D(2.8, 2.8);
-		m_corePosition = FVector2D(23.0, 213);
+		m_pLibretroManagedActor->m_coreLayerScale = FVector2D(2.8, 2.8);
+		m_pLibretroManagedActor->m_corePosition = FVector2D(0, 0);
+		m_pLibretroManagedActor->m_total3dDepth = 100; //more compressed
+		m_pLibretroManagedActor->SetSampleRate(48000); //the nes core I'm using doesn't self report this for some reason
+		break;
+	
+	case EMULATOR_VB:
+		m_coreName = "beetle-vb-libretro.dll";
+		m_surfaceSourceType = SURFACE_SOURCE_RGBA_32;
+		m_romDir = "vb";
+		m_romFileExtension1 = ".vb";
+		m_romFileExtension2 = ".vboy";
+		m_pLibretroManagedActor->m_layerWidth = 384;
+		m_pLibretroManagedActor->m_layerHeight = 256;
+		m_pLibretroManagedActor->m_layerCount = 16; //give it more to play with, it has more 3d to do
+		m_pLibretroManagedActor->m_total3dDepth = 170;
+		m_pLibretroManagedActor->m_depthOffsetForAllLayers = -35; //move it forward a bit, need stuff to be in focus for VB, even in the back
+		m_pLibretroManagedActor->m_coreLayerScale = FVector2D(3.1, 2.8); //width hangs off screen, but looks better
+		m_pLibretroManagedActor->m_corePosition = FVector2D(0, 0);
+		
+		//it's faster with lighting enabled.  Looks better disabled though, so push 8 to toggle it
+		//m_pLibretroManagedActor->m_curLightingMode = LIGHTING_MODE_NONE;
+		m_pLibretroManagedActor->m_bgAllowShadows = false;
+		
+		m_targetFPS = 50;
+
+		//setup layer positions here
 		break;
 
 	default:
@@ -543,6 +623,10 @@ void LibretroManager::DisableAllBlitPasses()
 		DisableBlitPass(i); //just make sure nothing will actually render
 	}
 
+}
+void LibretroManager::SetGamePaused(bool bNew)
+{
+	m_bGamePaused = bNew;
 }
 
 bool LibretroManager::SetRomToLoadByPartialFileName(string name)
@@ -618,6 +702,10 @@ void LibretroManager::InitEmulator()
 
 	m_core.retro_set_environment(retro_environment_callback);
 	m_core.retro_set_video_refresh(retro_video_refresh_callback);
+
+	if (m_core.retro_set_video_refresh_ex) //this is nonstandard, I added it to the VB core
+		m_core.retro_set_video_refresh_ex(retro_video_refresh_callback_ex);
+
 	m_core.retro_set_audio_sample(retro_audio_sample_callback);
 
 	m_core.retro_set_audio_sample_batch(retro_audio_sample_batch_callback);
@@ -637,6 +725,7 @@ void LibretroManager::InitEmulator()
 		return;
 	}
 	m_nesHacker.Reset();
+	SetFrameSkip(0);
 
 	ShowStatusMessage(G_VERSION_STRING + " Loaded " + m_curRomName, 4);
 
@@ -668,8 +757,12 @@ void LibretroManager::InitEmulator()
 	m_audioStatisticsTimer = FPlatformTime::Seconds();
 	m_framesWrittenInPeriod = 0;
 
+	m_audioStatisticsTimer = FPlatformTime::Seconds();
+	m_framesWrittenInPeriod = 0;
+	
+	m_profManager.ApplyStartingGameSpecificSetup();
 
-
+	m_pLibretroManagedActor->InitLayers();
 
 	if (g_loadStateOnFirstLoad)
 	{
@@ -677,30 +770,13 @@ void LibretroManager::InitEmulator()
 		LoadStateFromFile();
 	}
 
-	if (m_emulatorType == EMULATOR_ATARI)
-	{
-		SetFrameSkip(1);
-	}
-	 
-	if (m_emulatorType == EMULATOR_NES)
-	{
-		SetFrameSkip(0);
-		m_pLibretroManagedActor->SetSampleRate(44100);
-		m_audioStatisticsTimer = FPlatformTime::Seconds();
-		m_framesWrittenInPeriod = 0;
-	}
-
 	m_core.retro_run();
 	SaveState(0);
-	ClearAllLayers(); //don't want leftovers from previous games/renders showing up
-	
-	m_pLibretroManagedActor->SetScaleLayersXY(m_coreLayerScale.X, m_coreLayerScale.Y);
-	m_pLibretroManagedActor->SetLayersPosXY(m_corePosition.X, m_corePosition.Y);
 }
 
 void LibretroManager::ClearAllLayers()
 {
-	for (int i = 0; i < C_LAYER_COUNT; i++)
+	for (int i = 0; i < m_pLibretroManagedActor->m_layerInfo.size(); i++)
 	{
 		LayerInfo* pDestLayer = g_pLibretroManager->m_pLibretroManagedActor->GetLayer(i);
 		if (!pDestLayer->GetPixelBuffer()) continue;
@@ -712,6 +788,8 @@ void LibretroManager::ClearAllLayers()
 
 void LibretroManager::ResetRom()
 {
+	SetGamePaused(false);
+
 	m_nesHacker.Reset();
 	LoadState(0);
 	m_core.retro_reset();
@@ -830,10 +908,110 @@ uint32 ARGB1555toARGB8888(unsigned short c)
 	return (a * 0x1FE00) | rgb | ((rgb >> 5) & 0x070707);
 }
 
+//SETH Blit core to unreal layer
+void BlitCoreLayerToUnrealLayer(Layer3DSlice* pSrcLayer, LayerInfo* pDestLayer)
+{
+	uint8* pDst = pDestLayer->GetPixelBuffer();
+	if (!pDst)
+	{
+		LogMsg("BlitCoreLayerToUnrealLayer: pDst text is null!");
+		return;
+	}
+	
+	
+	//fast way
+	if (pDestLayer->m_bUsedThisFrame)
+	{
+		//uh oh, we're overwriting an existing image.  Let's do fancy processing, can't use a memcpy
+	
+		uint32* pPixels32 = (uint32*)pDst;
+		uint32* pSrcPixels32 = (uint32*)pSrcLayer->m_image;
+
+		for (int y = 0; y < pSrcLayer->m_height; y++)
+		{
+			for (int x = 0; x < pSrcLayer->m_width; x++)
+			{
+				if (pSrcPixels32[y * pSrcLayer->m_width + x] != 0)
+				{
+					pPixels32[y * pSrcLayer->m_width + x] = pSrcPixels32[y * pSrcLayer->m_width + x];
+				}
+			}
+
+		}
+	}
+	else
+	{
+		//fast way
+		assert(pDestLayer->m_texPitchBytes == pSrcLayer->m_pitchBytes);
+		memcpy(pDst, pSrcLayer->m_image, pSrcLayer->m_height * pSrcLayer->m_pitchBytes);
+	}
+	
+	//pDestLayer->m_bUsedThisFrame = true;
+	//pDestLayer->SetLayerPosZ(pSrcLayer->m_distanceMod);
+	
+	//memset(pDst, 255, pSrcLayer->m_height * pSrcLayer->m_pitchBytes);
+	
+	/*
+	uint32 *pPixels32 = (uint32*) pDst;
+	
+	for (int y = 0; y < pSrcLayer->m_height; y++)
+	{
+		for (int x = 0; x < pSrcLayer->m_width; x++)
+		{
+			pPixels32[y* pSrcLayer->m_width + x] = MAKE_RGBA_UNREAL(255, 0, 0, 255);
+		}
+
+	}
+	*/
+
+}
+
+void retro_video_refresh_callback_ex(const void* data, unsigned width, unsigned height, size_t pitch, const void* extraData)
+{
+	//first the main image
+
+	retro_video_refresh_callback(data, width, height, pitch);
+	Layer3DInfo* pLayerInfo = (Layer3DInfo*)extraData;
+	
+	for (int i = 0; i < g_pLibretroManager->m_pLibretroManagedActor->GetLayerCount(); i++) //yes, we're using layercount instead of C_MAX_3D_LAYERS on purpose
+	{
+		if (i > pLayerInfo->m_layerCount) continue;  //true later size hasn't been initted yet probably
+		if (i >= g_pLibretroManager->m_pLibretroManagedActor->m_layerInfo.size()) continue;
+
+		BlitCoreLayerToUnrealLayer(&pLayerInfo->m_pLayers[i], g_pLibretroManager->m_pLibretroManagedActor->GetLayer(i));
+		g_pLibretroManager->m_pLibretroManagedActor->GetLayer(i)->m_bUsedThisFrame = true;
+	}
+
+	/*
+	//check extra layer data
+	for (int i = 0; i < C_MAX_3D_LAYERS; i++)
+	{
+		if (pLayerInfo->m_layers[i].m_hasRGBAData)
+		{
+			//we should display this one
+			int layerID = g_pLibretroManager->m_pLibretroManagedActor->GetActiveLayerIDByDistanceMod(pLayerInfo->m_layers[i].m_distanceMod);
+			if (layerID == -1)
+			{
+				//create one if we can
+				layerID = g_pLibretroManager->m_pLibretroManagedActor->GetUnusedLayerID();
+			}
+
+			if (layerID != -1)
+			{
+				BlitCoreLayerToUnrealLayer(&pLayerInfo->m_layers[i], g_pLibretroManager->m_pLibretroManagedActor->GetLayer(layerID));
+			}
+			else
+			{
+				LogMsg("Not enough layers!");
+			}
+		}
+	}
+	*/
+}
+
 void retro_video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch)
 {
 	//LogMsg("Updating frame: %d, %d pitch %d", width, height, (int)pitch);
-	
 	for (int pass = 0; pass < C_MAX_BLITPASS_COUNT; pass++)
 	{
 		BlitPass* pBlitPass = &g_pLibretroManager->m_blitPass[pass];
@@ -841,7 +1019,8 @@ void retro_video_refresh_callback(const void* data, unsigned width, unsigned hei
 
 		uint8* pSrc = (uint8*)data;
 		LayerInfo* pDestLayer = g_pLibretroManager->m_pLibretroManagedActor->GetLayer(pBlitPass->m_activeLayerIndex);
-
+		if (!pDestLayer) return;
+		pDestLayer->m_bUsedThisFrame = true;
 		uint8* pDst = pDestLayer->GetPixelBuffer();
 
 		if (!pDst)
@@ -860,7 +1039,10 @@ void retro_video_refresh_callback(const void* data, unsigned width, unsigned hei
 			LogMsg("Center color is %d, %d, %d", pSrc[0], pSrc[1], pSrc[2]);
 		}*/
 #endif
-
+		if (g_pLibretroManager->m_surfaceSourceType == SURFACE_SOURCE_RGBA_32_UNREAL)
+		{
+			memcpy(pDst, pSrc, height * pitch);
+		} else
 		if (g_pLibretroManager->m_surfaceSourceType == SURFACE_SOURCE_RGBA_32)
 		{
 			for (int y = pBlitPass->m_blitSrcRect.Min.Y; y < pBlitPass->m_blitSrcRect.Max.Y; y++)
@@ -918,7 +1100,7 @@ void retro_video_refresh_callback(const void* data, unsigned width, unsigned hei
 					pSrc += 4;
 				}
 			}
-		}
+		} else
 
 		if (g_pLibretroManager->m_surfaceSourceType == SURFACE_SOURCE_RGB_565_16)
 		{
@@ -990,7 +1172,6 @@ void retro_video_refresh_callback(const void* data, unsigned width, unsigned hei
 
 						break;
 
-
 					case COLOR_KEY_STYLE_2COLOR:
 
 						if (r == pBlitPass->m_blitColorKey.R && g == pBlitPass->m_blitColorKey.G
@@ -1032,14 +1213,24 @@ void retro_video_refresh_callback(const void* data, unsigned width, unsigned hei
 
 void ClearLayers()
 {
-	for (int i = 0; i < C_LAYER_COUNT; i++)
+	for (int i = 0; i < g_pLibretroManager->m_pLibretroManagedActor->m_layerInfo.size(); i++)
 	{
 		LayerInfo* pDestLayer = g_pLibretroManager->m_pLibretroManagedActor->GetLayer(i);
 		uint8* pDst = pDestLayer->GetPixelBuffer();
 		memset(pDst, 0, pDestLayer->mDataSize);
 	}
-	
-	
+
+	g_pLibretroManager->ResetBlitInformation();
+}
+
+void LibretroManager::ResetBlitInformation()
+{
+	for (int i = 0; i < m_pLibretroManagedActor->m_layerInfo.size(); i++)
+	{
+		LayerInfo* pDestLayer = g_pLibretroManager->m_pLibretroManagedActor->GetLayer(i);
+		pDestLayer->m_bUsedThisFrame = false;
+		pDestLayer->m_distanceMod = 0.0f;
+	}
 }
 
 void LibretroManager::RenderFrame(const char* pRenderFlags)
@@ -1078,7 +1269,6 @@ void LibretroManager::SaveStateToFile()
 	LogMsg("Saving state to %s", fileName.c_str());
 	FFileHelper::SaveArrayToFile(data, ANSI_TO_TCHAR( fileName.c_str()));
 	ShowStatusMessage("Saved state.");
-
 }
 
 void LibretroManager::LoadStateFromFile()
@@ -1112,14 +1302,27 @@ void LibretroManager::LoadStateFromFile()
 	SaveState(0); //we load from state 0 every frame to reset the gamelogic we've broken due to multiple renderings for the layers
 }
 
-
-
 void LibretroManager::Update()
 {
 	if (!m_core.m_bActive) return;
 	
-	m_useAudio = true;
+	if (m_bGamePaused) return;
 
+	m_useAudio = true;
 	m_profManager.Update();
 
+	//slow down things?
+	if (m_frameSkip == 0 && m_targetFPS != 0)
+	{
+		while (1)
+		{
+			double interval = FPlatformTime::Seconds() - m_timeOfLastFrame;
+			//LogMsg("Interval: %.2f", interval);
+
+			double desiredInterval = 1.0 / m_targetFPS;
+			if (interval > desiredInterval) break;
+		}
+		m_timeOfLastFrame = FPlatformTime::Seconds();
+
+	}
 }

@@ -1,4 +1,4 @@
-HoloVCS - Atari 2600 and NES games with 3D layers on the Looking Glass Portrait holographic device
+HoloVCS - Atari 2600, NES, & Virtual Boy games with 3D layers on the Looking Glass Portrait holographic device
 
 ![](https://www.codedojo.com/wp-content/uploads/2021/08/holovcs.gif)
 
@@ -8,6 +8,7 @@ License:  BSD style attribution, see LICENSE.md
 
 **You a player?** Then you probably want to visit the [user page](https://www.codedojo.com/?p=2704), it has the ready to run [download version](https://www.rtsoft.com/files/HoloVCS_Win64.zip).
 
+Check the user page linked above for which games are currently supported.
 
 You a developer and want to compile the project?  Read on
 
@@ -31,6 +32,7 @@ For NES support, it uses a barely modified version of fceumm_libretro.dll, I add
 
 I'm lazy and probably won't do much, but here are some things that would be nice:
 
+* Improve 3d effects/compatibility with games
 * Make faster
 * Support more systems (not too hard considering we support the libretro core format, but each would require customizations to make 3D type stuff work)
 * Do builds for other 3D displays like Vive/Oculus/Hololens?  It would actually be pretty simple and run much faster considering we only need stereo rendering vs the 30+ frames we render for Looking Glass.  Not sure how to set things up to be able to do builds for all of those at once with the same project though.

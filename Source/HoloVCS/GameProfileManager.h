@@ -11,6 +11,8 @@
 #include "Shared/UnrealMisc.h"
 using namespace std;
 #include <vector>
+//Hardcoded the path to this interface I made when I modified the VB core
+#include "D:\projects\libretro\beetle-vb-libretro\mednafen\vb\HoloVB.h"
 
 class GameProfile
 {
@@ -37,11 +39,14 @@ class GameProfileManager
 {
 public:
 	GameProfileManager();
+	void ApplyStartingGameSpecificSetup();
 	virtual ~GameProfileManager();
 	void InitGame(string hash);
 	void Init(LibretroManager* pManager);
 
 	void UpdateNES();
+
+	void UpdateVB();
 
 	void UpdateAtari();
 
@@ -54,3 +59,5 @@ public:
 	uint32 m_curGameProfileIndex = 0;
 
 };
+
+void UpdateDefaultVB(void* pProfileManager);

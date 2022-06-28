@@ -265,6 +265,7 @@ AActor* GetActorByTag(UWorld* pWorld, char* tag)
 }
 
 
+
 //Adds all actors with a certain tag to a passed in list
 void AddActorsByTag(TArray<AActor*> *pActors, UWorld* pWorld, char* tag)
 {
@@ -283,6 +284,23 @@ void AddActorsByTag(TArray<AActor*> *pActors, UWorld* pWorld, char* tag)
 		}
 	}
 }
+
+int DeleteActorsByTag(UWorld* pWorld, char* tag)
+{
+	TArray<AActor*> actors;
+	AddActorsByTag(&actors, pWorld, tag);
+
+	for (int i = 0; i < actors.Num(); i++)
+	{
+		//pWorld->RemoveActor(actors[i], false);
+		
+		actors[i]->Destroy();
+
+	}
+
+	return actors.Num();
+}
+
 
 //Warning:  Don't use this!  Names are actually IDs and weird, and can change!  There is apparently no safe way to get
 //the names shown in the editor, in a release build.  So use GetActorByTag instead I guess, and make sure you add a

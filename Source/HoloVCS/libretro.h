@@ -3321,6 +3321,10 @@ extern "C" {
     typedef void (RETRO_CALLCONV* retro_video_refresh_t)(const void* data, unsigned width,
         unsigned height, size_t pitch);
 
+    typedef void (RETRO_CALLCONV* retro_video_refresh_ex_t)(const void* data, unsigned width,
+        unsigned height, size_t pitch, const void* extradata);
+
+
     /* Renders a single audio frame. Should only be used if implementation
      * generates a single sample at a time.
      * Format is signed 16-bit native endian.
