@@ -1,10 +1,16 @@
 HoloVCS - Atari 2600, NES, & Virtual Boy games with 3D layers on the Looking Glass Portrait holographic device
 
-![](https://www.codedojo.com/wp-content/uploads/2021/08/holovcs.gif)
+![](Media/holovcs.gif)
+
+
+<a href="https://www.youtube.com/watch?v=QpQSTgjk4N4"><img align="top" src="Media/vboy_youtube_thumb.jpg" width=800></a>
 
 License:  BSD style attribution, see LICENSE.md
 
-[A twitter movie of it in action](https://twitter.com/rtsoft/status/1489125302877900806)
+[A twitter movie of Super Mario Bros/Castlevania in action](https://twitter.com/rtsoft/status/1489125302877900806)
+
+[A twitter movie of Virtualboy in action](https://twitter.com/rtsoft/status/1542285198443683841)
+
 
 **You a player?** Then you probably want to visit the [user page](https://www.codedojo.com/?p=2704), it has the ready to run [download version](https://www.rtsoft.com/files/HoloVCS_Win64.zip).
 
