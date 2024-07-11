@@ -1,4 +1,4 @@
-HoloVCS - Atari 2600, NES, & Virtual Boy games with 3D layers - currently runs on the Looking Glass Portrait holographic device as well as the Lume Pad 2 (the Lume pad 2 version hasn't been updated here yet though, only the NES part is working right now)
+HoloVCS - Atari 2600, NES, & Virtual Boy games with 3D layers - currently runs on the Looking Glass Portrait holographic device as well as the Lume Pad 2 (the Lume pad 2 UE5 version hasn't been updated here yet, only the NES part is working right now)
 
 ![](Media/holovcs.gif)
 
