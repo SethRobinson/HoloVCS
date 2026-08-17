@@ -4,6 +4,8 @@
 #include "Components/SynthComponent.h"
 #include "Shared/UnrealMisc.h"
 #include <list>
+using std::list;
+
 
 //  Programmer(s):  Seth A. Robinson (seth@rtsoft.com)
 // 
@@ -26,12 +28,12 @@
 //though.
 //Oh, and you'll need to change all instances of SynthComponentSethHack to SynthComponent.
 
-#include "SynthComponentSethHack.h"
+//#include "SynthComponentSethHack.h"
 
 //add includes above here
 #include "RTAudioBuffer.generated.h"
 
-using namespace std;
+//using namespace std;
 
 //a thing to help pass audio data in a threadsafe way
 class RTSampleChunk
@@ -72,7 +74,7 @@ private:
 };
 
 UCLASS(ClassGroup = Synth, meta = (BlueprintSpawnableComponent))
-class HOLOVCS_API USynthComponentRTAudioBuffer : public USynthComponentSethHack
+class HOLOVCS_API USynthComponentRTAudioBuffer : public USynthComponent
 {
     GENERATED_BODY()
 
@@ -89,12 +91,20 @@ public:
     UFUNCTION(BlueprintCallable, Category = "RT Audio Buffer")
         void SetVolume(float InVolume);
 
-    virtual ISoundGeneratorPtr CreateSoundGenerator(int32 InSampleRate, int32 InNumChannels) override;
-    //void Start(int sampleRate = -1);
+    UFUNCTION(BlueprintCallable, Category = "RT Audio Buffer")
+            void SetDesiredSampleRate(float NewSampleRate);
 
+            void SetSampleRate(float NewSampleRate);
+
+
+        virtual ISoundGeneratorPtr CreateSoundGenerator(const FSoundGeneratorInitParams& InParams);
+
+   //void Start(int sampleRate = -1);
     RTBufferGenerator* GetBufferGenerator() { return (RTBufferGenerator*)m_pRTBufferGenerator.Get(); }
 
 protected:
+    float DesiredSampleRate =33100.0f; // Default to 44.1kHz
     // The runtime instance of the sound generator
     ISoundGeneratorPtr m_pRTBufferGenerator;
+    virtual bool Init(int32& SampleRate) override;
 };

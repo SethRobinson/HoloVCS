@@ -134,6 +134,10 @@ void RTBufferGenerator::SetVolume(float InVolume)
         });
 }
 
+
+//***********************
+
+
 USynthComponentRTAudioBuffer::USynthComponentRTAudioBuffer(const FObjectInitializer& ObjInitializer)
     : Super(ObjInitializer)
 {
@@ -141,6 +145,31 @@ USynthComponentRTAudioBuffer::USynthComponentRTAudioBuffer(const FObjectInitiali
 
 USynthComponentRTAudioBuffer::~USynthComponentRTAudioBuffer()
 {
+}
+bool USynthComponentRTAudioBuffer::Init(int32& SampleRate)
+{
+    // Try to set our desired sample rate
+    SampleRate = FMath::RoundToInt(DesiredSampleRate);
+
+    // Call the base class Init
+    return Super::Init(SampleRate);
+}
+
+void USynthComponentRTAudioBuffer::SetDesiredSampleRate(float NewSampleRate)
+{
+    DesiredSampleRate = NewSampleRate;
+    // If already initialized, we may need to reinitialize
+    //if (IsInitialized())
+    {
+        Stop();
+        Start();
+    }
+}
+
+void USynthComponentRTAudioBuffer::SetSampleRate(float NewSampleRate)
+{
+    DesiredSampleRate = NewSampleRate;
+    
 }
 
 void USynthComponentRTAudioBuffer::SetVolume(float InVolume)
@@ -156,8 +185,24 @@ void USynthComponentRTAudioBuffer::SetVolume(float InVolume)
     }
 }
 
+
+
+ISoundGeneratorPtr USynthComponentRTAudioBuffer::CreateSoundGenerator(const FSoundGeneratorInitParams& InParams)
+{
+    LogMsg("Setting up audio buffer.  Sample rate: %d, channels: %d", InParams.SampleRate, InParams.NumChannels);
+
+    // Corrected the creation of the sound generator using parameters from InParams
+    m_pRTBufferGenerator = MakeShared<RTBufferGenerator, ESPMode::ThreadSafe>(InParams.SampleRate, InParams.NumChannels, Volume);
+
+    return m_pRTBufferGenerator;
+}
+
+
+/*
 ISoundGeneratorPtr USynthComponentRTAudioBuffer::CreateSoundGenerator(int32 InSampleRate, int32 InNumChannels)
 {
     LogMsg("Setting up audio buffer.  Sample rate: %d, channels: %d", InSampleRate, InNumChannels);
     return m_pRTBufferGenerator = ISoundGeneratorPtr(new RTBufferGenerator(InSampleRate, InNumChannels, Volume));
 }
+*/
+

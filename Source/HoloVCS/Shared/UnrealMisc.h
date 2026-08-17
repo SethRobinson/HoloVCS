@@ -1,20 +1,27 @@
 #pragma once
 
-
-
 #include <string>
+#include <string.h>
 #include <iostream>
 #include <sstream>
 #include <cassert>
-#include <string>
+#include <cstdio>
+#include <cwchar>
 
-#include "CoreMinimal.h"
+//#include "CoreMinimal.h"
+
 #include "EngineUtils.h"
-//To include crazy stuff:  https://docs.unrealengine.com/4.26/en-US/ProductionPipelines/BuildTools/UnrealBuildTool/ThirdPartyLibraries/
-#include "Windows/WindowsHWrapper.h"
 
-using namespace std;
-typedef std::basic_string<TCHAR> tstring;
+
+#if PLATFORM_WINDOWS
+//To include crazy stuff:  https://docs.unrealengine.com/4.26/en-US/ProductionPipelines/BuildTools/UnrealBuildTool/ThirdPartyLibraries/
+//#include "Windows/WindowsHWrapper.h"
+
+#endif
+
+using std::string;
+using std::iterator;
+//typedef std::basic_string<TCHAR> tstring;
 
 #ifndef SAFE_DELETE
 #define SAFE_DELETE(p)      { if(p) { delete (p); (p)=NULL; } }
@@ -54,11 +61,11 @@ typedef unsigned char byte;
 #define rt_min(rangeMin,rangeMax)    (((rangeMin) < (rangeMax)) ? (rangeMin) : (rangeMax))
 #define rt_max(rangeMin,rangeMax)            (((rangeMin) > (rangeMax)) ? (rangeMin) : (rangeMax))
 
-void AppendStringToFile(const std::string filename, const std::string text);
+void AppendStringToFile(const string filename, const string text);
 
 //helper to turn anything into a string, like ints/floats
 template< class C>
-std::string toString(C value)
+string toString(C value)
 {
 	std::ostringstream o;
 	o << value;
@@ -66,28 +73,28 @@ std::string toString(C value)
 }
 
 template<> inline
-std::string toString(FVector2D value)
+string toString(FVector2D value)
 {
-	return std::string("X: ") + toString(value.X) + " Y: " + toString(value.Y);
+	return string("X: ") + toString(value.X) + " Y: " + toString(value.Y);
 }
 
 template<> inline
-std::string toString(FVector value)
+string toString(FVector value)
 {
-	return std::string("X: ") + toString(value.X) + " Y: " + toString(value.Y) + " Z: " + toString(value.Z);
+	return string("X: ") + toString(value.X) + " Y: " + toString(value.Y) + " Z: " + toString(value.Z);
 }
 
 template<> inline
-std::string toString(TArray<FVector> value)
+string toString(TArray<FVector> value)
 {
-	std::string temp;
+	string temp;
 	for (int i = 0; i < value.Num(); i++)
 	{
 		if (temp.empty())
 		{
 			temp += "\r\n";
 		}
-		temp += std::string("#") + toString(i) + " " + toString(value[i]) + "\r\n";
+		temp += string("#") + toString(i) + " " + toString(value[i]) + "\r\n";
 	}
 
 	return temp;
@@ -95,22 +102,20 @@ std::string toString(TArray<FVector> value)
 
 
 template<> inline
-std::string toString(FString value)
+string toString(FString value)
 {
-	return string(StringCast<ANSICHAR>(*value).Get());
+	return string(TCHAR_TO_UTF8(*value));
 }
 
-
-
 void LogMsg(const char* traceStr, ...);
-void LogMsg(WIDECHAR* traceStr, ...);
+
 string GetFileExtension(string fileName);
 string ModifyFileExtension(const string fileName, const string extension);
 string GetPathFromString(const string& path);
 string GetFileNameWithoutExtension(const string fileName);
 string GetFileNameFromString(const string& path);
 uint32 HashString(const char* str, int32 len = 0); //if 0, stops on null, like for a string
-bool IsInString(const std::string& s, const char* search);
+bool IsInString(const string& s, const char* search);
 
 //Don't use these, the names given by the engine are not consistent.  Use a tag instead, you'll need to tag them in the
 //editor though!  I wrote these before I knew that
@@ -123,12 +128,11 @@ AActor* GetActorByName(UWorld* pWorld, char* name); //don't use this, names chan
 UActorComponent* GetComponentByTag(const AActor* pRootActor, const char* tagName);
 UActorComponent* GetComponentByTag(const AActor* pRootActor, const FString& tagName);
 
-AActor* GetActorByTag(UWorld* pWorld, char* tagName); //safe, but .. yeah, you need to add an actor tag
-int DeleteActorsByTag(UWorld* pWorld, char* tag); //returns how many actors were deleted
+AActor* GetActorByTag(UWorld* pWorld, const char* tagName); //safe, but .. yeah, you need to add an actor tag
+int DeleteActorsByTag(UWorld* pWorld, const char* tag); //returns how many actors were deleted
 
-void AddActorsByTag(TArray<AActor*>* pActors, UWorld* pWorld, char* tag);
+void AddActorsByTag(TArray<AActor*>* pActors, UWorld* pWorld, const char* tag);
 void ToLowerCase(char* pCharArray);
 void ToUpperCase(char* pCharArray);
-std::string ToLowerCaseString(const std::string& s);
-std::string ToUpperCaseString(const std::string& s);
-
+string ToLowerCaseString(const string& s);
+string ToUpperCaseString(const string& s);

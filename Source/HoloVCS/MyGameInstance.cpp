@@ -20,13 +20,13 @@
 #define WINVER 0x0A00
 #define _WIN32_WINNT 0x0A00
 THIRD_PARTY_INCLUDES_START
-#include "Windows/PreWindowsApi.h"
-#include <objbase.h>
+//#include "Windows/PreWindowsApi.h"
+//#include <objbase.h>
 #include <assert.h>
 #include <stdio.h>
-#include "shellscalingapi.h"
-#include "Windows/PostWindowsApi.h"
-#include "Windows/MinWindows.h"
+//#include "shellscalingapi.h"
+//#include "Windows/PostWindowsApi.h"
+//#include "Windows/MinWindows.h"
 
 THIRD_PARTY_INCLUDES_END
 #include "Windows/HideWindowsPlatformTypes.h"
@@ -42,5 +42,7 @@ void UMyGameInstance::Init()
 
     //Window has not been created yet    
    // SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
-   HRESULT r = SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
+   
+    //TODO dpi
+    //HRESULT r = SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
 }

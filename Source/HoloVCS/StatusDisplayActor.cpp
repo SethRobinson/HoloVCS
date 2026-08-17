@@ -59,7 +59,7 @@ void ShowStatusMessage(string message, float forcedTimeToShow)
 	}
 	
 	UTextRenderComponent *pComp = (UTextRenderComponent*)pActor->GetComponentByClass(UTextRenderComponent::StaticClass());
-	pComp->SetText(message.c_str());
+    pComp->SetText(FText::FromString(message.c_str()));
 	if (forcedTimeToShow == 0)
 	{
 		forcedTimeToShow = 2;

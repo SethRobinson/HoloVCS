@@ -30,6 +30,7 @@ protected:
 
 	UPROPERTY()
 	UMaterial* m_pPicBG = NULL;
+	
 	UPROPERTY(EditAnywhere)
 	UMaterial *m_pBGNoShadowMat;
 	
@@ -79,6 +80,17 @@ public:
 	void JoyPad_LShoulder_Released();
 	void JoyPad_RShoulder_Pressed();
 	void JoyPad_RShoulder_Released();
+	void JoyPad_RTrigger_Pressed();
+	void JoyPad_LTrigger_Pressed();
+	void JoyPad_RTrigger_Released();
+	void JoyPad_LTrigger_Released();
+
+	void JoyPad_LeftStick_Pressed();
+	void JoyPad_LeftStick_Released();
+
+	void JoyPad_RightStick_Pressed();
+	void JoyPad_RightStick_Released();
+
 
 	void OnAKey();
 	void OnNum1Key();

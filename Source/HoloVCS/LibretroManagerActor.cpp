@@ -2,7 +2,8 @@
 #include "LibretroManagerActor.h"
 #include "AudioDevice.h"
 #include "PlayerPawn.h"
-#include "Components/PointLightComponent.h"
+
+#include "Components/DirectionalLightComponent.h"
 
 EPixelFormat TEX_PIXEL_FORMAT = EPixelFormat::PF_B8G8R8A8;
 // Sets default values
@@ -12,13 +13,11 @@ ALibretroManagerActor::ALibretroManagerActor()
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.TickGroup = TG_PrePhysics;
 	//LogMsg("Tick interval was %f", GetActorTickInterval());
-	
 }
 
 const bool C_INIT_TEXTURES_EVERY_FRAME = true; //slightly slower, but safer in theory?
-
  
-bool ALibretroManagerActor::SetupLayer(LayerInfo* pLayer, char* pActorName, int layerWidth, int layerHeight)
+bool ALibretroManagerActor::SetupLayer(LayerInfo* pLayer, char* pActorName, int layerWidth, int layerHeight, int layerID)
 {
 	
 	pLayer->m_texWidth = layerWidth;
@@ -45,6 +44,8 @@ bool ALibretroManagerActor::SetupLayer(LayerInfo* pLayer, char* pActorName, int 
 		LogMsg("Created %s", pActorName);
 		pActor->AttachToActor(pParentActor, FAttachmentTransformRules::KeepRelativeTransform);
 		pActor->SetActorRelativeScale3D(FVector(m_coreLayerScale.X, m_coreLayerScale.Y, 1));
+		
+	
 		pLayer->m_pActor = pActor;
 		#if WITH_EDITOR
 		pActor->SetActorLabel(pActorName);
@@ -52,6 +53,20 @@ bool ALibretroManagerActor::SetupLayer(LayerInfo* pLayer, char* pActorName, int 
 		//pActor->SetActorLabel(pActorName);
 			//pLayer->m_HasDoneFirstTimeInit = true;
 		pLayer->m_vStartingPos = pLayer->m_pActor->GetActorLocation();
+	
+	
+		//Set the Receive CSM Shadows flag on this actor? How to do it here?
+		UMeshComponent* pComp1 = (UMeshComponent*)pActor->GetComponentByClass(UMeshComponent::StaticClass());
+		if (pComp1)
+		{
+			//LogMsg("Setting CSM flag");
+			
+			pComp1->bReceiveMobileCSMShadows = !g_pLibretroManager->m_profManager.m_layerSetupInfo[layerID].m_bIgnoreShadows;
+		}
+		else
+		{
+			LogMsg("Can't find mesh to set CSM flag");
+		}
 	}
 	else
 	{
@@ -175,25 +190,34 @@ void ALibretroManagerActor::InitLayers()
 	//Prepare each layer we're going to dynamically write visuals to
 	for (int i = 0; i < m_layerCount; i++)
 	{
-		if (!SetupLayer(&m_layerInfo[i], (char*)(string("Layer") + toString(i)).c_str(), m_layerWidth, m_layerHeight))
+		if (!SetupLayer(&m_layerInfo[i], (char*)(string("Layer") + toString(i)).c_str(), m_layerWidth, m_layerHeight, i))
 		{
 			LogMsg("Error setting up layer");
 		}
 		
 		m_layerInfo[i].SetLayerPosZ(startingZ+ (-m_depthOffsetForAllLayers));
 		startingZ -= step;
+
+	
 	}
 
-	auto pLight = g_pLibretroManager->m_pLibretroManagedActor->m_pLight->FindComponentByClass<UPointLightComponent>();
+	//auto pLight = g_pLibretroManager->m_pLibretroManagedActor->m_pLight->FindComponentByClass<UPointLightComponent>();
+	auto pLight = g_pLibretroManager->m_pLibretroManagedActor->m_pLight->FindComponentByClass<UDirectionalLightComponent>();
 
-	if (m_curLightingMode == LIGHTING_MODE_NONE)
+	if (pLight)
 	{
-		pLight->SetVisibility(false);
+		if (m_curLightingMode == LIGHTING_MODE_NONE)
+		{
+			pLight->SetVisibility(false);
+		}
+		else
+		{
+			pLight->SetVisibility(true);
+		}
 	}
-	else
-	{
-		pLight->SetVisibility(true);
-	}
+
+	//print m_bg_color's values to logmsg
+	LogMsg("BG color is %f, %f, %f", m_bg_color.X, m_bg_color.Y, m_bg_color.Z);
 
 	m_libretroManager.m_pPlayerPawn->SetTintBG(m_bg_color, m_bg_color_strength, m_bgAllowShadows);
 
@@ -257,10 +281,11 @@ void ALibretroManagerActor::BeginPlay()
 	FAudioDevice* MainAudioDevice = GEngine->GetMainAudioDeviceRaw();
 	LogMsg("Main audio device sample rate is %f", MainAudioDevice->GetSampleRate());
 
+	//SETH Init audio
 	if (m_pRTAudioBufferComponent == NULL)
 	{
 		m_pRTAudioBufferComponent = NewObject<USynthComponentRTAudioBuffer>(this, USynthComponentRTAudioBuffer::StaticClass());
-		m_pRTAudioBufferComponent->Initialize();
+		m_pRTAudioBufferComponent->Initialize(MainAudioDevice->GetSampleRate());
 		m_pRTAudioBufferComponent->Start(); //Note, this requires Seth's bugfixed unreal source which can't be legally shared to be able to change sample rate on the fly.
 		//as a work around, you have to change the windows target overall mixing framerate.  See the USynthComponentRTAudioBuffer source for more info
 	}
@@ -268,7 +293,8 @@ void ALibretroManagerActor::BeginPlay()
 	LogMsg("Started audio renderer thread");
 
 	InitLayers();
-	 
+	
+	/*
 	if (!m_pHoloPlayCapture)
 	{
 		LogMsg("Couldn't find HoloPlayActor");
@@ -280,6 +306,7 @@ void ALibretroManagerActor::BeginPlay()
 		//m_pHoloPlayCapture->GetWorld()->DestroyActor(m_pHoloPlayCapture);
 		//m_pHoloPlayCapture = NULL;
 	}
+	*/
 
 	//internal FPS counter for some reason, not really needed
 	m_framesRendered = 0;
@@ -309,6 +336,7 @@ void ALibretroManagerActor::BeginPlay()
 
 void ALibretroManagerActor::SetSampleRate(int sampleRate)
 {
+	
 	if (!m_pRTAudioBufferComponent) return;
 	LogMsg("Stopping sound");
 
@@ -319,8 +347,14 @@ void ALibretroManagerActor::SetSampleRate(int sampleRate)
 	GetWorld()->GetTimerManager().SetTimer(handle, [this, sampleRate]()
 		{
 			LogMsg("Setting sample rate to %d", sampleRate);
-			m_pRTAudioBufferComponent->Start(sampleRate);
+			//we need to set set the sample rate on m_pRTAudioBufferComponent
+			//TODO, reinit audio buffer?
+			m_pRTAudioBufferComponent->SetSampleRate(sampleRate);
+			m_pRTAudioBufferComponent->Start();
+
 		}, 0.2f, false);
+
+		
 
 }
  
@@ -330,7 +364,6 @@ void ALibretroManagerActor::CleanupLayerMemory()
 	{
 		m_layerInfo[i].Cleanup();
 	}
-
 }
 
 void ALibretroManagerActor::EndPlay(const EEndPlayReason::Type EndPlayReason)

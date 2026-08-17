@@ -5,7 +5,8 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include <string>
-using namespace std;
+using std::string;
+
 
 #include "StatusDisplayActor.generated.h"
 

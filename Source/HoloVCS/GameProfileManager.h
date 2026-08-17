@@ -9,10 +9,22 @@
 
 #pragma once
 #include "Shared/UnrealMisc.h"
-using namespace std;
 #include <vector>
+
+using std::string;
+using std::vector;
+
+class LayerSetupInfo
+{
+public:
+
+	bool m_bIgnoreShadows = false;
+};
+
+#define C_MAX_LAYERS 30
+
 //Hardcoded the path to this interface I made when I modified the VB core
-#include "D:\projects\libretro\beetle-vb-libretro\mednafen\vb\HoloVB.h"
+#include "HoloVB.h"
 
 class GameProfile
 {
@@ -31,6 +43,7 @@ public:
 	uint32 m_hashInt;
 	void (*m_update)(void*);
 };
+
 
 
 class LibretroManager;
@@ -57,7 +70,7 @@ public:
 	LibretroManager* m_pLibretroManager = NULL;
 	vector<GameProfile> m_profileVec;
 	uint32 m_curGameProfileIndex = 0;
-
+	LayerSetupInfo m_layerSetupInfo[C_MAX_LAYERS];
 };
 
 void UpdateDefaultVB(void* pProfileManager);

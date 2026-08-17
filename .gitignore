@@ -10,6 +10,7 @@
 # Precompiled Headers
 *.gch
 *.pch
+*.ipch
 
 # Compiled Dynamic libraries
 *.so
@@ -56,8 +57,11 @@ Build/*
 !Build/*/
 Build/*/**
 Build/*
+dist/*
+HoloVCS/*
 Build/bin
 !Build/*/PakBlacklist*.txt
+Plugins/*
 
 # Don't ignore icon files in Build
 !Build/**/*.ico
@@ -74,3 +78,19 @@ Plugins/*/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+Source/HoloVCS/SynthComponentSethHack.cpp
+Source/HoloVCS/SynthComponentSethHack.h
+Source/HoloVCS/SynthComponentSethHack.zip
+HoloVCS_Win64.zip
+*.a26
+*.sav0
+*.nes
+*.vb
+*.vboy
+
+# Per-machine secrets (Android signing etc.)
+Config/UserEngine.ini
+
+# Salvaged prebuilt emulator core DLLs (also recoverable from git history)
+prebuilt_cores/

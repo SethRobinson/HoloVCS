@@ -3,6 +3,12 @@
 #include "PlayerPawn.h"
 #include "LibretroManagerActor.h"
 
+#include <string>
+#include <vector>
+
+using std::string;
+using std::vector;
+
 void UpdatePitfall(void* pProfileManager)
 {
 	GameProfileManager* pProf = (GameProfileManager*)pProfileManager;
@@ -120,13 +126,34 @@ void UpdateDefaultNES(void* pProfileManager)
 	{
 		pL->RenderFrame("00"); //bg, sprites and optional |<num> to specify the active palette offset to use for bg when not rendering bg
 	}
+	pL->SaveState(1); //a copy for the visual tricks we're going to do later
+
+	//real render single pass
+
+	/*
+	pL->SetupBlitPass(BLIT_PASS0, 2, FIntRect(0, 0, 256, 240), COLOR_KEY_STYLE_NONE, FLinearColor(54, 147, 99, 0));
+	pL->DisableBlitPass(BLIT_PASS1);
+	pL->RenderFrame("11");
+	pL->SaveState(0); //the real one we're going to save for the next frame
+	pL->m_useAudio = false;  //don't process any more audio
+	*/
+
+	//well, let's do the sprites on a different layer just for fun, even though we know nothing about this game
 
 	//real render
 
 	pL->SetupBlitPass(BLIT_PASS0, 2, FIntRect(0, 0, 256, 240), COLOR_KEY_STYLE_NONE, FLinearColor(54, 147, 99, 0));
 	pL->DisableBlitPass(BLIT_PASS1);
-	pL->RenderFrame("11");
+	pL->RenderFrame("10");
 	pL->SaveState(0); //the real one we're going to save for the next frame
+	pL->m_useAudio = false;  //don't process any more audio
+
+	//render the sprites now.  We have to reload the frame because everytime we render, we're actually advancing the game...
+
+	pL->LoadState(1);
+	pL->SetupBlitPass(BLIT_PASS0, 3, FIntRect(0, 0, 256, 240), COLOR_KEY_STYLE_BLACK, FLinearColor(54, 147, 99, 0));
+	pL->DisableBlitPass(BLIT_PASS1);
+	pL->RenderFrame("01");
 
 }
 
@@ -254,17 +281,6 @@ void UpdateCastlevania(void* pProfileManager)
 	pL->SetupBlitPass(BLIT_PASS2, 2, FIntRect(0, 49, 256, 240), COLOR_KEY_STYLE_BLACK, FLinearColor(107, 109, 107, 0));
 	pL->RenderFrame("10");
 
-	/*
-
-	DisableBlitPass(BLIT_PASS1);
-	RenderFrame("10");
-
-	SetupBlitPass(BLIT_PASS0, 2, FIntRect(0, 49, 256, 240), COLOR_KEY_STYLE_1COLOR, FLinearColor(107, 109, 107, 0));
-	DisableBlitPass(BLIT_PASS1);
-	RenderFrame("10");
-	*/
-
-
 	pL->m_nesHacker.SetTileColorIndex(0, 0x0); //dark grey
 	pL->LoadState(1);
 	pL->SetupBlitPass(BLIT_PASS0, 4, FIntRect(0, 49, 256, 240), COLOR_KEY_STYLE_1COLOR, FLinearColor(107, 109, 107, 0));
@@ -282,7 +298,7 @@ void UpdateSuperMarioBros(void* pProfileManager)
 	LibretroManager* pL = pProf->m_pLibretroManager;
 	static byte keepList[128];
 
-	pL->m_pPlayerPawn->SetTintBG(FVector(146.0/255.0, 146.0 / 255.0, 1.0f), 1.0f, true);
+	pL->m_pPlayerPawn->SetTintBG(FVector(146.0/255.0, 146.0 / 255.0, 1.0f), 1.0f, false);
 
 	ClearLayers();
 	FIntRect rectFull = FIntRect(0, 0, pL->m_game_av_info.geometry.base_width, pL->m_game_av_info.geometry.base_height);
@@ -299,11 +315,6 @@ void UpdateSuperMarioBros(void* pProfileManager)
 	
 	//real render
 	pL->DisableAllBlitPasses();
-	//pL->SetupBlitPass(BLIT_PASS0, 0, FIntRect(0, 0, 256, 240), COLOR_KEY_STYLE_FILL, FLinearColor(148, 146, 255, 0));
-	//pL->SetupBlitPass(BLIT_PASS0, 3, FIntRect(0, 33, 256, 240), COLOR_KEY_STYLE_1COLOR, FLinearColor(148, 146, 255, 0));
-	//pL->SetupBlitPass(BLIT_PASS1, 3, FIntRect(0, 33, 256, 240), COLOR_KEY_STYLE_1COLOR, FLinearColor(148, 146, 255, 0));
-	//pL->SetupBlitPass(BLIT_PASS2, 4, FIntRect(0, 33, 256, 240), COLOR_KEY_STYLE_1COLOR, FLinearColor(148, 146, 255, 0));
-
 	pL->SetupBlitPass(BLIT_PASS0, 4, FIntRect(0, 0, 256, 32), COLOR_KEY_STYLE_1COLOR, FLinearColor(148, 146, 255, 0));
 	pL->RenderFrame("10");
 	pL->SaveState(0); //the real one we're going to save for the next frame
@@ -390,6 +401,41 @@ void UpdateSuperMarioBros(void* pProfileManager)
 	pL->LoadState(0);
 }
 
+
+void UpdateTetrisNES(void* pProfileManager)
+{
+	GameProfileManager* pProf = (GameProfileManager*)pProfileManager;
+	LibretroManager* pL = pProf->m_pLibretroManager;
+
+	pL->m_pPlayerPawn->SetBGPic();
+	ClearLayers();
+	FIntRect rectFull = FIntRect(0, 0, pL->m_game_av_info.geometry.base_width, pL->m_game_av_info.geometry.base_height);
+
+	static byte keepList[128];
+
+	pL->DisableBlitPass(BLIT_PASS0); //a junk render to speed up time
+	for (int i = 0; i < pL->m_frameSkip; i++)
+	{
+		pL->RenderFrame("00"); //bg, sprites and optional |<num> to specify the active palette offset to use for bg when not rendering bg
+	}
+	pL->SaveState(1); //a copy for the visual tricks we're going to do later
+	//real render
+
+	pL->SetupBlitPass(BLIT_PASS0, 2, FIntRect(0, 0, 256, 240), COLOR_KEY_STYLE_NONE, FLinearColor(54, 147, 99, 0));
+	pL->DisableBlitPass(BLIT_PASS1);
+	pL->RenderFrame("10");
+	pL->SaveState(0); //the real one we're going to save for the next frame
+	pL->m_useAudio = false;  //don't process any more audio
+
+
+	//render the sprites now.  We have to reload the frame because everytime we render, we're actually advancing the game...
+
+	pL->LoadState(1);
+	pL->SetupBlitPass(BLIT_PASS0, 3, FIntRect(0, 0, 256, 240), COLOR_KEY_STYLE_BLACK, FLinearColor(54, 147, 99, 0));
+	pL->DisableBlitPass(BLIT_PASS1);
+	pL->RenderFrame("01");
+}
+
 GameProfileManager::GameProfileManager()
 {
 	//setup the profile data.  DON'T CHANGE THE NAMES without also changing anything in ApplyStartingGameSpecificSetup
@@ -399,10 +445,19 @@ GameProfileManager::GameProfileManager()
 	m_profileVec.push_back(GameProfile("Pitfall", "3e90cf23106f2e08b2781e41299de556", UpdatePitfall));
 	m_profileVec.push_back(GameProfile("Wario Land VB", "fb4dc9f4ebd506702eb49e99a62bd803", UpdateDefaultVB));
 	m_profileVec.push_back(GameProfile("Jack Bros. VB", "ee873c9969c15e92ca9a0f689c4ce5ea", UpdateDefaultVB));
+	m_profileVec.push_back(GameProfile("Tetris NES", "5b0e571558c8c796937b96af469561c6", UpdateTetrisNES));
+
+	
+
 }
 
 void GameProfileManager::ApplyStartingGameSpecificSetup()
 {
+	//set all m_layerSetupInfo to default
+	for (int i = 0; i < C_MAX_LAYERS; i++)
+	{
+		m_layerSetupInfo[i] = LayerSetupInfo();
+	}
 
 	if (m_curGameProfileIndex == 0)
 	{
@@ -422,6 +477,19 @@ void GameProfileManager::ApplyStartingGameSpecificSetup()
 		m_pLibretroManager->m_pLibretroManagedActor->m_total3dDepth = 410;
 		m_pLibretroManager->m_pLibretroManagedActor->m_depthOffsetForAllLayers = 20;
 	}
+	else if (pProfile->m_name == "Castlevania")
+	{
+		//turn off shadow receiving for specific layers
+		LogMsg("Castlevania settings...");
+		
+		/*
+		m_layerSetupInfo[5].m_bIgnoreShadows = true;
+		m_layerSetupInfo[4].m_bIgnoreShadows = true;
+		m_layerSetupInfo[3].m_bIgnoreShadows = true;
+		m_layerSetupInfo[2].m_bIgnoreShadows = true;
+		*/
+
+	}
 	else
 	{
 		LogMsg("Applying game specific setup for recognized game %s - non specified, using defaults.", pProfile->m_name.c_str());
@@ -431,6 +499,7 @@ void GameProfileManager::ApplyStartingGameSpecificSetup()
 	LogMsg("Applying game specific setup for %s.", pProfile->m_name.c_str());
 
 }
+
 
 void UpdateDefaultVB(void* pProfileManager)
 {

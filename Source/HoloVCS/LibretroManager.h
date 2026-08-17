@@ -14,7 +14,8 @@
 #include "NesHacker.h"
 #include "GameProfileManager.h"
 
-using namespace std;
+//using namespace std;
+
 const int C_SAVE_STATE_COUNT = 3;
 const int C_SAVE_STATE_USER_SLOT = 2;
 enum eColorKeyStyle
@@ -23,7 +24,7 @@ enum eColorKeyStyle
 	COLOR_KEY_STYLE_BLACK,
 	COLOR_KEY_STYLE_1COLOR,
 	COLOR_KEY_STYLE_2COLOR,
-	COLOR_KEY_STYLE_FILL
+	COLOR_KEY_STYLE_FILL //ignores everything and just fills the whole thing with the color
 };
 
 enum eEmulatorType
@@ -120,11 +121,14 @@ enum eBlitPass
 	C_MAX_BLITPASS_COUNT
 };
 
+/*
 typedef struct {
 	void* v;
 	uint32 s;
 	char desc[5];
 } SFORMAT;
+
+*/
 
 class LibretroManager
 {
@@ -167,7 +171,12 @@ public:
 	CoreInterface m_core;
 	retro_system_av_info m_game_av_info;
 	retro_system_info m_game_system_info;
+	
+	//only include this if not static
+#ifndef RT_STATIC_CORE
 	HINSTANCE m_dllHandle = NULL;
+#endif
+	
 	char m_coreRenderFlags[12];
 	int m_maxSaveStateSize = 0;
 	BlitPass m_blitPass[C_MAX_BLITPASS_COUNT];

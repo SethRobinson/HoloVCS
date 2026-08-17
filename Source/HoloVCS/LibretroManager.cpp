@@ -3,18 +3,27 @@
 #include "PlayerPawn.h"
 #include "StatusDisplayActor.h" //so we can show messages on screen
 
+#if PLATFORM_ANDROID
+#include "Misc/Paths.h"
+#include "HAL/PlatformFilemanager.h"
+
+#endif
+
+using std::vector;
+using std::string;
+
 //SETH:  If I don't set these, we can't get SetProcessDpiAwareness
 
 #if UE_BUILD_DEVELOPMENT
-const int C_DEFAULT_ROM_ID = 1;
+const int C_DEFAULT_ROM_ID = 2;
 bool g_loadStateOnFirstLoad = true;
-string g_partialRomNameToLoadOnStartup = "wario";
+string g_partialRomNameToLoadOnStartup = "astle";
 //string g_partialRomNameToLoadOnStartup = "";
 #else
 
-const int C_DEFAULT_ROM_ID = 0;
-bool g_loadStateOnFirstLoad = false;
-string g_partialRomNameToLoadOnStartup = "";
+const int C_DEFAULT_ROM_ID = 2;
+bool g_loadStateOnFirstLoad = true;
+string g_partialRomNameToLoadOnStartup = "astle";
 #endif
 
 #if PLATFORM_WINDOWS
@@ -33,16 +42,17 @@ string g_partialRomNameToLoadOnStartup = "";
 #define _WIN32_WINNT 0x0A00
 
 THIRD_PARTY_INCLUDES_START
-#include "Windows/PreWindowsApi.h"
-#include <objbase.h>
+//#include "Windows/PreWindowsApi.h"
+//#include <objbase.h>
 #include <assert.h>
 #include <stdio.h>
-#include "shellscalingapi.h"
-#include "Windows/PostWindowsApi.h"
-#include "Windows/MinWindows.h"
+//#include "shellscalingapi.h"
+//#include "Windows/PostWindowsApi.h"
+//#include "Windows/MinWindows.h"
 
 THIRD_PARTY_INCLUDES_END
 #include "Windows/HideWindowsPlatformTypes.h"
+
 #endif
 
 #include "Shared/UnrealMisc.h"
@@ -51,12 +61,14 @@ THIRD_PARTY_INCLUDES_END
 
 const unsigned short ASYNC_BUTTON_DOWN_MSB = 0x8000;
 
-string G_VERSION_STRING = "HoloVCS V1.2";
+string G_VERSION_STRING = "HoloVCS V1.3";
 
 LibretroManager* g_pLibretroManager = NULL; //I don't want to fool with caring how to get Unreal globals correctly
 void retro_video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch);
 void retro_video_refresh_callback_ex(const void* data, unsigned width, unsigned height, size_t pitch, const void* extradata);
 #include <thread>
+
+bool retro_environment_callback(unsigned cmd, void* data);
 
 //when starting/stopping in the editor, globals don't get reverted back, so we'll do it manually and trust this is called at some point
 
@@ -141,7 +153,10 @@ void LibretroManager::SetupBlitPass(int blitPassIndex, int layer, FIntRect srcRe
 
 #define GET_VARIABLE_NAME(Variable) (#Variable)
 
-FARPROC MapFunction(HINSTANCE m_dllHandle, char* varName)
+//only have this if not static
+#ifndef RT_STATIC_CORE
+
+FARPROC MapFunction(HINSTANCE m_dllHandle, const char* varName)
 {
 	varName++;
 	//never do it like this
@@ -158,9 +173,19 @@ FARPROC MapFunction(HINSTANCE m_dllHandle, char* varName)
 
 	return temp;
 }
+#endif
+
 
 void LibretroManager::FreeEmulatorIfNeeded()
 {
+#ifdef RT_STATIC_CORE
+	if (m_core.m_bActive)
+	{
+		m_core.retro_unload_game();
+		m_core.retro_deinit();
+		m_core.m_bActive = false;
+	}
+#else
 	if (m_core.m_bActive && m_dllHandle != NULL)
 	{
 		LogMsg("Unloading emulator");
@@ -176,11 +201,50 @@ void LibretroManager::FreeEmulatorIfNeeded()
 	}
 
 	m_dllHandle = NULL;
+
+#endif
 }
  
 bool LibretroManager::LoadCore(string fileName)
 {
 	FreeEmulatorIfNeeded();
+
+#ifdef RT_STATIC_CORE
+
+	if (fileName != "fceumm_libretro.dll")
+	{
+		LogMsg("Error, only fceumm is supported in static mode");
+		//we don't support this emulator yet in static mode
+		return false;
+	}
+
+	// Initialize the core's function pointers directly
+	m_core.retro_api_version = retro_api_version;
+	m_core.retro_get_system_info = retro_get_system_info;
+	m_core.retro_init = retro_init;
+	m_core.retro_deinit = retro_deinit;
+	m_core.retro_reset = retro_reset;
+	m_core.retro_set_environment = retro_set_environment;
+	m_core.retro_set_video_refresh = retro_set_video_refresh;
+	m_core.retro_set_audio_sample = retro_set_audio_sample;
+	m_core.retro_set_audio_sample_batch = retro_set_audio_sample_batch;
+	m_core.retro_set_input_poll = retro_set_input_poll;
+	m_core.retro_set_input_state = retro_set_input_state;
+	m_core.retro_load_game = retro_load_game;
+	m_core.retro_get_system_av_info = retro_get_system_av_info;
+	m_core.retro_run = retro_run;
+	m_core.retro_unload_game = retro_unload_game;
+	m_core.retro_serialize_size = retro_serialize_size;
+	m_core.retro_serialize = retro_serialize;
+	m_core.retro_unserialize = retro_unserialize;
+
+	m_core.retro_set_environment(retro_environment_callback);
+
+
+	// Call the core's initialization function
+	m_core.retro_init();
+
+#else
 
 	m_dllHandle = LoadLibraryA(fileName.c_str());
 
@@ -209,7 +273,7 @@ bool LibretroManager::LoadCore(string fileName)
 	m_core.retro_serialize_size = (decltype(m_core.retro_serialize_size))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_serialize_size));
 	m_core.retro_serialize = (decltype(m_core.retro_serialize))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_serialize));
 	m_core.retro_unserialize = (decltype(m_core.retro_unserialize))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_unserialize));
-
+#endif
 	return true;
 }
 
@@ -220,7 +284,7 @@ void libretro_log(enum retro_log_level level, const char* traceStr, ...)
 	char buffer[logSize];
 	memset((void*)buffer, 0, logSize);
 	va_start(argsVA, traceStr);
-	vsnprintf_s(buffer, logSize, logSize, traceStr, argsVA);
+	vsnprintf(buffer, logSize, traceStr, argsVA);
 	va_end(argsVA);
 
 	LogMsg("Libretro: %s", buffer);
@@ -258,7 +322,13 @@ bool retro_environment_callback(unsigned cmd, void* data)
 				{
 					pVar->value = g_pLibretroManager->m_coreRenderFlags;
 					return true;
-				}
+				} else
+					if (strcmp(pVar->key, "fceumm_nospritelimit") == 0)
+					{
+						pVar->value = "enabled"; //disable sprite limit
+						return true;
+					}
+
 
 		//virtual boy vb settings
 		
@@ -281,7 +351,7 @@ bool retro_environment_callback(unsigned cmd, void* data)
 		if (strcmp(pVar->key, "holo_3d_layer_count") == 0)
 		{
 			static char layers[12];
-			sprintf_s(layers, 12, "%d", g_pLibretroManager->m_pLibretroManagedActor->GetLayerCount());
+			snprintf(layers, 12, "%d", g_pLibretroManager->m_pLibretroManagedActor->GetLayerCount());
 			pVar->value = layers;
 			return true;
 		}
@@ -375,6 +445,98 @@ bool retro_environment_callback(unsigned cmd, void* data)
 	return true;
 }
 
+void LibretroManager::LoadRomList()
+{
+	string romFileName;
+
+	FString FullPath = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*FPaths::ProjectDir());
+	m_rootPath = StringCast<ANSICHAR>(*FullPath).Get();
+
+	// for android, the full path needs to be this app's sdcard data folder, where the user can add roms etc themselves
+#if PLATFORM_ANDROID
+	FString ExternalStoragePath = FPaths::Combine(FPaths::ProjectPersistentDownloadDir(), TEXT("Roms"));
+	m_rootPath = StringCast<ANSICHAR>(*ExternalStoragePath).Get();
+#endif
+
+#if PLATFORM_WINDOWS
+	FString testPath = FullPath + "nes";
+
+	if (!FPaths::DirectoryExists(testPath))
+	{
+		m_rootPath += "../";
+		LogMsg("Adding ../ to path due to detected release dir layout");
+	}
+#endif
+
+	m_romNameFileList.Empty();
+	m_emulatorIDList.Empty();
+
+	FString staticResourcesPath = FPaths::ProjectContentDir() / TEXT("static_resources");
+
+	for (int i = 0; i < EMULATOR_COUNT; i++)
+	{
+		SetEmulatorData((eEmulatorType)i);
+
+		FString staticRomPath = staticResourcesPath / FString(m_romDir.c_str());
+
+		// get list of roms and play the first one
+		int romCountBeforeAdding = m_romNameFileList.Num();
+
+		// Search in the static_resources path
+		IFileManager::Get().FindFiles(m_romNameFileList, *staticRomPath, ANSI_TO_TCHAR(m_romFileExtension1.c_str()));
+		IFileManager::Get().FindFiles(m_romNameFileList, *staticRomPath, ANSI_TO_TCHAR(m_romFileExtension2.c_str()));
+
+		// if any of the roms found in the static rom path don't already exist in the root path, copy them over - this is done so platforms like Android that store things in a zip
+		// can still include roms so my testing is easier.  retroarch can't load directly from the apk/zip, so the extra file copy is necessary.  Unfortunately if something already
+		//exists with the same name it won't be updated.  Maybe I should just force a write every time
+
+		for (int j = romCountBeforeAdding; j < m_romNameFileList.Num(); j++)
+		{
+			romFileName = std::string(TCHAR_TO_ANSI(*staticRomPath)) + "/" + TCHAR_TO_ANSI(*m_romNameFileList[j]);
+			string romName = GetFileNameWithoutExtension(romFileName);
+			string romNameWithExt = romName + m_romFileExtension1;
+			string romNameWithExt2 = romName + m_romFileExtension2;
+
+			if (!FPaths::FileExists(FPaths::Combine(FPaths::ProjectDir(), ANSI_TO_TCHAR(m_romDir.c_str()), ANSI_TO_TCHAR(romNameWithExt.c_str()))) &&
+				!FPaths::FileExists(FPaths::Combine(FPaths::ProjectDir(), ANSI_TO_TCHAR(m_romDir.c_str()), ANSI_TO_TCHAR(romNameWithExt2.c_str()))))
+			{
+				// copy it over
+				string dest = m_rootPath + m_romDir + "/" + TCHAR_TO_ANSI(*m_romNameFileList[j]);
+				string src = std::string(TCHAR_TO_ANSI(*staticRomPath)) + "/" + TCHAR_TO_ANSI(*m_romNameFileList[j]);
+				LogMsg("Copying %s to %s", src.c_str(), dest.c_str());
+				IFileManager::Get().Copy(ANSI_TO_TCHAR(dest.c_str()), ANSI_TO_TCHAR(src.c_str()));
+			}
+		}
+	}
+
+	// clear data and do it again from the real dir
+	m_romNameFileList.Empty();
+	m_emulatorIDList.Empty();
+
+	for (int i = 0; i < EMULATOR_COUNT; i++)
+	{
+		SetEmulatorData((eEmulatorType)i);
+
+		FString romPath = FString(m_rootPath.c_str()) + FString(m_romDir.c_str()) + "/";
+
+		// get list of roms and play the first one
+		int romCountBeforeAdding = m_romNameFileList.Num();
+
+		// Search in the default path
+		IFileManager::Get().FindFiles(m_romNameFileList, *romPath, ANSI_TO_TCHAR(m_romFileExtension1.c_str()));
+		IFileManager::Get().FindFiles(m_romNameFileList, *romPath, ANSI_TO_TCHAR(m_romFileExtension2.c_str()));
+
+		int romsFound = m_romNameFileList.Num() - romCountBeforeAdding;
+
+		LogMsg("Scanning %s dir (for %s), found %d roms (%d total)", TCHAR_TO_ANSI(*romPath), m_coreName.c_str(), romsFound, m_romNameFileList.Num());
+
+		for (int j = 0; j < romsFound; j++)
+		{
+			m_emulatorIDList.Add(i);
+		}
+	}
+}
+
 bool LibretroManager::LoadRom(string fileName)
 {
 	retro_game_info ginfo;
@@ -401,8 +563,7 @@ bool LibretroManager::LoadRom(string fileName)
 	}
 
 	m_romHash = TCHAR_TO_UTF8(*FMD5::HashBytes((uint8*)&((byte*)ginfo.data)[headerSizeToSkipForRomHash], ginfo.size - headerSizeToSkipForRomHash));
-	
-	
+		
 	ginfo.path = fileName.c_str();
 	LogMsg("Loading rom %s, has a MD5 hash of %s", ginfo.path, m_romHash.c_str());
 	if (!m_core.retro_load_game(&ginfo))
@@ -438,7 +599,7 @@ void LibretroManager::SetSampleRate()
 	{
 		//Sorry, I refuse to use the fstring stuff
 		char st[256];
-		sprintf_s(st, "Try again in %.2f seconds, we need more time to measure audio speed", SECONDS_REQUIRED - timeTaken);
+		snprintf(st, sizeof(st), "Try again in %.2f seconds, we need more time to measure audio speed", SECONDS_REQUIRED - timeTaken);
 		ShowStatusMessage(st);
 		return;
 	}
@@ -538,9 +699,11 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 	string rom = "unset";
 	
 	//defaults for all emulators
+	
+	/*
+	//original values
 	m_pLibretroManagedActor->m_layerCount = 5;
 	m_pLibretroManagedActor->m_total3dDepth = 150;
-	m_pLibretroManagedActor->m_depthOffsetForAllLayers = -25;
 	m_pLibretroManagedActor->SetTextureSmoothingToUse(false);
 	m_pLibretroManagedActor->m_layerWidth = 256;
 	m_pLibretroManagedActor->m_layerHeight = 256;
@@ -548,13 +711,24 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 	m_pLibretroManagedActor->m_coreLayerScale= FVector2D(4.46, 2.965);
 	m_pLibretroManagedActor->m_corePosition = FVector2D(0,0);
 	m_pLibretroManagedActor->m_curLightingMode = LIGHTING_MODE_NORMAL;
+	*/
+
+	m_pLibretroManagedActor->m_layerCount = 5;
+	m_pLibretroManagedActor->m_total3dDepth = 10;
+	m_pLibretroManagedActor->SetTextureSmoothingToUse(false);
+	m_pLibretroManagedActor->m_layerWidth = 256;
+	m_pLibretroManagedActor->m_layerHeight = 256;
+	m_pLibretroManagedActor->m_depthOffsetForAllLayers = 0;
+	m_pLibretroManagedActor->m_coreLayerScale = FVector2D(0.41f, 0.41f);
+	m_pLibretroManagedActor->m_corePosition  = FVector2D(0, 18.4);
+	m_pLibretroManagedActor->m_curLightingMode = LIGHTING_MODE_NORMAL;
 
 
 	m_pLibretroManagedActor->m_bg_color = FVector(0, 0, 0);
 	m_pLibretroManagedActor->m_bg_color_strength = 1;
 	m_pLibretroManagedActor->m_bgAllowShadows = true;
 	m_bGamePaused = false;
-	m_targetFPS = 0; //the device itself is limited to 60 so we don't worry about it mostly
+	m_targetFPS = 60; 
 	
 	switch (emu)
 	{
@@ -567,9 +741,10 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 		m_romFileExtension2 = ".bin";
 		m_pLibretroManagedActor->m_coreLayerScale = FVector2D(4.45, 3.5);
 		m_pLibretroManagedActor->m_corePosition = FVector2D(69, 0);
-		m_pLibretroManagedActor->SetTextureSmoothingToUse(true);
+		//m_pLibretroManagedActor->SetTextureSmoothingToUse(true);
 		m_pLibretroManagedActor->m_total3dDepth = 100; //more compressed
-		
+
+		//m_pLibretroManagedActor->SetSampleRate(48000); 
 
 		break;
 
@@ -579,9 +754,11 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 		m_romDir = "nes";
 		m_romFileExtension1 = ".nes";
 		m_romFileExtension2 = ".unusedcrap";
-		m_pLibretroManagedActor->m_coreLayerScale = FVector2D(2.8, 2.8);
-		m_pLibretroManagedActor->m_corePosition = FVector2D(0, 0);
-		m_pLibretroManagedActor->m_total3dDepth = 100; //more compressed
+		
+		
+		//m_pLibretroManagedActor->m_coreLayerScale = FVector2D(2.8, 2.8);
+		//m_pLibretroManagedActor->m_corePosition = FVector2D(0, 0);
+		//m_pLibretroManagedActor->m_total3dDepth = 100; //more compressed
 		m_pLibretroManagedActor->SetSampleRate(48000); //the nes core I'm using doesn't self report this for some reason
 		break;
 	
@@ -602,10 +779,7 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 		//it's faster with lighting enabled.  Looks better disabled though, so push 8 to toggle it
 		//m_pLibretroManagedActor->m_curLightingMode = LIGHTING_MODE_NONE;
 		m_pLibretroManagedActor->m_bgAllowShadows = false;
-		
 		m_targetFPS = 50;
-
-		//setup layer positions here
 		break;
 
 	default:
@@ -660,16 +834,22 @@ void LibretroManager::InitEmulator()
 
 	if (m_romNameFileList.Num() == 0)
 	{
+	
+#if PLATFORM_WINDOWS
 		MessageBox(NULL, (LPCWSTR)L"No game roms found.\nPut some in the atari2600 or nes dir first!\nCheck readme for which games are supported.",
 			(LPCWSTR)L"Add game roms!",
 			MB_ICONWARNING | MB_OK | MB_DEFAULT_DESKTOP_ONLY);
-		
+
 		return;
+#endif
 	}
 
 	if (g_loadStateOnFirstLoad && !g_partialRomNameToLoadOnStartup.empty())
 	{
 		SetRomToLoadByPartialFileName(g_partialRomNameToLoadOnStartup);
+
+		g_loadStateOnFirstLoad = false;
+		g_partialRomNameToLoadOnStartup = "";
 	}
 
 	SetEmulatorData((eEmulatorType) m_emulatorIDList[m_activeRomIndex]);
@@ -678,7 +858,15 @@ void LibretroManager::InitEmulator()
 	{
 		m_curRomName = toString(m_romNameFileList[m_activeRomIndex]);
 	}
-	strcpy_s(m_coreRenderFlags, "1111111");
+	else
+	{
+		LogMsg("Error, no roms found");
+
+		ShowStatusMessage("No roms found!", 100);
+
+		return;
+	}
+	strcpy(m_coreRenderFlags, "1111111");
 
 	if (!LoadCore(m_coreName.c_str()))
 	{
@@ -797,46 +985,6 @@ void LibretroManager::ResetRom()
 	SaveState(0);
 }
 
-void LibretroManager::LoadRomList()
-{
-
-	string romFileName;
-
-	FString FullPath = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*FPaths::ProjectDir());
-	m_rootPath = StringCast<ANSICHAR>(*FullPath).Get();
-	FString testPath = FullPath + "atari2600";
-
-	if (!FPaths::DirectoryExists(testPath))
-	{
-		m_rootPath += "../";
-		LogMsg("Adding ../ to path due to detected release dir layout");
-	}
-
-	m_romNameFileList.Empty();
-	m_emulatorIDList.Empty();
-
-	for (int i = 0; i < EMULATOR_COUNT; i++)
-	{
-		SetEmulatorData((eEmulatorType)i);
-		m_romPath = m_rootPath + m_romDir + "/";
-		//get list of roms and play the first one
-		int romCountBeforeAdding = m_romNameFileList.Num();
-		
-		IFileManager::Get().FindFiles(m_romNameFileList, ANSI_TO_TCHAR(m_romPath.c_str()), ANSI_TO_TCHAR(m_romFileExtension1.c_str()));
-		IFileManager::Get().FindFiles(m_romNameFileList, ANSI_TO_TCHAR(m_romPath.c_str()), ANSI_TO_TCHAR(m_romFileExtension2.c_str()));
-
-		int romsFound = m_romNameFileList.Num() - romCountBeforeAdding;
-
-		LogMsg("Scanning %s dir (for %s), found %d roms (%d total)", m_romPath.c_str(), m_coreName.c_str(), romsFound, m_romNameFileList.Num());
-
-		for (int j = 0; j < romsFound; j++)
-		{
-			m_emulatorIDList.Add(i);
-		}
-	} 
-
-}
-
 void LibretroManager::SetRomByIndex(int index)
 {
 	m_activeRomIndex = index;
@@ -850,6 +998,9 @@ void LibretroManager::Init(ALibretroManagerActor * pLibretroManagedActor)
 
 	LogMsg("Let's init the emu core we want from its dll!");
 	
+	//TODO stuff
+	/*
+
 	HMONITOR primaryHandle = MonitorFromWindow(GetActiveWindow(), MONITOR_DEFAULTTONEAREST);
 	UINT dpiX, dpiY;
 	HRESULT temp2 = GetDpiForMonitor(primaryHandle, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
@@ -860,6 +1011,8 @@ void LibretroManager::Init(ALibretroManagerActor * pLibretroManagedActor)
 			(LPCWSTR)L"Monitor scaling detected!",
 			MB_ICONWARNING | MB_OK | MB_DEFAULT_DESKTOP_ONLY);
 	}
+	*/
+
 	LoadRomList();
 	SetRomByIndex(C_DEFAULT_ROM_ID);
 	InitEmulator();
@@ -946,24 +1099,6 @@ void BlitCoreLayerToUnrealLayer(Layer3DSlice* pSrcLayer, LayerInfo* pDestLayer)
 		memcpy(pDst, pSrcLayer->m_image, pSrcLayer->m_height * pSrcLayer->m_pitchBytes);
 	}
 	
-	//pDestLayer->m_bUsedThisFrame = true;
-	//pDestLayer->SetLayerPosZ(pSrcLayer->m_distanceMod);
-	
-	//memset(pDst, 255, pSrcLayer->m_height * pSrcLayer->m_pitchBytes);
-	
-	/*
-	uint32 *pPixels32 = (uint32*) pDst;
-	
-	for (int y = 0; y < pSrcLayer->m_height; y++)
-	{
-		for (int x = 0; x < pSrcLayer->m_width; x++)
-		{
-			pPixels32[y* pSrcLayer->m_width + x] = MAKE_RGBA_UNREAL(255, 0, 0, 255);
-		}
-
-	}
-	*/
-
 }
 
 void retro_video_refresh_callback_ex(const void* data, unsigned width, unsigned height, size_t pitch, const void* extraData)
@@ -982,31 +1117,6 @@ void retro_video_refresh_callback_ex(const void* data, unsigned width, unsigned 
 		g_pLibretroManager->m_pLibretroManagedActor->GetLayer(i)->m_bUsedThisFrame = true;
 	}
 
-	/*
-	//check extra layer data
-	for (int i = 0; i < C_MAX_3D_LAYERS; i++)
-	{
-		if (pLayerInfo->m_layers[i].m_hasRGBAData)
-		{
-			//we should display this one
-			int layerID = g_pLibretroManager->m_pLibretroManagedActor->GetActiveLayerIDByDistanceMod(pLayerInfo->m_layers[i].m_distanceMod);
-			if (layerID == -1)
-			{
-				//create one if we can
-				layerID = g_pLibretroManager->m_pLibretroManagedActor->GetUnusedLayerID();
-			}
-
-			if (layerID != -1)
-			{
-				BlitCoreLayerToUnrealLayer(&pLayerInfo->m_layers[i], g_pLibretroManager->m_pLibretroManagedActor->GetLayer(layerID));
-			}
-			else
-			{
-				LogMsg("Not enough layers!");
-			}
-		}
-	}
-	*/
 }
 
 void retro_video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch)
@@ -1235,7 +1345,7 @@ void LibretroManager::ResetBlitInformation()
 
 void LibretroManager::RenderFrame(const char* pRenderFlags)
 {
-	strcpy_s(m_coreRenderFlags, pRenderFlags);
+	strcpy(m_coreRenderFlags, pRenderFlags);
 	m_core.retro_run(); 
 }
 

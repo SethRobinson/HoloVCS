@@ -10,7 +10,7 @@
 #include "Components/TextRenderComponent.h"
 #include "RTAudioBUffer.h"
 #include "HoloVCS.h"
-#include "Game/HoloPlayCapture.h"
+//#include "Game/HoloPlayCapture.h"
 #include "LibretroManagerActor.generated.h"
 
 void OnWasRestartedInEditor();
@@ -84,7 +84,7 @@ public:
 	// Sets default values for this actor's properties
 	ALibretroManagerActor();
 
-	bool SetupLayer(LayerInfo* pLayer, char* pActorName, int layerWidth, int layerHeight);
+	bool SetupLayer(LayerInfo* pLayer, char* pActorName, int layerWidth, int layerHeight, int layerID);
 	USynthComponentRTAudioBuffer* m_pRTAudioBufferComponent = NULL;
 	void SetSampleRate(int sampleRate);
 	void ScaleLayersXY(float scaleMod);
@@ -134,8 +134,9 @@ public:
 	LibretroManager m_libretroManager;
 	std::vector<LayerInfo> m_layerInfo;
 	
-	UPROPERTY(EditAnywhere)
-	AHoloPlayCapture *m_pHoloPlayCapture = NULL;
+	//UPROPERTY(EditAnywhere)
+//	AHoloPlayCapture *m_pHoloPlayCapture = NULL;
+	
 	UPROPERTY(EditAnywhere, Category = "Things to spawn")
 		TSubclassOf<AActor> m_layerTemplate;
 	UPROPERTY(EditAnywhere)

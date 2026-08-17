@@ -1,12 +1,25 @@
 #include "UnrealMisc.h"
 
+#if PLATFORM_ANDROID
+// #include "Android/AndroidMisc.h"
+
+#include <jni.h>
+#include <android/log.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <cstdio>
+
+#endif
+
+
 
 #ifdef WINAPI
 //#include <windows.h>
 
 #endif
 
-using namespace std;
+//using namespace std;
 
 //taken from Gamedeveloper magazine's InnerProduct (Sean Barrett 2005-03-15)
 
@@ -112,11 +125,11 @@ void AppendStringToFile(const string filename, const string text)
 	}
 	else*/
 	{
-		fopen_s(&fp, filename.c_str(), "ab");
+		fp = fopen( filename.c_str(), "ab");
 
 		if (!fp)
 		{
-			fopen_s(&fp, filename.c_str(), "wb");
+			fp = fopen( filename.c_str(), "wb");
 		}
 	}
 
@@ -164,6 +177,58 @@ void LogMsg(const char* traceStr, ...)
 }
 */
 
+#if PLATFORM_ANDROID
+
+// Function to get the external storage path
+const char* GetExternalStoragePath()
+{
+	return "/sdcard/Android/data/com.rtsoft.HoloVCS/files/";
+}
+void EnsureDirectoryExists(const char* path)
+{
+	struct stat st = { 0 };
+	if (stat(path, &st) == -1)
+	{
+		mkdir(path, 0700);
+	}
+}
+void LogMsg(const char* traceStr, ...)
+{
+	va_list argsVA;
+	const int logSize = 4096;
+	char buffer[logSize];
+	memset(buffer, 0, logSize);
+
+	va_start(argsVA, traceStr);
+	vsnprintf(buffer, logSize, traceStr, argsVA);
+	va_end(argsVA);
+
+	UE_LOG(LogTemp, Display, TEXT("HoloVCSLog: %s"), ANSI_TO_TCHAR(buffer));
+	__android_log_print(ANDROID_LOG_DEBUG, "HoloVCSLog", "%s", buffer);
+
+	const char* logDir = "/sdcard/Android/data/com.rtsoft.HoloVCS/files/";
+	EnsureDirectoryExists(logDir);
+
+	char logFilePath[512];
+	snprintf(logFilePath, sizeof(logFilePath), "%slog.txt", logDir);
+
+	int fd = open(logFilePath, O_CREAT | O_WRONLY | O_APPEND, 0644);
+	if (fd == -1)
+	{
+		__android_log_print(ANDROID_LOG_ERROR, "HoloVCSLog", "Failed to open log file: %s", strerror(errno));
+	}
+	else
+	{
+		write(fd, buffer, strlen(buffer));
+		write(fd, "\n", 1);
+		close(fd);
+		//__android_log_print(ANDROID_LOG_DEBUG, "HoloVCSLog", "Successfully wrote to log file");
+	}
+}
+
+
+#else
+
 
 void LogMsg(const char* traceStr, ...)
 {
@@ -181,34 +246,15 @@ void LogMsg(const char* traceStr, ...)
 	//OutputDebugString((LPCWSTR)"\n");
 #endif
 
-	UE_LOG(LogTemp, Display, TEXT("%s"), ANSI_TO_TCHAR(buffer));
+	UE_LOG(LogTemp, Display, TEXT("HoloVCSLog: %s"), ANSI_TO_TCHAR(buffer));
+
 
 	//Hack to aLso write out to our own logfile as shipping builds won't do it by default, assuming release dir structure here on Windows which is bad...
 	
 	AppendStringToFile("..\\..\\..\\log.txt",( string(buffer)+"\r\n").c_str());
 
-
 }
-
-void LogMsg(WIDECHAR* traceStr, ...)
-{
-	va_list argsVA;
-	const int logSize = 4096;
-	WIDECHAR buffer[logSize];
-	memset((void*)buffer, 0, logSize * sizeof(WIDECHAR));
-
-	va_start(argsVA, traceStr);
-	vswprintf(buffer, logSize, traceStr, argsVA);
-	va_end(argsVA);
-
-#ifdef WINAPI
-	//OutputDebugStringW((LPCWSTR)buffer);
-	//OutputDebugStringW((LPCWSTR)"\n");
 #endif
-
-	UE_LOG(LogTemp, Warning, TEXT("W: %s"), buffer);
-
-}
 
 UActorComponent* GetComponentByTag(const AActor* pRootActor, const FString& tagName)
 {
@@ -241,7 +287,7 @@ UActorComponent* GetComponentByTag(const AActor* pRootActor, const char* tagName
 }
 
 //returns first actor we happen to see with this tag
-AActor* GetActorByTag(UWorld* pWorld, char* tag)
+AActor* GetActorByTag(UWorld* pWorld, const char* tag)
 {
 
 	if (!pWorld)
@@ -267,7 +313,7 @@ AActor* GetActorByTag(UWorld* pWorld, char* tag)
 
 
 //Adds all actors with a certain tag to a passed in list
-void AddActorsByTag(TArray<AActor*> *pActors, UWorld* pWorld, char* tag)
+void AddActorsByTag(TArray<AActor*> *pActors, UWorld* pWorld, const char* tag)
 {
 	if (!pWorld)
 	{
@@ -285,7 +331,7 @@ void AddActorsByTag(TArray<AActor*> *pActors, UWorld* pWorld, char* tag)
 	}
 }
 
-int DeleteActorsByTag(UWorld* pWorld, char* tag)
+int DeleteActorsByTag(UWorld* pWorld, const char* tag)
 {
 	TArray<AActor*> actors;
 	AddActorsByTag(&actors, pWorld, tag);
@@ -306,7 +352,7 @@ int DeleteActorsByTag(UWorld* pWorld, char* tag)
 //the names shown in the editor, in a release build.  So use GetActorByTag instead I guess, and make sure you add a
 //tag in the actor section, not object
 
-AActor* GetActorByName(UWorld *pWorld, char *name)
+AActor* GetActorByName(UWorld *pWorld, const char *name)
 {
 	
 	if (!pWorld)
