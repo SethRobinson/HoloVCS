@@ -53,6 +53,56 @@ protected:
 	UPROPERTY(EditAnywhere)
 	float m_flatCameraMargin = 1.1f;
 
+	//---- Flat camera orbit: idle isometric sweep + mouse orbit.  Angles in degrees. ----
+
+	//Idle mode: how far the camera slowly sweeps left and right of center
+	UPROPERTY(EditAnywhere)
+	float m_autoOrbitYawRange = 30.0f;
+
+	//Idle mode: seconds for one full left-right-left sweep
+	UPROPERTY(EditAnywhere)
+	float m_autoOrbitPeriod = 24.0f;
+
+	//Idle mode: downward tilt of the view for the isometric look (negative = camera above, looking down)
+	UPROPERTY(EditAnywhere)
+	float m_autoOrbitPitch = -18.0f;
+
+	//Degrees of orbit per unit of mouse axis input.  Negate to invert.
+	UPROPERTY(EditAnywhere)
+	float m_mouseYawSensitivity = 3.0f;
+
+	UPROPERTY(EditAnywhere)
+	float m_mousePitchSensitivity = 3.0f;
+
+	//Mouse orbit hands the camera back to the idle sweep after this many seconds without movement
+	UPROPERTY(EditAnywhere)
+	float m_idleReturnDelay = 5.0f;
+
+	//Seconds the mouse-to-idle handback blend takes
+	UPROPERTY(EditAnywhere)
+	float m_returnBlendTime = 2.0f;
+
+	//Mouse orbit pitch is clamped to +/- this so we never flip over the poles
+	UPROPERTY(EditAnywhere)
+	float m_manualPitchLimit = 85.0f;
+
+	FBox m_layerBounds = FBox(ForceInit);
+	bool m_bLayerBoundsValid = false;
+	FVector m_camPivot = FVector::ZeroVector;
+	float m_camDist = 0;
+	float m_dispYaw = 0;   //what's actually on screen this frame
+	float m_dispPitch = 0;
+	float m_manualYaw = 0;
+	float m_manualPitch = 0;
+	float m_manualBlend = 0; //1 = mouse owns the camera, 0 = idle sweep owns it
+	float m_autoClock = 0;
+	float m_timeSinceMouseMove = 999;
+	float m_mouseDX = 0;
+	float m_mouseDY = 0;
+
+	void UpdateFlatCamera(float DeltaTime);
+	float ComputeFlatCameraFitDist(const FRotator& camRot) const;
+
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
@@ -73,6 +123,9 @@ public:
 	void Move_YAxis(float AxisValue);
 	void RMove_XAxis(float AxisValue);
 	void RMove_YAxis(float AxisValue);
+
+	void OnMouseX(float AxisValue);
+	void OnMouseY(float AxisValue);
 
 	void JoyPad_B_Pressed();
 	void JoyPad_B_Released();

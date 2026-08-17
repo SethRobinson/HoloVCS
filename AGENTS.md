@@ -53,11 +53,19 @@ restore point for a future 5.6 + Looking Glass build is the "UE 5.6 migration ba
 - Porting the plugin to 5.8 is possible but real work: its
   `LookingGlassSceneCaptureRendering.cpp` forks engine scene-capture internals that churn each release.
 - The flat camera: `APlayerPawn` owns a `UCameraComponent` root (FOV 14).
-  `FitFlatCameraToLayers()` (called at the end of `InitLayers`) auto-frames whatever layer stack the
-  current emulator spawned - essential because each system uses wildly different world scales
-  (NES layers are ~41 units, Atari ~445 units offset +69 in Y, VB ~310). A fixed camera distance can
-  only ever fit one system; the others look "black" (staring past the layers) or hugely zoomed.
-  When the LG plugin is active it takes over the viewport, so the pawn camera is inert on hardware.
+  `FitFlatCameraToLayers()` (called at the end of `InitLayers`) captures the layer stack's AABB -
+  essential because each system uses wildly different world scales (NES layers are ~41 units,
+  Atari ~445 units offset +69 in Y, VB ~310). `UpdateFlatCamera()` (Tick) then orbits the camera
+  around that AABB's center: idle mode is an isometric-ish view (pitch -18) with a slow +/-30
+  degree yaw sweep; any mouse movement takes over for free 360 orbit (pitch clamped +/-85), and
+  5 idle seconds later it blends back to the sweep. The fit distance is recomputed per frame from
+  the AABB corners for the current orientation (zoom out is instant so nothing ever crops, zoom
+  back in is eased). Orbit speeds/angles/sensitivities are EditAnywhere on APlayerPawn.
+  IMPORTANT: `UCameraComponent::FieldOfView` is the HORIZONTAL fov (engine default constraint is
+  AspectRatio_MaintainXFOV); vertical fov is derived from the live viewport aspect. Treating it as
+  vertical (plus a hardcoded 16:9) was the old bug that cropped the bottom of tall games like
+  Castlevania. When the LG plugin is active it takes over the viewport, so the pawn camera is
+  inert on hardware.
 
 ## Emulator cores (all three work, all dynamic DLLs)
 
@@ -108,8 +116,8 @@ LibretroManager.cpp.
   shows a "Target Upgrade Required" popup on every launch.
 - `Config/DefaultEngine.ini` has `Compiler=Default` under WindowsTargetSettings; do not pin a VS
   version there (the machine has VS2026, and pinning VisualStudio2022 breaks the build).
-- The map instance's stored root transform overrides class-default component transforms, which is why
-  the camera framing is applied additively in BeginPlay instead of via component defaults.
+- The map instance's stored root transform overrides class-default component transforms; the flat
+  camera ignores that by setting an absolute world transform every Tick (UpdateFlatCamera).
 
 ## Testing
 
@@ -164,6 +172,10 @@ top-level exe; the editor build logs to Saved/Logs/HoloVCS_Flat.log.
   (APP_NAME/APP_DIR/UE_DIR).
 - `BuildAndRunWin64Release.bat` is the local test loop: incremental Shipping cook/stage to
   `dist\win64_test` with roms included (never distribute that folder), then launches it.
+- Standing preference (Seth): after finishing code changes to the flat version, ALWAYS build the
+  Shipping test build (BuildAndRunWin64Release.bat) and end the handoff with a clickable link to
+  `dist\win64_test\Windows\HoloVCS.exe` so Seth can try it. Kill any instance you launched for
+  verification first.
 - `UploadReleaseToRTsoft.bat` SCPs the zip to rtsoft.com.
 - The Android port was dropped entirely (scripts, config, and the static-core hack that existed for
   it). If it ever comes back, the cores must ship as separate .so files there too, same GPL reason.

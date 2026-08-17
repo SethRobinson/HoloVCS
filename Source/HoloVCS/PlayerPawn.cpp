@@ -13,6 +13,9 @@
 #include "Components/DirectionalLightComponent.h"
 #include "Components/InputComponent.h"
 #include "Camera/CameraComponent.h"
+#include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
+#include "UnrealClient.h"
 
 // Sets default values
 APlayerPawn::APlayerPawn()
@@ -125,22 +128,111 @@ void APlayerPawn::FitFlatCameraToLayers()
 		box += FBox(vOrigin - vExtent, vOrigin + vExtent);
 	}
 
-	FVector vCenter = box.GetCenter();
+	m_layerBounds = box;
+	m_camPivot = box.GetCenter();
+	m_bLayerBoundsValid = true;
+	m_camDist = 0; //next update snaps straight out to whatever the new stack needs
+	UpdateFlatCamera(0.0f);
+
 	FVector vSize = box.GetSize();
+	LogMsg("Flat camera framed layers: center %.0f,%.0f,%.0f size %.0f x %.0f, camera dist %.0f",
+		m_camPivot.X, m_camPivot.Y, m_camPivot.Z, vSize.Y, vSize.Z, m_camDist);
+}
 
-	//layers stack along X (depth), the image lives in the YZ plane.  Pull back far enough on X that
-	//the whole thing fits our narrow FOV, checking both height and width
-	const float aspect = 16.0f / 9.0f;
-	float halfFOVTan = FMath::Tan(FMath::DegreesToRadians(m_pFlatCamera->FieldOfView * 0.5f));
-	float distForHeight = ((vSize.Z * 0.5f) * m_flatCameraMargin) / halfFOVTan;
-	float distForWidth = ((vSize.Y * 0.5f) * m_flatCameraMargin) / (halfFOVTan * aspect);
-	float dist = FMath::Max(distForHeight, distForWidth);
+//Distance from the pivot, along the view direction, so the whole layer AABB fits on screen at this
+//camera orientation.  UE's FieldOfView is the HORIZONTAL fov (AspectRatio_MaintainXFOV is the engine
+//default), vertical follows from the real viewport aspect - the old fit had that backwards and also
+//hardcoded 16:9, which is why tall games like Castlevania lost their bottom tiles.
+float APlayerPawn::ComputeFlatCameraFitDist(const FRotator& camRot) const
+{
+	float aspect = 16.0f / 9.0f;
+	if (GEngine && GEngine->GameViewport && GEngine->GameViewport->Viewport)
+	{
+		FIntPoint viewSize = GEngine->GameViewport->Viewport->GetSizeXY();
+		if (viewSize.X > 0 && viewSize.Y > 0)
+		{
+			aspect = (float)viewSize.X / (float)viewSize.Y;
+		}
+	}
 
-	m_pFlatCamera->SetWorldLocation(FVector(box.Min.X - dist, vCenter.Y, vCenter.Z));
-	m_pFlatCamera->SetWorldRotation(FRotator(0, 0, 0)); //straight down +X at the layer stack
+	float tanHalfH = FMath::Tan(FMath::DegreesToRadians(m_pFlatCamera->FieldOfView * 0.5f));
+	float tanHalfV = tanHalfH / aspect;
 
-	LogMsg("Flat camera framed layers: center %.0f,%.0f,%.0f size %.0f x %.0f, camera pulled back %.0f",
-		vCenter.X, vCenter.Y, vCenter.Z, vSize.Y, vSize.Z, dist);
+	FRotationMatrix mat(camRot);
+	FVector vFwd = mat.GetUnitAxis(EAxis::X);
+	FVector vRight = mat.GetUnitAxis(EAxis::Y);
+	FVector vUp = mat.GetUnitAxis(EAxis::Z);
+
+	float dist = 10.0f;
+	for (int corner = 0; corner < 8; corner++)
+	{
+		FVector v(
+			(corner & 1) ? m_layerBounds.Max.X : m_layerBounds.Min.X,
+			(corner & 2) ? m_layerBounds.Max.Y : m_layerBounds.Min.Y,
+			(corner & 4) ? m_layerBounds.Max.Z : m_layerBounds.Min.Z);
+		FVector vOff = v - m_camPivot;
+
+		float fwd = (float)(vOff | vFwd);
+		dist = FMath::Max(dist, (FMath::Abs((float)(vOff | vRight)) * m_flatCameraMargin) / tanHalfH - fwd);
+		dist = FMath::Max(dist, (FMath::Abs((float)(vOff | vUp)) * m_flatCameraMargin) / tanHalfV - fwd);
+	}
+
+	return dist;
+}
+
+void APlayerPawn::UpdateFlatCamera(float DeltaTime)
+{
+	if (!m_pFlatCamera || !m_bLayerBoundsValid) return;
+
+	float dx = m_mouseDX;
+	float dy = m_mouseDY;
+	m_mouseDX = m_mouseDY = 0;
+
+	if (FMath::Abs(dx) + FMath::Abs(dy) > 0.02f)
+	{
+		if (m_manualBlend < 1.0f)
+		{
+			//grab the camera from wherever the idle sweep left it so there's no pop
+			m_manualYaw = m_dispYaw;
+			m_manualPitch = m_dispPitch;
+			m_manualBlend = 1.0f;
+		}
+		m_manualYaw = FRotator::NormalizeAxis(m_manualYaw + dx * m_mouseYawSensitivity);
+		m_manualPitch = FMath::Clamp(m_manualPitch - dy * m_mousePitchSensitivity, -m_manualPitchLimit, m_manualPitchLimit);
+		m_timeSinceMouseMove = 0;
+	}
+	else
+	{
+		m_timeSinceMouseMove += DeltaTime;
+		if (m_manualBlend > 0 && m_timeSinceMouseMove >= m_idleReturnDelay)
+		{
+			m_manualBlend = FMath::Max(0.0f, m_manualBlend - DeltaTime / FMath::Max(0.1f, m_returnBlendTime));
+		}
+	}
+
+	//the idle sweep keeps running underneath the mouse mode so the handback has something live to blend to
+	m_autoClock += DeltaTime;
+	float autoYaw = FMath::Sin(m_autoClock * (2.0f * PI) / FMath::Max(1.0f, m_autoOrbitPeriod)) * m_autoOrbitYawRange;
+	float autoPitch = m_autoOrbitPitch;
+
+	float blend = FMath::SmoothStep(0.0f, 1.0f, m_manualBlend);
+	m_dispYaw = FRotator::NormalizeAxis(autoYaw + FRotator::NormalizeAxis(m_manualYaw - autoYaw) * blend);
+	m_dispPitch = FMath::Lerp(autoPitch, m_manualPitch, blend);
+
+	FRotator camRot(m_dispPitch, m_dispYaw, 0);
+	float wantDist = ComputeFlatCameraFitDist(camRot);
+
+	if (wantDist > m_camDist)
+	{
+		m_camDist = wantDist; //zoom out instantly, never crop the picture
+	}
+	else
+	{
+		m_camDist = FMath::FInterpTo(m_camDist, wantDist, DeltaTime, 0.5f); //ease back in slowly
+	}
+
+	m_pFlatCamera->SetWorldLocation(m_camPivot - camRot.Vector() * m_camDist);
+	m_pFlatCamera->SetWorldRotation(camRot);
 }
 
 void APlayerPawn::SetBGPic()
@@ -162,6 +254,8 @@ void APlayerPawn::SetBGPic()
 void APlayerPawn::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	UpdateFlatCamera(DeltaTime);
 }
 
 const float C_JOYSTICK_DEAD_ZONE = 0.3f;
@@ -192,6 +286,16 @@ void APlayerPawn::RMove_YAxis(float AxisValue)
 	if (!g_pLibretroManager) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L3] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L2] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
+}
+
+void APlayerPawn::OnMouseX(float AxisValue)
+{
+	m_mouseDX += AxisValue;
+}
+
+void APlayerPawn::OnMouseY(float AxisValue)
+{
+	m_mouseDY += AxisValue;
 }
 
 void APlayerPawn::JoyPad_B_Pressed()
@@ -513,6 +617,10 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(EKeys::Eight, IE_Pressed, this, &APlayerPawn::OnNum8Key);
 	PlayerInputComponent->BindKey(EKeys::P, IE_Pressed, this, &APlayerPawn::OnPKey);
 #endif
+	//mouse orbits the flat camera around the layer diorama, see UpdateFlatCamera
+	InputComponent->BindAxisKey(EKeys::MouseX, this, &APlayerPawn::OnMouseX);
+	InputComponent->BindAxisKey(EKeys::MouseY, this, &APlayerPawn::OnMouseY);
+
 	// Respond every frame to the values of our two movement axes, "MoveX" and "MoveY".
 	InputComponent->BindAxis("MoveX", this, &APlayerPawn::Move_XAxis);
 	InputComponent->BindAxis("MoveY", this, &APlayerPawn::Move_YAxis);
