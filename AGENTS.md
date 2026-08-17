@@ -25,7 +25,7 @@ holographic displays. Author: Seth Robinson (rtsoft.com).
 | File | Purpose | Engine |
 |---|---|---|
 | `HoloVCS_Flat.uproject` | Flat build for a normal monitor, no plugin. Day-to-day dev. | UE 5.8 (`F:\UnrealEngine\UE_5.8`) |
-| `HoloVCS.uproject` | Looking Glass hardware build (plugin enabled) | UE 5.6 only; 5.6 is NOT currently installed |
+| `HoloVCS.uproject` | Looking Glass hardware build (vendored ported plugin enabled) | UE 5.8 (same engine) |
 
 Build the flat editor target from the command line:
 
@@ -33,25 +33,47 @@ Build the flat editor target from the command line:
 F:\UnrealEngine\UE_5.8\Engine\Build\BatchFiles\Build.bat HoloVCSEditor Win64 Development -project="f:\Unreal\HoloVCS_UE56\HoloVCS_Flat.uproject" -waitmutex
 ```
 
-Run it: `F:\UnrealEngine\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe HoloVCS_Flat.uproject -game -windowed -resx=1280 -resy=720`
-The default map is `Content/Maps/NewMap_Flat.umap`; the hardware map `NewMap.umap` still contains the
-LookingGlassCapture actor and should NOT be resaved in 5.8 (the actor's class is missing there and a
-resave would strip it).
+The hardware variant builds the same way with `-project="f:\Unreal\HoloVCS_UE56\HoloVCS.uproject"`
+(also verified with `HoloVCS Win64 Shipping`).
+
+Run flat: `F:\UnrealEngine\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe HoloVCS_Flat.uproject -game -windowed -resx=1280 -resy=720`
+The default map is `Content/Maps/NewMap_Flat.umap`. The hardware map `NewMap.umap` (project root
+`/Game/NewMap`) holds the LookingGlassCapture actor; its class exists again now that the plugin is
+vendored, so it loads fine in 5.8.
 
 **One-way door:** any .uasset/.umap resaved by the 5.8 editor becomes unreadable to UE 5.6. The
-restore point for a future 5.6 + Looking Glass build is the "UE 5.6 migration baseline" commit.
+restore point for the old 5.6 setup is the "UE 5.6 migration baseline" commit. NewMap.umap is still
+in its 5.6-saved form; resaving it in 5.8 is now safe content-wise (the capture actor class exists)
+but burns the 5.6 escape hatch like any other resave.
 
-## Looking Glass status
+## Looking Glass status (ported to 5.8, vendored)
 
-- The plugin supports max UE 5.6 (latest release 2.1.1, open source:
-  github.com/Looking-Glass/Looking-Glass-Unreal-Plugin). No 5.7/5.8 release exists.
-- A full copy WITH source survives in the engine remnant at
-  `F:\UnrealEngine\UE_5.6\Engine\Plugins\LookingGlass` (the 5.6 engine itself was uninstalled).
+- The plugin is VENDORED in this repo at `Plugins/LookingGlass` (MIT licensed), ported to UE 5.8 in
+  Aug 2026. Base: upstream `feat/5.6` branch commit 9472c22 (the real source of the 2.1.1 release;
+  the 2.1.1 GitHub tag confusingly points at main, and the uplugin VersionName still says "1.6").
+  Upstream: github.com/Looking-Glass/Looking-Glass-Unreal-Plugin - still no official 5.7/5.8 release.
+- The old 1.6-era copy in the engine remnant at `F:\UnrealEngine\UE_5.6\Engine\Plugins\LookingGlass`
+  is now only of historical interest.
 - The C++ game module has ZERO compile-time dependency on the plugin. The only coupling is the
   uproject plugin entry, the capture actor in NewMap.umap, and the
   `[/Script/LookingGlassRuntime.LookingGlassSettings]` block in DefaultEngine.ini.
-- Porting the plugin to 5.8 is possible but real work: its
-  `LookingGlassSceneCaptureRendering.cpp` forks engine scene-capture internals that churn each release.
+- 5.8 port changes (all in Plugins/LookingGlass, look for `UE_VERSION_OLDER_THAN` / 5.8 comments):
+  PostInterpChange removed (guarded out for 5.7+); windows.h macro leak from bridge headers fixed
+  with AllowWindowsPlatformTypes wrapper in LookingGlassBridge.cpp; RenderTarget member became
+  TObjectPtr (incremental-GC crash otherwise); FSceneViewport::Create replaces deprecated ctor;
+  GetOnPostEngineInit()/EWindowType::Normal deprecation fixes; SCOPED_GPU_STAT removed (no-op in
+  5.8); FIntPoint Resolution default-init (5.8 CDO determinism check); Shipping-only include fixes
+  (RendererInterface.h, ModuleManager.h, WITH_EDITOR guard on ISequencerObjectChangeListener.h);
+  null-check GUnrealEd in ViewportClient Draw (crashed editor-binary -game runs, pre-existing bug).
+- Verified without hardware (Bridge running, no display): module loads, Bridge SDK connects and
+  enumerates calibration templates, logs "No Looking Glass displays found" gracefully, NewMap loads
+  with the capture actor, plugin takes over the game viewport (draws black without a device; that is
+  expected - use the flat uproject for screen dev). The surprising good news: the scene-capture fork
+  (`LookingGlassSceneCaptureRendering.cpp`) compiled against 5.8 without changes.
+- NOT yet verified: actual holographic output (quilt on device) - needs the display plugged in.
+  The F9 quilt-screenshot hotkey did not respond in -game main-viewport mode without a device.
+- Benign noise: "Failed to load ... LookingGlassCore.dll" at startup is upstream legacy (the DLL
+  never shipped); Bridge does the real work.
 - The flat camera: `APlayerPawn` owns a `UCameraComponent` root (FOV 14).
   `FitFlatCameraToLayers()` (called at the end of `InitLayers`) captures the layer stack's AABB -
   essential because each system uses wildly different world scales (NES layers are ~41 units,
@@ -118,6 +140,14 @@ LibretroManager.cpp.
   version there (the machine has VS2026, and pinning VisualStudio2022 breaks the build).
 - The map instance's stored root transform overrides class-default component transforms; the flat
   camera ignores that by setting an absolute world transform every Tick (UpdateFlatCamera).
+- Third-party headers that include windows.h/Winsock2.h must be wrapped in
+  `Windows/AllowWindowsPlatformTypes.h` + `Windows/HideWindowsPlatformTypes.h`. A hand-rolled
+  #undef list is not enough on 5.8: winnt.h's InterlockedAdd macro breaks engine headers
+  (TypedElementData.h) later in the same unity TU.
+- After a crash of a launched game/editor instance, CrashReportClientEditor.exe keeps the crashing
+  module's DLL open and the next link fails with LNK1104; kill that process before rebuilding.
+- An editor-binary `-game` run has WITH_EDITOR code compiled in but GUnrealEd == nullptr; any
+  WITH_EDITOR block reachable in game mode must null-check it.
 
 ## Testing
 

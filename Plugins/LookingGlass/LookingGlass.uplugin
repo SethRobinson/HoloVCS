@@ -1,0 +1,29 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.6",
+  "FriendlyName": "Looking Glass",
+  "Description": "Looking Glass Plugin for Unreal Engine 5",
+  "Category": "Light Field Display",
+  "CreatedBy": "Looking Glass Factory",
+  "CreatedByURL": "https://lookingglassfactory.com",
+  "DocsURL": "",
+  "MarketplaceURL": "",
+  "SupportURL": "",
+  "IsBetaVersion": false,
+  "Installed": false,
+  "Modules": [
+    {
+      "Name": "LookingGlassRuntime",
+      "Type": "Runtime",
+      "LoadingPhase": "PostConfigInit",
+      "WhitelistPlatforms": [ "Win64" ]
+    },
+    {
+      "Name": "LookingGlassEditor",
+      "Type": "Editor",
+      "LoadingPhase": "Default",
+      "WhitelistPlatforms": [ "Win64" ]
+    }
+  ]
+}

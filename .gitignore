@@ -61,7 +61,6 @@ dist/*
 HoloVCS/*
 Build/bin
 !Build/*/PakBlacklist*.txt
-Plugins/*
 
 # Don't ignore icon files in Build
 !Build/**/*.ico
