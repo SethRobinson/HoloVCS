@@ -2,6 +2,7 @@
 #include "StatusDisplayActor.h"
 #include "Shared/UnrealMisc.h"
 #include "Components/TextRenderComponent.h"
+#include "Engine/Engine.h"
 
 // Sets default values
 AStatusDisplayActor::AStatusDisplayActor()

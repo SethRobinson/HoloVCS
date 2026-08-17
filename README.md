@@ -18,20 +18,27 @@ Check the user page linked above for which games are currently supported.
 
 You a developer and want to compile the project?  Read on
 
-**Steps to compile**
+**Two versions from one source**
 
-* You should have Visual Studio 2022 installed (I use the free community edition)
-* You should have Unreal Engine installed.  (I used 4.27.2)
-* Download the [Holoplay plugin for Unreal Engine](https://lookingglassfactory.com/software)
-* Created a plugins subdir in the HoloVCS dir and drag the Holoplay folder into it
-* Contact Seth to get two missing source files - (SynthComponentSethHack.cpp and SynthComponentSethHack.h) - You must have accepted the UE4 developer license before I can share those as they contain engine code, it's a legal thing.  What am I doing with engine code? It's a method I used to work around a UE4 bug with changing audio sample rate on the fly, an alternative is you can just rename things to use SynthComponent instead, it's pretty easy to do, you just want be able to change the sample rate of the synth generator buffer.
-* Right click the HoloVCS.uproject file and choose "Generate VStudio project"
-* Open the HoloVCS.sln file and make sure the active project is HoloVCS 64bit, set to Development_Editor and press F5 to run.
+The project now has two .uproject files sharing the same Source/ and Content/:
 
-That should do it! It should work and warn you about a missing .rom file which you should add.
+* `HoloVCS_Flat.uproject` - Renders to a normal monitor with a regular camera (no special hardware needed). Uses Unreal Engine 5.8. This is the one to use for day to day dev and testing.
+* `HoloVCS.uproject` - The Looking Glass hardware version. The Looking Glass plugin only supports up to UE 5.6 (no 5.7/5.8 release exists as of this writing), so using this requires installing UE 5.6 and the [Looking Glass Unreal plugin](https://github.com/Looking-Glass/Looking-Glass-Unreal-Plugin). Warning: assets resaved by the 5.8 editor can't be opened in 5.6 anymore, so if you go back to 5.6 use content from the "UE 5.6 migration baseline" commit or earlier.
 
-It uses special version of stella_libretro.dll which is included in Binaries/Win64.  To build this, I checked out [Stella](https://github.com/stella-emu/stella) and then made a few small hacks so we could do the 3d stuff.  Those changes I made are the .dif file in the [StellaModifications](https://github.com/SethRobinson/HoloVCS/blob/main/StellaModifications/StellaModification.dif) dir in case you want to build your own version.
-For NES support, it uses a barely modified version of fceumm_libretro.dll, I added a way to enable/disable bg/sprite rendering.
+**Steps to compile (flat version)**
+
+* You should have Visual Studio 2022 or newer installed (I use the free community edition)
+* You should have Unreal Engine 5.8 installed
+* Right click the HoloVCS_Flat.uproject file and choose "Generate Visual Studio project files"
+* Open the HoloVCS.sln file, set to Development Editor and press F5 to run, or just double click HoloVCS_Flat.uproject to open the editor
+
+NES emulation (FCEUmm) is statically compiled into the project from Source/HoloVCS/nes_core_src, so NES games work with no extra DLLs. It should warn you about missing .rom files which you should add (nes, atari2600 and vb dirs in the project root).
+
+Atari 2600 and Virtual Boy currently need their patched libretro DLLs (see below) and the static core gate in LibretroManager.cpp relaxed; see AGENTS.md for the details.
+
+It uses a special version of stella_libretro.dll.  To build this, I checked out [Stella](https://github.com/stella-emu/stella) and then made a few small hacks so we could do the 3d stuff.  Those changes I made are the .dif file in the [StellaModifications](https://github.com/SethRobinson/HoloVCS/blob/main/StellaModifications/StellaModification.dif) dir in case you want to build your own version.
+For NES support, it uses a barely modified version of FCEUmm, I added a way to enable/disable bg/sprite rendering.
+For Virtual Boy, it uses a modified beetle-vb core that returns pre-split 3D layers (see HoloVB.h for the shared struct).
 
 
 **Cool stuff to have**
@@ -51,4 +58,5 @@ Credits and links
 - Can't get enough Pitfall!? Who the heck can?!  Check out my [Atari console that runs Pitfall! off a piece of paper](https://www.codedojo.com/?p=2251)
 - Atari 2600 emulation via [Stella](https://github.com/stella-emu/stella)
 - NES emulation via [FCEUmm](https://docs.libretro.com/library/fceumm)
+- Virtual Boy emulation via [Beetle VB](https://github.com/libretro/beetle-vb-libretro)
 - Moon image by Stephen Rahn [Public domain license](https://www.flickr.com/photos/srahn/16542943668/in/photostream)

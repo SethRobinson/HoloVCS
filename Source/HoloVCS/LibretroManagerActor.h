@@ -4,6 +4,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Engine/Texture2D.h"
+#include "RHITypes.h" //FUpdateTextureRegion2D
 #include "Shared/UnrealMisc.h"
 #include "LibretroManager.h"
 #include "Engine/TextRenderActor.h"

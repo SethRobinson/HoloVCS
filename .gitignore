@@ -92,5 +92,9 @@ HoloVCS_Win64.zip
 # Per-machine secrets (Android signing etc.)
 Config/UserEngine.ini
 
+# Commercial fonts can't be redistributed (Frutiger is a Monotype typeface)
+Media/*.otf
+Media/*.ttf
+
 # Salvaged prebuilt emulator core DLLs (also recoverable from git history)
 prebuilt_cores/

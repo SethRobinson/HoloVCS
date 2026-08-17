@@ -7,15 +7,25 @@
 #include "StatusDisplayActor.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "Materials/Material.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/DirectionalLightComponent.h"
+#include "Components/InputComponent.h"
+#include "Camera/CameraComponent.h"
 
 // Sets default values
 APlayerPawn::APlayerPawn()
 {
  	// Set this pawn to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
+
+	//14 degrees at ~1221 units matches the LookingGlass capture's default framing (Size 150, dist = Size/tan(FOV/2)).
+	//Move/rotate the pawn in the level to aim it, it's the root component.
+	m_pFlatCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FlatCamera"));
+	RootComponent = m_pFlatCamera;
+	m_pFlatCamera->SetFieldOfView(14.0f);
+
 	ConstructorHelpers::FObjectFinder<UMaterial> newMat(TEXT("/Game/Textures/castlevania_backdrop_Mat"));
 	
 	//make sure it was found
@@ -35,6 +45,13 @@ APlayerPawn::APlayerPawn()
 void APlayerPawn::BeginPlay()
 {
 	Super::BeginPlay();
+
+	//The pawn is placed right at the layer stack in the map, back the camera off so the whole diorama is framed
+	if (m_pFlatCamera && m_flatCameraPullBack != 0)
+	{
+		m_pFlatCamera->AddWorldOffset(m_pFlatCamera->GetForwardVector() * -m_flatCameraPullBack
+			+ m_pFlatCamera->GetUpVector() * m_flatCameraRaise);
+	}
 
 	auto crap = GetActorByTag(GetWorld(), "LayerBG");
 	if (crap != NULL)
@@ -123,26 +140,28 @@ const float C_JOYSTICK_DEAD_ZONE = 0.3f;
 
 void APlayerPawn::Move_XAxis(float AxisValue)
 {
+	if (!g_pLibretroManager) return; //axis events fire every frame, even during startup/teardown when there's no manager
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_LEFT] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_RIGHT] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
 }
 
 void APlayerPawn::Move_YAxis(float AxisValue)
 {
-	
+	if (!g_pLibretroManager) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_UP] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_DOWN] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
 }
 
 void APlayerPawn::RMove_XAxis(float AxisValue)
 {
+	if (!g_pLibretroManager) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R2] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R3] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
 }
 
 void APlayerPawn::RMove_YAxis(float AxisValue)
 {
-
+	if (!g_pLibretroManager) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L3] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L2] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
 }

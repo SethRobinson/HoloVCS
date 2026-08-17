@@ -10,7 +10,7 @@ public class HoloVCSTarget : TargetRules
         bOverrideBuildEnvironment = true;
         //bUseLoggingInShipping = true;
         Type = TargetType.Game;
-        DefaultBuildSettings = BuildSettingsVersion.V2;
+        DefaultBuildSettings = BuildSettingsVersion.V7; //UE 5.8 wants V7, keeps the "Target Upgrade Required" popup away
         IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
 
         //the following arguements should only be set for the windows build

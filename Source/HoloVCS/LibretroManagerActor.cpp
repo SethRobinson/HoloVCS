@@ -4,6 +4,11 @@
 #include "PlayerPawn.h"
 
 #include "Components/DirectionalLightComponent.h"
+#include "Components/MeshComponent.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Engine/Engine.h"
+#include "TimerManager.h"
 
 EPixelFormat TEX_PIXEL_FORMAT = EPixelFormat::PF_B8G8R8A8;
 // Sets default values

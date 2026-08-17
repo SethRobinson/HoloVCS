@@ -2,6 +2,8 @@
 #include "LibretroManagerActor.h"
 #include "PlayerPawn.h"
 #include "StatusDisplayActor.h" //so we can show messages on screen
+#include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
 
 #if PLATFORM_ANDROID
 #include "Misc/Paths.h"
@@ -98,7 +100,11 @@ LibretroManager::LibretroManager()
 LibretroManager::~LibretroManager()
 {
 	Kill();
-	g_pLibretroManager = NULL;
+
+	//Only clear the global if we're actually the one it points to.  Stale copies exist inside actor CDOs and
+	//blueprint reinstancing garbage, and when GC purges one of those (first purge is ~61 secs in) it must not
+	//null the global out from under the live instance.  (That was a crash on 5.8.)
+	if (g_pLibretroManager == this) g_pLibretroManager = NULL;
 
 	for (int i = 0; i < C_SAVE_STATE_COUNT; i++)
 	{

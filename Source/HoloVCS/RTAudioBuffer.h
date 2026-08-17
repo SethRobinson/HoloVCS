@@ -53,7 +53,7 @@ public:
     virtual ~RTBufferGenerator();
 
     //~ Begin FSoundGenerator
-    virtual int32 GetNumChannels() { return NumChannels; };
+    virtual int32 GetNumChannels() const override { return NumChannels; };
     virtual int32 OnGenerateAudio(float* OutAudio, int32 NumSamples) override;
     //~ End FSoundGenerator
 

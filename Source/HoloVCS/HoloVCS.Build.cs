@@ -27,7 +27,7 @@ public class HoloVCS : ModuleRules
 
         }
 
-        bEnableUndefinedIdentifierWarnings = false;
+        CppCompileWarningSettings.UndefinedIdentifierWarningLevel = WarningLevel.Off;
         if (Target.Platform == UnrealTargetPlatform.Android)
         {
             PublicDefinitions.Add("__ANDROID__=1"); // Define Android platform
@@ -57,24 +57,7 @@ public class HoloVCS : ModuleRules
         PublicDefinitions.Add("RT_STATIC_CORE=1"); // If set, we won't load core .dlls, but expect things to be statically linked instead
         PublicDefinitions.Add("__USE_LARGEFILE=0"); // Define __USE_LARGEFILE
 
-        // Add all .c files from the specified directory to be compiled
-        string NesCorePath = Path.Combine(ModuleDirectory, "nes_core_src");
-        string[] SourceFiles = Directory.GetFiles(NesCorePath, "*.c", SearchOption.AllDirectories);
-
-        foreach (string SourceFile in SourceFiles)
-        {
-            RuntimeDependencies.Add(SourceFile);
-            ExternalDependencies.Add(SourceFile);
-        }
-
-        // Ensure all .c files are added as source files for compilation
-        foreach (string SourceFile in SourceFiles)
-        {
-            if (Path.GetExtension(SourceFile).Equals(".c", System.StringComparison.InvariantCultureIgnoreCase))
-            {
-                PublicIncludePaths.Add(Path.GetDirectoryName(SourceFile));
-            }
-        }
-
+        // Note: UBT auto-globs the .c files under nes_core_src for compilation; nothing to add here.
+        // (An old loop stuffed all of them into RuntimeDependencies, which staged raw C source into builds.)
     }
 }

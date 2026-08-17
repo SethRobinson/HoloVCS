@@ -8,8 +8,10 @@
 #include "GameFramework/Pawn.h"
 #include "PlayerPawn.generated.h"
 
+class UMaterial;
 class UMaterialInstanceDynamic;
 class UStaticMeshComponent;
+class UCameraComponent;
 
 
 UCLASS()
@@ -41,6 +43,20 @@ protected:
 
 	UPROPERTY()
 	UStaticMeshComponent* m_pMesh = NULL;
+
+	//Only used when the LookingGlass plugin isn't active (flat/normal monitor build), the plugin's capture actor
+	//takes over the viewport when it is.  Narrow FOV pulled way back so the layer parallax reads like the real device.
+	UPROPERTY(VisibleAnywhere)
+	UCameraComponent* m_pFlatCamera = NULL;
+
+	//How far BeginPlay slides the camera back from the pawn's placed position, along where it's facing.
+	//The layer stack is only ~30 units tall, so ~200 frames it nicely with the 14 degree FOV.  Set 0 to disable.
+	UPROPERTY(EditAnywhere)
+	float m_flatCameraPullBack = 200.0f;
+
+	//BeginPlay also slides the camera up this much (the layer content sits a bit above the pawn)
+	UPROPERTY(EditAnywhere)
+	float m_flatCameraRaise = 3.0f;
 
 public:	
 	// Called every frame

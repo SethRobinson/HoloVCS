@@ -10,7 +10,7 @@ public class HoloVCSEditorTarget : TargetRules
 		Type = TargetType.Editor;
         //bUseLoggingInShipping = true;
         IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
-        DefaultBuildSettings = BuildSettingsVersion.V2;
+        DefaultBuildSettings = BuildSettingsVersion.V7; //UE 5.8 wants V7, keeps the "Target Upgrade Required" popup away
 
         ExtraModuleNames.AddRange( new string[] { "HoloVCS" } );
         bOverrideBuildEnvironment = true;

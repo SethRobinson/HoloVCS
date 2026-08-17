@@ -1,0 +1,22 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.8",
+	"Category": "",
+	"Description": "Flat-screen (non Looking Glass) variant for dev/testing without the holographic hardware. Shares Source/ and Content/ with HoloVCS.uproject.",
+	"Modules": [
+		{
+			"Name": "HoloVCS",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "LookingGlass",
+			"Enabled": false
+		}
+	]
+}

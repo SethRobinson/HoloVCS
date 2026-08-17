@@ -1,4 +1,5 @@
 call ..\base_setup.bat
 SET APP_NAME=HoloVCS
-SET APP_DIR=HoloVCS_UE53
+SET APP_DIR=HoloVCS_UE56
 SET APP_PATH=%PROJECT_DIR%\%APP_DIR%
+SET UE_DIR=F:\UnrealEngine\UE_5.8
