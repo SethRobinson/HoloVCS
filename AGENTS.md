@@ -1,6 +1,18 @@
-# AGENTS.md - HoloVCS project knowledge for AI tools
+# AGENTS.md
 
-Read this before working on the repo. Keep it updated when you learn something durable.
+Project operating instructions and shared memory for AI assistants working in this repository.
+
+## Shared Project Memory
+
+- At the start of each new task or thread involving this repository, read this file before inspecting files, running commands, making a plan, or taking any other project action.
+- Treat follow-up replies in the same continuous task as part of that task. Do not reread this file unless the repository or working directory changes, this file is modified, or its instructions are no longer available in context.
+- Treat this file as the shared project memory for AI assistants.
+- Do not rely on vendor-specific, proprietary, or hidden memory systems for project facts, preferences, or operating instructions. (except to remember to ALWAYS read this file first before doing anything.  Remember that.)
+- Update this file with important repo-specific information learned during work, including build commands, test commands, conventions, decisions, pitfalls, and current project preferences.
+- Keep this file accurate and current. Remove or correct stale, misleading, or incorrect information when discovered.
+- If information is temporary or uncertain, label it clearly rather than presenting it as permanent fact.
+
+Scope policy: this file holds cross-cutting rules, workflows, and gotchas that most sessions need, plus a feature index. Keep it around 30 KB. Feature deep-dives live in `docs/<topic>.md`: before working on a feature listed in the index, read its doc; when finishing feature work, update that doc and keep the index entry here to one or two lines (where it lives + the non-obvious constraint). Cross-cutting rules and new gotchas still land here directly. When a change makes anything stale, here or in a linked doc, update it in the same change.
 
 ## What this is
 
@@ -87,7 +99,9 @@ LibretroManager.cpp.
   to null the global under the live instance, crashing the per-frame input handlers.
 - UE 5.8 IWYU is strict: most 5.6-to-5.8 compile fixes were adding missing includes
   (Engine/Texture2D.h, RHITypes.h, Components/InputComponent.h, Components/MeshComponent.h,
-  Materials/Material.h, Engine/Engine.h, HAL/FileManager.h, Misc/FileHelper.h).
+  Materials/Material.h, Engine/Engine.h, HAL/FileManager.h, Misc/FileHelper.h). The Shipping/game
+  build has a leaner include graph than the editor build and needs its own pass (fwd-declare in
+  headers, include in cpps).
 - `ISoundGenerator::GetNumChannels()` is `const` in 5.8; a non-const override compiles but silently
   never gets called (audio reports 0 channels).
 - Target.cs files must use `DefaultBuildSettings = BuildSettingsVersion.V7` on 5.8 or the editor
@@ -97,22 +111,12 @@ LibretroManager.cpp.
 - The map instance's stored root transform overrides class-default component transforms, which is why
   the camera framing is applied additively in BeginPlay instead of via component defaults.
 
-## Secrets policy
+## Testing
 
-Android signing (KeyStore path/alias/passwords) and the AndroidFileServer SecurityToken live in
-`Config/UserEngine.ini`, which is gitignored. NEVER put them in Config/DefaultEngine.ini or any
-tracked file; this repo has a public GitHub remote. The keystore file itself lives outside the repo
-(`D:\projects\protonGITFull\AppleStuff\android\`) and must stay out of git everywhere.
-
-## Packaging / release
-
-- `PackageWin64Release.bat` packages the FLAT version for UE 5.8 (stages into `dist\win64_release\Windows`,
-  scrubs ROMs before zipping, signs binaries, produces HoloVCS_Win64.zip). It needs
-  `..\base_setup.bat` (defines PROJECT_DIR, RT_PROJECTS, PROTON_DIR) and `app_info_setup.bat`
-  (APP_NAME/APP_DIR/UE_DIR).
-- `UploadReleaseToRTsoft.bat` SCPs the zip to rtsoft.com.
-- The Android port was dropped entirely (scripts, config, and the static-core hack that existed for
-  it). If it ever comes back, the cores must ship as separate .so files there too, same GPL reason.
+- When possible, design automated tests for new features and bug fixes.
+- Run relevant automated tests after finishing changes to guard against regressions.
+- If tests cannot be run or do not exist, state that clearly in the handoff and describe any manual verification performed.
+- Current reality: this project has no automated tests. Manual verification is the burst workflow below.
 
 ## Verifying the game (AI agents take note)
 
@@ -122,7 +126,52 @@ pass should take well under a minute. Never leave a game instance running while 
 (Seth's machine, Seth's GPU). The staged/shipping build writes a Proton-style log.txt next to the
 top-level exe; the editor build logs to Saved/Logs/HoloVCS_Flat.log.
 
+## Computer Control
+
+- Never take over or control the user's desktop without express permission in
+  the current request. This includes Computer Use, desktop UI automation,
+  SendInput, clicking, typing, or any other mechanism that controls visible apps.
+- Permission to complete a task, inspect an app, compare behavior, or proceed
+  autonomously does not imply permission to control the desktop.
+- Standing exception granted by Seth: the game verification bursts above (foregrounding the HoloVCS
+  game window, sending its hotkeys, screenshotting it, killing the process). Nothing beyond that.
+
+## Security
+
+- Never commit sensitive data, including credentials, tokens, passwords, private keys, cookies, customer data, personal data, or machine-specific authentication material.
+- If an AI assistant needs authentication data or other secrets for local work, use `agents_secret.md` for those notes.
+- `agents_secret.md` must stay ignored by git and must not be committed.
+- Do not put secrets in commit messages, logs, issue text, pull request descriptions, generated docs, or other tracked files.
+- Before committing, review staged changes for accidental secrets.
+- This repo's specifics: Android signing (KeyStore path/alias/passwords) and the AndroidFileServer
+  SecurityToken live in `Config/UserEngine.ini`, which is gitignored. NEVER put them in
+  Config/DefaultEngine.ini or any tracked file; this repo has a public GitHub remote. The keystore
+  file itself lives outside the repo (`D:\projects\protonGITFull\AppleStuff\android\`) and must stay
+  out of git everywhere.
+
+## Git
+
+- Create a local git repo and use it.  Commit features/etc as needed.
+- Never add OpenAI/Codex/Claude etc as a co-author on git commits.
+- NEVER `git push` unless explicitly told to push. "Commit" means commit locally only; committing is not permission to push.
+- Commits and PRs are authored by Seth only; no AI attribution lines anywhere (no Co-Authored-By, no "Generated with" footers).
+
+## Packaging / release
+
+- `PackageWin64Release.bat` packages the FLAT version for UE 5.8 (stages into `dist\win64_release\Windows`,
+  scrubs ROMs before zipping, signs binaries, produces HoloVCS_Win64.zip). It needs
+  `..\base_setup.bat` (defines PROJECT_DIR, RT_PROJECTS, PROTON_DIR) and `app_info_setup.bat`
+  (APP_NAME/APP_DIR/UE_DIR).
+- `BuildAndRunWin64Release.bat` is the local test loop: incremental Shipping cook/stage to
+  `dist\win64_test` with roms included (never distribute that folder), then launches it.
+- `UploadReleaseToRTsoft.bat` SCPs the zip to rtsoft.com.
+- The Android port was dropped entirely (scripts, config, and the static-core hack that existed for
+  it). If it ever comes back, the cores must ship as separate .so files there too, same GPL reason.
+
 ## Writing style for this repo
 
-No em-dashes in prose, commits, or docs. Commits and PRs are authored by Seth only; never add
-AI attribution lines (no Co-Authored-By Claude, no "Generated with" footers).
+No em-dashes in prose, commits, or docs.
+
+## Asset creation tools
+
+- If seths_game_asset_creation.txt exists in the same folder as this file, read it

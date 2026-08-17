@@ -91,6 +91,7 @@ HoloVCS_Win64.zip
 
 # Per-machine secrets (Android signing etc.)
 Config/UserEngine.ini
+agents_secret.md
 
 # Commercial fonts can't be redistributed (Frutiger is a Monotype typeface)
 Media/*.otf
