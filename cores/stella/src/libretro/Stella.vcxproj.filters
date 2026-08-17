@@ -1,0 +1,894 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="..\emucore\tia\frame-manager\AbstractFrameManager.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\tia\AnalogReadout.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\tv_filters\AtariNTSC.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\AtariVox.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\tia\Audio.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\tia\AudioChannel.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\AudioQueue.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\AudioSettings.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\tia\Background.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\tia\Ball.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Bankswitch.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\Base.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Booster.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Cart.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Cart2K.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Cart3E.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Cart3EPlus.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Cart3EX.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Cart3F.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Cart4A50.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Cart4K.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Cart4KSC.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Cart0840.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartAR.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartARM.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartBF.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartBFSC.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartBUS.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartCDF.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartCM.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartCreator.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartCTY.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartCV.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartDetector.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartDF.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartDFSC.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartDPC.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartDPCPlus.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartE0.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartE7.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartE78K.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartEF.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartEFSC.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartEnhanced.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartF0.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartF4.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartF4SC.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartF6.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartF6SC.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartF8.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartF8SC.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartFA.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartFA2.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartFC.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartFE.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartMDM.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartMNetwork.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartSB.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartTVBoy.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartUA.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartWD.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CartX07.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\repository\CompositeKeyValueRepository.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\CompuMate.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Console.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Control.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\ControllerDetector.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\DispatchResult.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\tia\DrawCounterDecodes.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Driving.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\EmulationTiming.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\EmulationWorker.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\EventHandler.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="FBBackendLIBRETRO.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\FBSurface.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\FpsMeter.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\FrameBuffer.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\tia\frame-manager\FrameLayoutDetector.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\tia\frame-manager\FrameManager.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\FSNode.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Genesis.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\tia\frame-manager\JitterEmulation.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\JoyMap.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Joystick.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Keyboard.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\KeyMap.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\repository\KeyValueRepositoryConfigfile.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\repository\KeyValueRepositoryPropertyFile.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\KidVid.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\tia\LatchedInput.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Lightgun.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\Logger.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\M6502.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\M6532.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\MD5.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\MindLink.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\tia\Missile.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\MouseControl.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\MT24LC256.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\tv_filters\NTSCFilter.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\OSystem.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="OSystemLIBRETRO.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Paddles.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\PaletteHandler.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\PhosphorHandler.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\PhysicalJoystick.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\PJoystickHandler.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\PKeyboardHandler.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\tia\Player.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\tia\Playfield.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\PlusROM.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\PointingDevice.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\ProfilingRunner.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Props.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\PropsSet.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\QuadTari.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\RewindManager.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\SaveKey.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Serializer.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Settings.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\StaggeredLogger.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\StateManager.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Switches.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\System.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\Thumbulator.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\tia\TIA.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\emucore\TIASurface.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\TimerManager.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\VideoModeHandler.cxx">
+      <Filter>Source\Stella</Filter>
+    </ClCompile>
+    <ClCompile Include="EventHandlerLIBRETRO.cxx">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="FBSurfaceLIBRETRO.cxx">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="FSNodeLIBRETRO.cxx">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="libretro.cxx">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="SoundLIBRETRO.cxx">
+      <Filter>Source</Filter>
+    </ClCompile>
+    <ClCompile Include="StellaLIBRETRO.cxx">
+      <Filter>Source</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\emucore\tia\frame-manager\AbstractFrameManager.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\AmigaMouse.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\AnalogReadout.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\AtariMouse.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\tv_filters\AtariNTSC.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\AtariVox.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\Audio.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\AudioChannel.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\AudioQueue.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\AudioSettings.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\Background.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\Ball.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Bankswitch.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\Base.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Booster.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\bspf.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\BSType.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Cart.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Cart2K.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Cart3E.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Cart3EPlus.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Cart3EX.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Cart3F.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Cart4A50.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Cart4K.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Cart4KSC.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Cart0840.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartAR.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartBF.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartBFSC.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartBUS.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartCDF.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartCM.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartCreator.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartCTY.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartCV.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartDetector.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartDF.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartDFSC.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartDPC.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartDPCPlus.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartE0.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartE7.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartE78K.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartEF.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartEFSC.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartEnhanced.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartF0.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartF4.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartF4SC.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartF6.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartF6SC.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartF8.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartF8SC.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartFA.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartFA2.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartFC.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartFE.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartMDM.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartMNetwork.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartSB.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartTVBoy.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartUA.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartWD.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CartX07.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\CompuMate.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Console.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Control.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\ControllerDetector.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\ControlLowLevel.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\DefProps.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\DelayQueue.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\DelayQueueIterator.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\DelayQueueIteratorImpl.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\DelayQueueMember.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Device.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\DispatchResult.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\DrawCounterDecodes.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Driving.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\EmulationTiming.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\exception\EmulationWarning.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\EmulationWorker.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Event.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\EventHandler.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\EventHandlerConstants.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\exception\FatalEmulationError.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\FBSurface.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\FpsMeter.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\FrameBuffer.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\FrameBufferConstants.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\FrameLayout.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\frame-manager\FrameLayoutDetector.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\frame-manager\FrameManager.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\FSNode.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\FSNodeFactory.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Genesis.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\frame-manager\JitterEmulation.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Joystick.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Keyboard.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\KeyMap.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\KidVid.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\LatchedInput.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Lightgun.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\LinkedObjectPool.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\Logger.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\M6502.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\M6532.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\MD5.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\MediaFactory.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\MindLink.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\Missile.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\MouseControl.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\MT24LC256.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\tv_filters\NTSCFilter.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\NullDev.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\OSystem.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Paddles.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\PaletteHandler.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\PhosphorHandler.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\PhysicalJoystick.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\PJoystickHandler.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\PKeyboardHandler.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\Player.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\Playfield.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\PlusROM.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\PointingDevice.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\ProfilingRunner.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Props.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\PropsSet.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Random.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\Rect.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\RewindManager.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\SaveKey.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Serializable.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Serializer.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Settings.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Sound.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\Stack.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\StaggeredLogger.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\StateManager.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\StellaKeys.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\StringParser.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Switches.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\System.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\Thumbulator.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\TIA.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\tia\TIAConstants.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\TIASurface.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\TimerManager.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\emucore\TrakBall.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\Variant.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\Vec.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\Version.hxx">
+      <Filter>Source\Stella</Filter>
+    </ClInclude>
+    <ClInclude Include="EventHandlerLIBRETRO.hxx">
+      <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="FBBackendLIBRETRO.hxx">
+      <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="FBSurfaceLIBRETRO.hxx">
+      <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="FSNodeLIBRETRO.hxx">
+      <Filter>Source</Filter>
+    </ClInclude>
+    <ClInclude Include="SoundLIBRETRO.hxx">
+      <Filter>Source</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source">
+      <UniqueIdentifier>{3b9e4f03-182d-437c-a515-fb4c21766c6c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Stella">
+      <UniqueIdentifier>{1666ea3b-3670-4bee-b343-aada9c84e2a0}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

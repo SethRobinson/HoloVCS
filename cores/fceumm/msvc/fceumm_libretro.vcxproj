@@ -1,0 +1,563 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{9d8be8c0-bfb1-4b3c-923a-a4365f686154}</ProjectGuid>
+    <RootNamespace>fceummlibretro</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>..\bin</OutDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>..\..\RTLibretroTest\bin\</OutDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;FCEUMMLIBRETRO_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;FCEUMMLIBRETRO_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;FCEUMMLIBRETRO_EXPORTS;_WINDOWS;_USRDLL;__LIBRETRO__;_CRT_SECURE_NO_WARNINGS;WINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP;FCEU_VERSION_NUMERIC=9813;FRONTEND_SUPPORTS_RGB565;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>..\src\drivers\libretro\libretro-common\include;..\src\drivers\libretro;..\src\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+    <PostBuildEvent>
+      <Command>copy $(OutDir)fceumm_libretro.dll ..\..\..\Binaries\Win64</Command>
+      <Message>Copying .dll to the project's Binaries dir</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;FCEUMMLIBRETRO_EXPORTS;_WINDOWS;_USRDLL;__LIBRETRO__;_CRT_SECURE_NO_WARNINGS;WINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP;FCEU_VERSION_NUMERIC=9813;FRONTEND_SUPPORTS_RGB565;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>
+      </PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>..\src\drivers\libretro\libretro-common\include;..\src\drivers\libretro;..\src\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+    <PostBuildEvent>
+      <Command>copy $(OutDir)fceumm_libretro.dll ..\..\..\Binaries\Win64</Command>
+      <Message>Copying .dll to the project's Binaries dir</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\boards\eeprom_93C66.h" />
+    <ClInclude Include="..\src\boards\emu2413.h" />
+    <ClInclude Include="..\src\boards\mapinc.h" />
+    <ClInclude Include="..\src\boards\mmc3.h" />
+    <ClInclude Include="..\src\boards\__serial.h" />
+    <ClInclude Include="..\src\cart.h" />
+    <ClInclude Include="..\src\cheat.h" />
+    <ClInclude Include="..\src\crc32.h" />
+    <ClInclude Include="..\src\debug.h" />
+    <ClInclude Include="..\src\drawing.h" />
+    <ClInclude Include="..\src\driver.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\boolean.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\compat\fopen_utf8.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\compat\msvc.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\compat\msvc\stdint.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\compat\posix_string.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\compat\strcasestr.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\compat\strl.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\encodings\utf.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\file\file_path.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\libretro.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\libretro_gskit_ps2.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\retro_assert.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\retro_common.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\retro_common_api.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\retro_environment.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\retro_inline.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\retro_miscellaneous.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\streams\file_stream.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\streams\file_stream_transforms.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\streams\memory_stream.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\string\stdstring.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\time\rtime.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\vfs\vfs.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro-common\include\vfs\vfs_implementation.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro_core_options.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro_core_options_intl.h" />
+    <ClInclude Include="..\src\drivers\libretro\libretro_dipswitch.h" />
+    <ClInclude Include="..\src\drivers\libretro\zlib.h" />
+    <ClInclude Include="..\src\fceu-endian.h" />
+    <ClInclude Include="..\src\fceu-memory.h" />
+    <ClInclude Include="..\src\fceu-types.h" />
+    <ClInclude Include="..\src\fceu.h" />
+    <ClInclude Include="..\src\fcoeffs.h" />
+    <ClInclude Include="..\src\fds.h" />
+    <ClInclude Include="..\src\fds_apu.h" />
+    <ClInclude Include="..\src\file.h" />
+    <ClInclude Include="..\src\filter.h" />
+    <ClInclude Include="..\src\fir\c44100ntsc.h" />
+    <ClInclude Include="..\src\fir\c44100pal.h" />
+    <ClInclude Include="..\src\fir\c48000ntsc.h" />
+    <ClInclude Include="..\src\fir\c48000pal.h" />
+    <ClInclude Include="..\src\fir\c96000ntsc.h" />
+    <ClInclude Include="..\src\fir\c96000pal.h" />
+    <ClInclude Include="..\src\general.h" />
+    <ClInclude Include="..\src\git.h" />
+    <ClInclude Include="..\src\ines-bad.h" />
+    <ClInclude Include="..\src\ines-correct.h" />
+    <ClInclude Include="..\src\ines.h" />
+    <ClInclude Include="..\src\input.h" />
+    <ClInclude Include="..\src\input\fkb.h" />
+    <ClInclude Include="..\src\input\share.h" />
+    <ClInclude Include="..\src\input\suborkb.h" />
+    <ClInclude Include="..\src\md5.h" />
+    <ClInclude Include="..\src\nsf.h" />
+    <ClInclude Include="..\src\ntsc\nes_ntsc.h" />
+    <ClInclude Include="..\src\ntsc\nes_ntsc_config.h" />
+    <ClInclude Include="..\src\ntsc\nes_ntsc_impl.h" />
+    <ClInclude Include="..\src\ops.h" />
+    <ClInclude Include="..\src\palette.h" />
+    <ClInclude Include="..\src\palettes\palettes.h" />
+    <ClInclude Include="..\src\palettes\rp2c03.h" />
+    <ClInclude Include="..\src\palettes\rp2c04-0001.h" />
+    <ClInclude Include="..\src\palettes\rp2c04-0002.h" />
+    <ClInclude Include="..\src\palettes\rp2c04-0003.h" />
+    <ClInclude Include="..\src\palettes\rp2c04-0004.h" />
+    <ClInclude Include="..\src\ppu.h" />
+    <ClInclude Include="..\src\pputile.h" />
+    <ClInclude Include="..\src\sound.h" />
+    <ClInclude Include="..\src\state.h" />
+    <ClInclude Include="..\src\unif.h" />
+    <ClInclude Include="..\src\video.h" />
+    <ClInclude Include="..\src\vsuni.h" />
+    <ClInclude Include="..\src\x6502.h" />
+    <ClInclude Include="..\src\x6502struct.h" />
+    <ClInclude Include="framework.h" />
+    <ClInclude Include="pch.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\boards\09-034a.c" />
+    <ClCompile Include="..\src\boards\103.c" />
+    <ClCompile Include="..\src\boards\104.c" />
+    <ClCompile Include="..\src\boards\106.c" />
+    <ClCompile Include="..\src\boards\108.c" />
+    <ClCompile Include="..\src\boards\112.c" />
+    <ClCompile Include="..\src\boards\116.c" />
+    <ClCompile Include="..\src\boards\117.c" />
+    <ClCompile Include="..\src\boards\120.c" />
+    <ClCompile Include="..\src\boards\121.c" />
+    <ClCompile Include="..\src\boards\126-422-534.c" />
+    <ClCompile Include="..\src\boards\12in1.c" />
+    <ClCompile Include="..\src\boards\15.c" />
+    <ClCompile Include="..\src\boards\151.c" />
+    <ClCompile Include="..\src\boards\156.c" />
+    <ClCompile Include="..\src\boards\158B.c" />
+    <ClCompile Include="..\src\boards\162.c" />
+    <ClCompile Include="..\src\boards\163.c" />
+    <ClCompile Include="..\src\boards\164.c" />
+    <ClCompile Include="..\src\boards\168.c" />
+    <ClCompile Include="..\src\boards\170.c" />
+    <ClCompile Include="..\src\boards\175.c" />
+    <ClCompile Include="..\src\boards\177.c" />
+    <ClCompile Include="..\src\boards\178.c" />
+    <ClCompile Include="..\src\boards\18.c" />
+    <ClCompile Include="..\src\boards\183.c" />
+    <ClCompile Include="..\src\boards\185.c" />
+    <ClCompile Include="..\src\boards\186.c" />
+    <ClCompile Include="..\src\boards\187.c" />
+    <ClCompile Include="..\src\boards\189.c" />
+    <ClCompile Include="..\src\boards\190.c" />
+    <ClCompile Include="..\src\boards\193.c" />
+    <ClCompile Include="..\src\boards\199.c" />
+    <ClCompile Include="..\src\boards\206.c" />
+    <ClCompile Include="..\src\boards\208.c" />
+    <ClCompile Include="..\src\boards\218.c" />
+    <ClCompile Include="..\src\boards\222.c" />
+    <ClCompile Include="..\src\boards\225.c" />
+    <ClCompile Include="..\src\boards\228.c" />
+    <ClCompile Include="..\src\boards\230.c" />
+    <ClCompile Include="..\src\boards\232.c" />
+    <ClCompile Include="..\src\boards\234.c" />
+    <ClCompile Include="..\src\boards\235.c" />
+    <ClCompile Include="..\src\boards\236.c" />
+    <ClCompile Include="..\src\boards\237.c" />
+    <ClCompile Include="..\src\boards\244.c" />
+    <ClCompile Include="..\src\boards\246.c" />
+    <ClCompile Include="..\src\boards\252.c" />
+    <ClCompile Include="..\src\boards\253.c" />
+    <ClCompile Include="..\src\boards\267.c" />
+    <ClCompile Include="..\src\boards\269.c" />
+    <ClCompile Include="..\src\boards\28.c" />
+    <ClCompile Include="..\src\boards\293.c" />
+    <ClCompile Include="..\src\boards\31.c" />
+    <ClCompile Include="..\src\boards\319.c" />
+    <ClCompile Include="..\src\boards\32.c" />
+    <ClCompile Include="..\src\boards\33.c" />
+    <ClCompile Include="..\src\boards\34.c" />
+    <ClCompile Include="..\src\boards\353.c" />
+    <ClCompile Include="..\src\boards\356.c" />
+    <ClCompile Include="..\src\boards\357.c" />
+    <ClCompile Include="..\src\boards\359.c" />
+    <ClCompile Include="..\src\boards\360.c" />
+    <ClCompile Include="..\src\boards\369.c" />
+    <ClCompile Include="..\src\boards\370.c" />
+    <ClCompile Include="..\src\boards\372.c" />
+    <ClCompile Include="..\src\boards\376.c" />
+    <ClCompile Include="..\src\boards\380.c" />
+    <ClCompile Include="..\src\boards\382.c" />
+    <ClCompile Include="..\src\boards\383.c" />
+    <ClCompile Include="..\src\boards\389.c" />
+    <ClCompile Include="..\src\boards\390.c" />
+    <ClCompile Include="..\src\boards\395.c" />
+    <ClCompile Include="..\src\boards\3d-block.c" />
+    <ClCompile Include="..\src\boards\40.c" />
+    <ClCompile Include="..\src\boards\401.c" />
+    <ClCompile Include="..\src\boards\41.c" />
+    <ClCompile Include="..\src\boards\411.c" />
+    <ClCompile Include="..\src\boards\411120-c.c" />
+    <ClCompile Include="..\src\boards\42.c" />
+    <ClCompile Include="..\src\boards\428.c" />
+    <ClCompile Include="..\src\boards\43.c" />
+    <ClCompile Include="..\src\boards\46.c" />
+    <ClCompile Include="..\src\boards\50.c" />
+    <ClCompile Include="..\src\boards\51.c" />
+    <ClCompile Include="..\src\boards\516.c" />
+    <ClCompile Include="..\src\boards\533.c" />
+    <ClCompile Include="..\src\boards\539.c" />
+    <ClCompile Include="..\src\boards\554.c" />
+    <ClCompile Include="..\src\boards\558.c" />
+    <ClCompile Include="..\src\boards\57.c" />
+    <ClCompile Include="..\src\boards\60.c" />
+    <ClCompile Include="..\src\boards\603-5052.c" />
+    <ClCompile Include="..\src\boards\62.c" />
+    <ClCompile Include="..\src\boards\65.c" />
+    <ClCompile Include="..\src\boards\67.c" />
+    <ClCompile Include="..\src\boards\68.c" />
+    <ClCompile Include="..\src\boards\69.c" />
+    <ClCompile Include="..\src\boards\71.c" />
+    <ClCompile Include="..\src\boards\72.c" />
+    <ClCompile Include="..\src\boards\77.c" />
+    <ClCompile Include="..\src\boards\79.c" />
+    <ClCompile Include="..\src\boards\80.c" />
+    <ClCompile Include="..\src\boards\8157.c" />
+    <ClCompile Include="..\src\boards\82.c" />
+    <ClCompile Include="..\src\boards\8237.c" />
+    <ClCompile Include="..\src\boards\830118C.c" />
+    <ClCompile Include="..\src\boards\830134C.c" />
+    <ClCompile Include="..\src\boards\88.c" />
+    <ClCompile Include="..\src\boards\8in1.c" />
+    <ClCompile Include="..\src\boards\91.c" />
+    <ClCompile Include="..\src\boards\96.c" />
+    <ClCompile Include="..\src\boards\99.c" />
+    <ClCompile Include="..\src\boards\a9746.c" />
+    <ClCompile Include="..\src\boards\ac-08.c" />
+    <ClCompile Include="..\src\boards\addrlatch.c" />
+    <ClCompile Include="..\src\boards\ax40g.c" />
+    <ClCompile Include="..\src\boards\ax5705.c" />
+    <ClCompile Include="..\src\boards\bandai.c" />
+    <ClCompile Include="..\src\boards\bb.c" />
+    <ClCompile Include="..\src\boards\bj56.c" />
+    <ClCompile Include="..\src\boards\bmc42in1r.c" />
+    <ClCompile Include="..\src\boards\bmc60311c.c" />
+    <ClCompile Include="..\src\boards\bmc64in1nr.c" />
+    <ClCompile Include="..\src\boards\bmc70in1.c" />
+    <ClCompile Include="..\src\boards\bmc80013b.c" />
+    <ClCompile Include="..\src\boards\bmc830425C4391t.c" />
+    <ClCompile Include="..\src\boards\bmcctc09.c" />
+    <ClCompile Include="..\src\boards\bmcgamecard.c" />
+    <ClCompile Include="..\src\boards\bmck3006.c" />
+    <ClCompile Include="..\src\boards\bmck3033.c" />
+    <ClCompile Include="..\src\boards\bmck3036.c" />
+    <ClCompile Include="..\src\boards\bmcl6in1.c" />
+    <ClCompile Include="..\src\boards\BMW8544.c" />
+    <ClCompile Include="..\src\boards\bonza.c" />
+    <ClCompile Include="..\src\boards\bs-5.c" />
+    <ClCompile Include="..\src\boards\BS110.c" />
+    <ClCompile Include="..\src\boards\Bs5652.c" />
+    <ClCompile Include="..\src\boards\cheapocabra.c" />
+    <ClCompile Include="..\src\boards\cityfighter.c" />
+    <ClCompile Include="..\src\boards\coolboy.c" />
+    <ClCompile Include="..\src\boards\copyfami_emu.c" />
+    <ClCompile Include="..\src\boards\copyfami_hwi.c" />
+    <ClCompile Include="..\src\boards\dance2000.c" />
+    <ClCompile Include="..\src\boards\datalatch.c" />
+    <ClCompile Include="..\src\boards\dream.c" />
+    <ClCompile Include="..\src\boards\edu2000.c" />
+    <ClCompile Include="..\src\boards\eeprom_93C66.c" />
+    <ClCompile Include="..\src\boards\eh8813a.c" />
+    <ClCompile Include="..\src\boards\emu2413.c" />
+    <ClCompile Include="..\src\boards\et-100.c" />
+    <ClCompile Include="..\src\boards\et-4320.c" />
+    <ClCompile Include="..\src\boards\f-15.c" />
+    <ClCompile Include="..\src\boards\famicombox.c" />
+    <ClCompile Include="..\src\boards\faridunrom.c" />
+    <ClCompile Include="..\src\boards\ffe.c" />
+    <ClCompile Include="..\src\boards\fk23c.c" />
+    <ClCompile Include="..\src\boards\gn26.c" />
+    <ClCompile Include="..\src\boards\gs-2004.c" />
+    <ClCompile Include="..\src\boards\gs-2013.c" />
+    <ClCompile Include="..\src\boards\h2288.c" />
+    <ClCompile Include="..\src\boards\hp10xx_hp20xx.c" />
+    <ClCompile Include="..\src\boards\hp898f.c" />
+    <ClCompile Include="..\src\boards\jyasic.c" />
+    <ClCompile Include="..\src\boards\karaoke.c" />
+    <ClCompile Include="..\src\boards\KG256.c" />
+    <ClCompile Include="..\src\boards\kof97.c" />
+    <ClCompile Include="..\src\boards\KS7012.c" />
+    <ClCompile Include="..\src\boards\KS7013.c" />
+    <ClCompile Include="..\src\boards\KS7016.c" />
+    <ClCompile Include="..\src\boards\KS7017.c" />
+    <ClCompile Include="..\src\boards\KS7030.c" />
+    <ClCompile Include="..\src\boards\KS7031.c" />
+    <ClCompile Include="..\src\boards\KS7032.c" />
+    <ClCompile Include="..\src\boards\KS7037.c" />
+    <ClCompile Include="..\src\boards\KS7057.c" />
+    <ClCompile Include="..\src\boards\le05.c" />
+    <ClCompile Include="..\src\boards\lh32.c" />
+    <ClCompile Include="..\src\boards\lh51.c" />
+    <ClCompile Include="..\src\boards\lh53.c" />
+    <ClCompile Include="..\src\boards\malee.c" />
+    <ClCompile Include="..\src\boards\mihunche.c" />
+    <ClCompile Include="..\src\boards\mmc1.c" />
+    <ClCompile Include="..\src\boards\mmc2and4.c" />
+    <ClCompile Include="..\src\boards\mmc3.c" />
+    <ClCompile Include="..\src\boards\mmc5.c" />
+    <ClCompile Include="..\src\boards\n106.c" />
+    <ClCompile Include="..\src\boards\n625092.c" />
+    <ClCompile Include="..\src\boards\NC7000M.c" />
+    <ClCompile Include="..\src\boards\novel.c" />
+    <ClCompile Include="..\src\boards\onebus.c" />
+    <ClCompile Include="..\src\boards\pec-586.c" />
+    <ClCompile Include="..\src\boards\resetnromxin1.c" />
+    <ClCompile Include="..\src\boards\resettxrom.c" />
+    <ClCompile Include="..\src\boards\rt-01.c" />
+    <ClCompile Include="..\src\boards\SA-9602B.c" />
+    <ClCompile Include="..\src\boards\sachen.c" />
+    <ClCompile Include="..\src\boards\sheroes.c" />
+    <ClCompile Include="..\src\boards\sl1632.c" />
+    <ClCompile Include="..\src\boards\subor.c" />
+    <ClCompile Include="..\src\boards\super40in1.c" />
+    <ClCompile Include="..\src\boards\supervision.c" />
+    <ClCompile Include="..\src\boards\t-227-1.c" />
+    <ClCompile Include="..\src\boards\t-262.c" />
+    <ClCompile Include="..\src\boards\tengen.c" />
+    <ClCompile Include="..\src\boards\tf-1201.c" />
+    <ClCompile Include="..\src\boards\transformer.c" />
+    <ClCompile Include="..\src\boards\txcchip.c" />
+    <ClCompile Include="..\src\boards\unrom512.c" />
+    <ClCompile Include="..\src\boards\vrc1.c" />
+    <ClCompile Include="..\src\boards\vrc2and4.c" />
+    <ClCompile Include="..\src\boards\vrc3.c" />
+    <ClCompile Include="..\src\boards\vrc6.c" />
+    <ClCompile Include="..\src\boards\vrc7.c" />
+    <ClCompile Include="..\src\boards\vrc7p.c" />
+    <ClCompile Include="..\src\boards\yoko.c" />
+    <ClCompile Include="..\src\boards\__dummy_mapper.c" />
+    <ClCompile Include="..\src\boards\__serial.c" />
+    <ClCompile Include="..\src\cart.c" />
+    <ClCompile Include="..\src\cheat.c" />
+    <ClCompile Include="..\src\crc32.c" />
+    <ClCompile Include="..\src\debug.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro-common\compat\compat_posix_string.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro-common\compat\compat_snprintf.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro-common\compat\compat_strcasestr.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro-common\compat\compat_strl.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro-common\compat\fopen_utf8.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro-common\encodings\encoding_utf.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro-common\file\file_path.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro-common\file\file_path_io.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro-common\streams\file_stream.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro-common\streams\file_stream_transforms.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro-common\streams\memory_stream.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro-common\string\stdstring.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro-common\time\rtime.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro-common\vfs\vfs_implementation.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro.c" />
+    <ClCompile Include="..\src\drivers\libretro\libretro_dipswitch.c" />
+    <ClCompile Include="..\src\fceu-endian.c" />
+    <ClCompile Include="..\src\fceu-memory.c" />
+    <ClCompile Include="..\src\fceu.c" />
+    <ClCompile Include="..\src\fds.c" />
+    <ClCompile Include="..\src\fds_apu.c" />
+    <ClCompile Include="..\src\file.c" />
+    <ClCompile Include="..\src\filter.c" />
+    <ClCompile Include="..\src\fir\toh.c" />
+    <ClCompile Include="..\src\general.c" />
+    <ClCompile Include="..\src\ines.c" />
+    <ClCompile Include="..\src\input.c" />
+    <ClCompile Include="..\src\input\arkanoid.c" />
+    <ClCompile Include="..\src\input\bbox.c" />
+    <ClCompile Include="..\src\input\bworld.c" />
+    <ClCompile Include="..\src\input\cursor.c" />
+    <ClCompile Include="..\src\input\fkb.c" />
+    <ClCompile Include="..\src\input\ftrainer.c" />
+    <ClCompile Include="..\src\input\hypershot.c" />
+    <ClCompile Include="..\src\input\mahjong.c" />
+    <ClCompile Include="..\src\input\mouse.c" />
+    <ClCompile Include="..\src\input\oekakids.c" />
+    <ClCompile Include="..\src\input\pec586kb.c" />
+    <ClCompile Include="..\src\input\powerpad.c" />
+    <ClCompile Include="..\src\input\quiz.c" />
+    <ClCompile Include="..\src\input\shadow.c" />
+    <ClCompile Include="..\src\input\suborkb.c" />
+    <ClCompile Include="..\src\input\toprider.c" />
+    <ClCompile Include="..\src\input\zapper.c" />
+    <ClCompile Include="..\src\md5.c" />
+    <ClCompile Include="..\src\misc.c" />
+    <ClCompile Include="..\src\nsf.c" />
+    <ClCompile Include="..\src\ntsc\nes_ntsc.c" />
+    <ClCompile Include="..\src\palette.c" />
+    <ClCompile Include="..\src\ppu.c" />
+    <ClCompile Include="..\src\sound.c" />
+    <ClCompile Include="..\src\state.c" />
+    <ClCompile Include="..\src\unif.c" />
+    <ClCompile Include="..\src\video.c" />
+    <ClCompile Include="..\src\vsuni.c" />
+    <ClCompile Include="..\src\x6502.c" />
+    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\src\drivers\libretro\link.T" />
+    <None Include="..\src\fir\c44100ntsc.coef" />
+    <None Include="..\src\fir\c44100ntsc.scm" />
+    <None Include="..\src\fir\c44100pal.coef" />
+    <None Include="..\src\fir\c44100pal.scm" />
+    <None Include="..\src\fir\c48000ntsc.coef" />
+    <None Include="..\src\fir\c48000ntsc.scm" />
+    <None Include="..\src\fir\c48000pal.coef" />
+    <None Include="..\src\fir\c48000pal.scm" />
+    <None Include="..\src\fir\c96000ntsc.coef" />
+    <None Include="..\src\fir\c96000ntsc.scm" />
+    <None Include="..\src\fir\c96000pal.coef" />
+    <None Include="..\src\fir\c96000pal.scm" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\src\ntsc\nes_ntsc.txt" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

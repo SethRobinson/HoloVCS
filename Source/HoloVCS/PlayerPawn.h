@@ -49,20 +49,20 @@ protected:
 	UPROPERTY(VisibleAnywhere)
 	UCameraComponent* m_pFlatCamera = NULL;
 
-	//How far BeginPlay slides the camera back from the pawn's placed position, along where it's facing.
-	//The layer stack is only ~30 units tall, so ~200 frames it nicely with the 14 degree FOV.  Set 0 to disable.
+	//Extra margin around the layer stack when the flat camera auto-frames it (1 = exact fit)
 	UPROPERTY(EditAnywhere)
-	float m_flatCameraPullBack = 200.0f;
-
-	//BeginPlay also slides the camera up this much (the layer content sits a bit above the pawn)
-	UPROPERTY(EditAnywhere)
-	float m_flatCameraRaise = 3.0f;
+	float m_flatCameraMargin = 1.1f;
 
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 	void SetTintBG(FVector color, float strength, bool bAllowShadows);
 	void SetBGPic();
+
+	//Each emulator spawns its layers at very different world scales/offsets, so re-aim and re-distance
+	//the flat camera to frame whatever is actually there.  Called after InitLayers.  No-op on LG hardware
+	//since the plugin owns the viewport.
+	void FitFlatCameraToLayers();
 
 	void OnSubtractKey();
 

@@ -40,26 +40,34 @@ restore point for a future 5.6 + Looking Glass build is the "UE 5.6 migration ba
   `[/Script/LookingGlassRuntime.LookingGlassSettings]` block in DefaultEngine.ini.
 - Porting the plugin to 5.8 is possible but real work: its
   `LookingGlassSceneCaptureRendering.cpp` forks engine scene-capture internals that churn each release.
-- The flat camera: `APlayerPawn` owns a `UCameraComponent` root (FOV 14). At BeginPlay it slides back
-  `m_flatCameraPullBack` (200) and up `m_flatCameraRaise` (3) units from the pawn's placed spot. When
-  the LG plugin is active it takes over the viewport, so the pawn camera is inert on hardware.
+- The flat camera: `APlayerPawn` owns a `UCameraComponent` root (FOV 14).
+  `FitFlatCameraToLayers()` (called at the end of `InitLayers`) auto-frames whatever layer stack the
+  current emulator spawned - essential because each system uses wildly different world scales
+  (NES layers are ~41 units, Atari ~445 units offset +69 in Y, VB ~310). A fixed camera distance can
+  only ever fit one system; the others look "black" (staring past the layers) or hugely zoomed.
+  When the LG plugin is active it takes over the viewport, so the pawn camera is inert on hardware.
 
-## Emulator cores
+## Emulator cores (all three work, all dynamic DLLs)
 
-- **NES (works):** FCEUmm statically compiled from `Source/HoloVCS/nes_core_src` (`RT_STATIC_CORE=1`
-  in HoloVCS.Build.cs). Origin tree with Seth's hacks: `d:\projects\libretro\libretro-fceumm`.
-- **Atari 2600 / Virtual Boy (currently disabled):** `LibretroManager::LoadCore` hard-rejects
-  anything but fceumm in static mode (search "only fceumm is supported"). To re-enable, restore the
-  dynamic-load path for those cores and put the patched DLLs next to the exe.
-- Patched DLLs are preserved in three places: git (tracked at `Binaries/Win64/*.dll`), and two
-  salvaged variant sets in the gitignored `prebuilt_cores/` folder.
-- Core sources: `d:\projects\libretro\{libretro-fceumm, beetle-vb-libretro, stella}`.
-  Stella hacks are also captured as `StellaModifications/StellaModification.dif`.
-  `Source/HoloVCS/HoloVB.h` is the ABI struct shared with the patched beetle-vb (original at
-  `d:\projects\libretro\beetle-vb-libretro\mednafen\vb\HoloVB.h`); keep them in sync.
+- The patched core sources are VENDORED IN THIS REPO under `cores/` - this is the canonical home now.
+  The old scattered trees at `d:\projects\libretro\*` are retired (and the stella one there had
+  post-release .bak experiments; do not copy from them again).
+  - `cores/fceumm` - NES (GPL-2.0, license in `Copying`). MSVC project in `msvc/`.
+  - `cores/stella` - Atari 2600 (GPL-2.0, `License.txt`). Libretro core project at `src/libretro/Stella.vcxproj`.
+  - `cores/beetle-vb` - Virtual Boy (GPL-2.0, `COPYING`). Project in `visualstudio/`. Also owns
+    `mednafen/vb/HoloVB.h`, the layer ABI struct; the game module includes it straight from there
+    (see HoloVCS.Build.cs include path), so there is exactly one copy.
+- `BuildCores.bat` builds all three (msbuild, Release x64, v143 toolset) into `cores/_built/` and
+  copies the DLLs to `Binaries/Win64`. Verified building with VS2026's MSVC 14.44 and running on UE 5.8.
+- `LibretroManager::LoadCore` loads them with LoadLibraryA - bare name first (packaged builds, exe
+  sits next to the DLLs), then `<ProjectDir>/Binaries/Win64/` (editor runs).
+- **NEVER statically link the cores into the game module again.** GPL-2.0 and the Unreal Engine
+  license cannot coexist in one binary. The v1.3-era static NES experiment was removed for this
+  reason (the source moved from Source/HoloVCS/nes_core_src to cores/fceumm/src, keeping git history).
+- Known-good v1.2-era DLLs remain recoverable from git history and the gitignored `prebuilt_cores/`.
+- Stella hacks are also captured as `StellaModifications/StellaModification.dif`.
 - ROMs go in `atari2600/`, `nes/`, `vb/` in the project root. ROM files are gitignored
-  (`*.nes`, `*.a26`, `*.vb`); never commit commercial ROMs. `Content/static_resources/nes/` feeds
-  ROMs into Android builds and is also covered by the ignore rules.
+  (`*.nes`, `*.a26`, `*.vb`); never commit commercial ROMs.
 
 ## How the 3D trick works (short version)
 
@@ -102,9 +110,9 @@ tracked file; this repo has a public GitHub remote. The keystore file itself liv
   scrubs ROMs before zipping, signs binaries, produces HoloVCS_Win64.zip). It needs
   `..\base_setup.bat` (defines PROJECT_DIR, RT_PROJECTS, PROTON_DIR) and `app_info_setup.bat`
   (APP_NAME/APP_DIR/UE_DIR).
-- `Android/MakeAndroidVersion.bat` builds/installs the Android version (plain 2D; the LG plugin is
-  Win64 only).
 - `UploadReleaseToRTsoft.bat` SCPs the zip to rtsoft.com.
+- The Android port was dropped entirely (scripts, config, and the static-core hack that existed for
+  it). If it ever comes back, the cores must ship as separate .so files there too, same GPL reason.
 
 ## Writing style for this repo
 

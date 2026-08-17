@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{fa0f40e6-ab60-4ac7-b829-96438327aeac}</ProjectGuid>
+    <RootNamespace>beetlevblibretro</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>../bin</OutDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>../bin</OutDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;BEETLEVBLIBRETRO_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;BEETLEVBLIBRETRO_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;BEETLEVBLIBRETRO_EXPORTS;_WINDOWS;_USRDLL;NOMINMAX;_CRT_SECURE_NO_DEPRECATE;SIZEOF_DOUBLE=8;MEDNAFEN_VERSION=\"0.9.31\";PACKAGE=\"mednafen\";MEDNAFEN_VERSION_NUMERIC=931;STDC_HEADERS;__STDC_LIMIT_MACROS;INLINE=_inline;WINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP;WANT_32BPP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>..\libretro-common\include;..\mednafen\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>Default</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+    <PostBuildEvent>
+      <Command>copy $(OutDir)beetle-vb-libretro.dll ..\..\..\Binaries\Win64</Command>
+    </PostBuildEvent>
+    <PostBuildEvent>
+      <Message>Copy stuff</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;BEETLEVBLIBRETRO_EXPORTS;_WINDOWS;_USRDLL;NOMINMAX;_CRT_SECURE_NO_DEPRECATE;SIZEOF_DOUBLE=8;MEDNAFEN_VERSION=\"0.9.31\";PACKAGE=\"mednafen\";MEDNAFEN_VERSION_NUMERIC=931;STDC_HEADERS;__STDC_LIMIT_MACROS;INLINE=_inline;WINAPI_FAMILY=WINAPI_FAMILY_DESKTOP_APP;WANT_32BPP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>..\libretro-common\include;..\mednafen\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+    <PostBuildEvent>
+      <Command>copy $(OutDir)beetle-vb-libretro.dll ..\..\..\Binaries\Win64</Command>
+    </PostBuildEvent>
+    <PostBuildEvent>
+      <Message>Copy stuff release</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="..\libretro-common\include\boolean.h" />
+    <ClInclude Include="..\libretro-common\include\compat\apple_compat.h" />
+    <ClInclude Include="..\libretro-common\include\compat\fnmatch.h" />
+    <ClInclude Include="..\libretro-common\include\compat\getopt.h" />
+    <ClInclude Include="..\libretro-common\include\compat\ifaddrs.h" />
+    <ClInclude Include="..\libretro-common\include\compat\intrinsics.h" />
+    <ClInclude Include="..\libretro-common\include\compat\msvc.h" />
+    <ClInclude Include="..\libretro-common\include\compat\msvc\stdint.h" />
+    <ClInclude Include="..\libretro-common\include\compat\posix_string.h" />
+    <ClInclude Include="..\libretro-common\include\compat\strcasestr.h" />
+    <ClInclude Include="..\libretro-common\include\compat\strl.h" />
+    <ClInclude Include="..\libretro-common\include\libretro.h" />
+    <ClInclude Include="..\libretro-common\include\retro_common.h" />
+    <ClInclude Include="..\libretro-common\include\retro_common_api.h" />
+    <ClInclude Include="..\libretro-common\include\retro_environment.h" />
+    <ClInclude Include="..\libretro-common\include\retro_inline.h" />
+    <ClInclude Include="..\libretro-common\include\retro_miscellaneous.h" />
+    <ClInclude Include="..\libretro-common\include\retro_stat.h" />
+    <ClInclude Include="..\libretro_core_options.h" />
+    <ClInclude Include="..\libretro_core_options_intl.h" />
+    <ClInclude Include="..\mednafen\git.h" />
+    <ClInclude Include="..\mednafen\hw_cpu\v810\fpu-new\mednafen-gcc.h" />
+    <ClInclude Include="..\mednafen\hw_cpu\v810\fpu-new\softfloat-macros.h" />
+    <ClInclude Include="..\mednafen\hw_cpu\v810\fpu-new\softfloat-specialize.h" />
+    <ClInclude Include="..\mednafen\hw_cpu\v810\fpu-new\softfloat.h" />
+    <ClInclude Include="..\mednafen\hw_cpu\v810\v810_cpu.h" />
+    <ClInclude Include="..\mednafen\hw_cpu\v810\v810_do_am.h" />
+    <ClInclude Include="..\mednafen\hw_cpu\v810\v810_opt.h" />
+    <ClInclude Include="..\mednafen\include\blip\Blip_Buffer.h" />
+    <ClInclude Include="..\mednafen\masmem.h" />
+    <ClInclude Include="..\mednafen\math_ops.h" />
+    <ClInclude Include="..\mednafen\mednafen-types.h" />
+    <ClInclude Include="..\mednafen\mempatcher-driver.h" />
+    <ClInclude Include="..\mednafen\mempatcher.h" />
+    <ClInclude Include="..\mednafen\msvc_compat.h" />
+    <ClInclude Include="..\mednafen\settings.h" />
+    <ClInclude Include="..\mednafen\state.h" />
+    <ClInclude Include="..\mednafen\state_helpers.h" />
+    <ClInclude Include="..\mednafen\vb\HoloVB.h" />
+    <ClInclude Include="..\mednafen\vb\input.h" />
+    <ClInclude Include="..\mednafen\vb\timer.h" />
+    <ClInclude Include="..\mednafen\vb\vb.h" />
+    <ClInclude Include="..\mednafen\vb\vip.h" />
+    <ClInclude Include="..\mednafen\vb\vip_draw.h" />
+    <ClInclude Include="..\mednafen\vb\vsu.h" />
+    <ClInclude Include="..\mednafen\video\surface.h" />
+    <ClInclude Include="framework.h" />
+    <ClInclude Include="pch.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\libretro-common\compat\compat_snprintf.c" />
+    <ClCompile Include="..\libretro-common\compat\compat_strl.c" />
+    <ClCompile Include="..\libretro.cpp" />
+    <ClCompile Include="..\mednafen\hw_cpu\v810\fpu-new\softfloat.c" />
+    <ClCompile Include="..\mednafen\hw_cpu\v810\v810_cpu.cpp" />
+    <ClCompile Include="..\mednafen\mempatcher.cpp" />
+    <ClCompile Include="..\mednafen\settings.c" />
+    <ClCompile Include="..\mednafen\sound\Blip_Buffer.c" />
+    <ClCompile Include="..\mednafen\state.c" />
+    <ClCompile Include="..\mednafen\vb\input.c" />
+    <ClCompile Include="..\mednafen\vb\timer.c" />
+    <ClCompile Include="..\mednafen\vb\vip.c" />
+    <ClCompile Include="..\mednafen\vb\vsu.c" />
+    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\mednafen\hw_cpu\v810\v810_oploop.inc" />
+    <None Include="..\mednafen\hw_cpu\v810\v810_op_table.inc" />
+    <None Include="..\mednafen\hw_cpu\v810\v810_op_table_msvc.inc" />
+    <None Include="..\mednafen\vb\vip_draw.inc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

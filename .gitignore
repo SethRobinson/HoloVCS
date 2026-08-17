@@ -98,3 +98,11 @@ Media/*.ttf
 
 # Salvaged prebuilt emulator core DLLs (also recoverable from git history)
 prebuilt_cores/
+
+# Emulator core build outputs (BuildCores.bat)
+cores/_built/
+cores/**/x64/
+cores/**/Release/
+cores/**/Debug/
+cores/**/.vs/
+*.vcxproj.user

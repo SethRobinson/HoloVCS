@@ -46,13 +46,6 @@ void APlayerPawn::BeginPlay()
 {
 	Super::BeginPlay();
 
-	//The pawn is placed right at the layer stack in the map, back the camera off so the whole diorama is framed
-	if (m_pFlatCamera && m_flatCameraPullBack != 0)
-	{
-		m_pFlatCamera->AddWorldOffset(m_pFlatCamera->GetForwardVector() * -m_flatCameraPullBack
-			+ m_pFlatCamera->GetUpVector() * m_flatCameraRaise);
-	}
-
 	auto crap = GetActorByTag(GetWorld(), "LayerBG");
 	if (crap != NULL)
 	{
@@ -113,6 +106,41 @@ void APlayerPawn::SetTintBG(FVector color, float strength, bool bAllowShadows)
 
 	m_pBGMat->SetScalarParameterValue(TEXT("TintStrength"), strength);
 	m_pBGMat->SetVectorParameterValue("ColorTint", color);
+}
+
+void APlayerPawn::FitFlatCameraToLayers()
+{
+	if (!m_pFlatCamera) return;
+
+	//find the extents of all the spawned layer planes
+	TArray<AActor*> actors;
+	AddActorsByTag(&actors, GetWorld(), "Layers");
+	if (actors.Num() == 0) return;
+
+	FBox box(ForceInit);
+	for (int i = 0; i < actors.Num(); i++)
+	{
+		FVector vOrigin, vExtent;
+		actors[i]->GetActorBounds(false, vOrigin, vExtent);
+		box += FBox(vOrigin - vExtent, vOrigin + vExtent);
+	}
+
+	FVector vCenter = box.GetCenter();
+	FVector vSize = box.GetSize();
+
+	//layers stack along X (depth), the image lives in the YZ plane.  Pull back far enough on X that
+	//the whole thing fits our narrow FOV, checking both height and width
+	const float aspect = 16.0f / 9.0f;
+	float halfFOVTan = FMath::Tan(FMath::DegreesToRadians(m_pFlatCamera->FieldOfView * 0.5f));
+	float distForHeight = ((vSize.Z * 0.5f) * m_flatCameraMargin) / halfFOVTan;
+	float distForWidth = ((vSize.Y * 0.5f) * m_flatCameraMargin) / (halfFOVTan * aspect);
+	float dist = FMath::Max(distForHeight, distForWidth);
+
+	m_pFlatCamera->SetWorldLocation(FVector(box.Min.X - dist, vCenter.Y, vCenter.Z));
+	m_pFlatCamera->SetWorldRotation(FRotator(0, 0, 0)); //straight down +X at the layer stack
+
+	LogMsg("Flat camera framed layers: center %.0f,%.0f,%.0f size %.0f x %.0f, camera pulled back %.0f",
+		vCenter.X, vCenter.Y, vCenter.Z, vSize.Y, vSize.Z, dist);
 }
 
 void APlayerPawn::SetBGPic()

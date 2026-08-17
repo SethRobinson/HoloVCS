@@ -25,10 +25,5 @@ public class HoloVCSEditorTarget : TargetRules
             AdditionalCompilerArguments += "/D MSVC=1 ";
             AdditionalCompilerArguments += "/D _M_IX86_FP=2 ";
         }
-        if (Target.Platform == UnrealTargetPlatform.Android)
-        {
-            AdditionalCompilerArguments += "-w"; //needed for android build
-        }
-
     }
 }

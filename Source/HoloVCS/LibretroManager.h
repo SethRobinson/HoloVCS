@@ -13,6 +13,7 @@
 #include "Shared/UnrealMisc.h"
 #include "NesHacker.h"
 #include "GameProfileManager.h"
+#include "Windows/WindowsHWrapper.h" //HINSTANCE/LoadLibrary for the core dll loading
 
 //using namespace std;
 

@@ -1,1 +1,0 @@
-It will load the first .nes file it finds

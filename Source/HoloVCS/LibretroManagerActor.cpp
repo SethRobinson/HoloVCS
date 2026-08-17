@@ -229,6 +229,12 @@ void ALibretroManagerActor::InitLayers()
 
 	SetScaleLayersXY(m_coreLayerScale.X, m_coreLayerScale.Y);
 	SetLayersPosXY(m_corePosition.X, m_corePosition.Y);
+
+	//layers moved/scaled, so reframe the flat camera (does nothing on LG hardware)
+	if (m_libretroManager.m_pPlayerPawn)
+	{
+		m_libretroManager.m_pPlayerPawn->FitFlatCameraToLayers();
+	}
 }
 
 int ALibretroManagerActor::GetActiveLayerIDByDistanceMod(float mod)

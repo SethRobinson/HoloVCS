@@ -256,6 +256,17 @@ bool LibretroManager::LoadCore(string fileName)
 
 	if (!m_dllHandle)
 	{
+		//In editor runs the .exe is UnrealEditor.exe way over in the engine dir, so the default search
+		//path misses our project's Binaries dir.  Packaged builds find it bare because the game exe sits
+		//right next to the core dlls.
+		FString FullPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir()) + TEXT("Binaries/Win64/") + fileName.c_str();
+		string dllPath = StringCast<ANSICHAR>(*FullPath).Get();
+		LogMsg("Trying %s instead", dllPath.c_str());
+		m_dllHandle = LoadLibraryA(dllPath.c_str());
+	}
+
+	if (!m_dllHandle)
+	{
 		LogMsg("Couldn't load or find file %s - error %d", fileName.c_str(), GetLastError());
 		return false;
 	}

@@ -5,7 +5,7 @@ HoloVCS - Atari 2600, NES, & Virtual Boy games with 3D layers on the Looking Gla
 
 <a href="https://www.youtube.com/watch?v=QpQSTgjk4N4"><img align="top" src="Media/vboy_youtube_thumb.jpg" width=800></a>
 
-License:  BSD style attribution, see LICENSE.md
+License:  BSD style attribution, see LICENSE.md.  Exception: the emulator cores under `cores/` (FCEUmm, Stella, Beetle VB) are GPL-2.0 projects with their own license files.  They build as separate DLLs and are loaded at runtime, keeping the GPL code out of the Unreal binary.
 
 [A twitter movie of Super Mario Bros/Castlevania in action](https://twitter.com/rtsoft/status/1489125302877900806)
 
@@ -29,16 +29,17 @@ The project now has two .uproject files sharing the same Source/ and Content/:
 
 * You should have Visual Studio 2022 or newer installed (I use the free community edition)
 * You should have Unreal Engine 5.8 installed
+* Run `BuildCores.bat` - this builds the three emulator core DLLs from `cores/` and drops them into Binaries/Win64
 * Right click the HoloVCS_Flat.uproject file and choose "Generate Visual Studio project files"
 * Open the HoloVCS.sln file, set to Development Editor and press F5 to run, or just double click HoloVCS_Flat.uproject to open the editor
 
-NES emulation (FCEUmm) is statically compiled into the project from Source/HoloVCS/nes_core_src, so NES games work with no extra DLLs. It should warn you about missing .rom files which you should add (nes, atari2600 and vb dirs in the project root).
+It should warn you about missing .rom files which you should add (nes, atari2600 and vb dirs in the project root).
 
-Atari 2600 and Virtual Boy currently need their patched libretro DLLs (see below) and the static core gate in LibretroManager.cpp relaxed; see AGENTS.md for the details.
+The patched emulator sources all live in this repo under `cores/`:
 
-It uses a special version of stella_libretro.dll.  To build this, I checked out [Stella](https://github.com/stella-emu/stella) and then made a few small hacks so we could do the 3d stuff.  Those changes I made are the .dif file in the [StellaModifications](https://github.com/SethRobinson/HoloVCS/blob/main/StellaModifications/StellaModification.dif) dir in case you want to build your own version.
-For NES support, it uses a barely modified version of FCEUmm, I added a way to enable/disable bg/sprite rendering.
-For Virtual Boy, it uses a modified beetle-vb core that returns pre-split 3D layers (see HoloVB.h for the shared struct).
+* `cores/stella` - Atari 2600.  [Stella](https://github.com/stella-emu/stella) with a few small hacks so we can render VCS hardware sprites selectively per pass.  The changes are also captured as a .dif in [StellaModifications](StellaModifications/StellaModification.dif).
+* `cores/fceumm` - NES.  A barely modified FCEUmm, I added a way to enable/disable bg/sprite rendering.
+* `cores/beetle-vb` - Virtual Boy.  A modified beetle-vb core that returns pre-split 3D layers (see mednafen/vb/HoloVB.h for the shared struct).
 
 
 **Cool stuff to have**
