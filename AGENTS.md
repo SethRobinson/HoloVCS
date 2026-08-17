@@ -174,8 +174,10 @@ top-level exe; the editor build logs to Saved/Logs/HoloVCS_Flat.log.
   `dist\win64_test` with roms included (never distribute that folder), then launches it.
 - Standing preference (Seth): after finishing code changes to the flat version, ALWAYS build the
   Shipping test build (BuildAndRunWin64Release.bat) and end the handoff with a clickable link to
-  `dist\win64_test\Windows\HoloVCS.exe` so Seth can try it. Kill any instance you launched for
-  verification first.
+  the staged exe so Seth can try it. The link must use the FULL absolute path as a file:/// URI
+  (`file:///F:/Unreal/HoloVCS_UE56/dist/win64_test/Windows/HoloVCS.exe`), not a workspace-relative
+  path - relative links open nothing. Also print the plain path for copy/paste. Kill any instance
+  you launched for verification first.
 - `UploadReleaseToRTsoft.bat` SCPs the zip to rtsoft.com.
 - The Android port was dropped entirely (scripts, config, and the static-core hack that existed for
   it). If it ever comes back, the cores must ship as separate .so files there too, same GPL reason.
