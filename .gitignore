@@ -96,6 +96,9 @@ Config/UserEngine.ini
 Media/*.otf
 Media/*.ttf
 
+# Local marketing/video assets, not needed in the repo
+Youtube/
+
 # Salvaged prebuilt emulator core DLLs (also recoverable from git history)
 prebuilt_cores/
 

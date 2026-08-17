@@ -114,6 +114,14 @@ tracked file; this repo has a public GitHub remote. The keystore file itself liv
 - The Android port was dropped entirely (scripts, config, and the static-core hack that existed for
   it). If it ever comes back, the cores must ship as separate .so files there too, same GPL reason.
 
+## Verifying the game (AI agents take note)
+
+Do quick bursts, not long soaks: launch, screenshot the specific emulator/screen you are checking,
+send the ROM-cycle keys ("," / ".") for the next one, screenshot, then KILL the process. The whole
+pass should take well under a minute. Never leave a game instance running while doing other work
+(Seth's machine, Seth's GPU). The staged/shipping build writes a Proton-style log.txt next to the
+top-level exe; the editor build logs to Saved/Logs/HoloVCS_Flat.log.
+
 ## Writing style for this repo
 
 No em-dashes in prose, commits, or docs. Commits and PRs are authored by Seth only; never add

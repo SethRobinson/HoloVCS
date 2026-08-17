@@ -4,12 +4,7 @@
 #include "StatusDisplayActor.h" //so we can show messages on screen
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
-
-#if PLATFORM_ANDROID
 #include "Misc/Paths.h"
-#include "HAL/PlatformFilemanager.h"
-
-#endif
 
 using std::vector;
 using std::string;

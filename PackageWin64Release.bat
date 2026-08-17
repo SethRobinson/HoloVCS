@@ -3,6 +3,8 @@ call app_info_setup.bat
 SET ZIP_FILE_NAME=HoloVCS_Win64
 SET APP_BUILD_DIR=win64_release
 SET UPROJECT=%APP_PATH%\HoloVCS_Flat.uproject
+:UAT names the staged project folder after the uproject, not the target
+SET STAGED_PROJ=HoloVCS_Flat
 del %ZIP_FILE_NAME%.zip
 del Binaries\Win64\%APP_NAME%-Win64-Shipping.exe
 mkdir dist
@@ -19,9 +21,9 @@ echo deleting pdb files to make things smaller
 del /s "dist\%APP_BUILD_DIR%\*.pdb"
 
 echo Copy some other stuff we need
-copy Binaries\Win64\stella_libretro.dll %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%APP_NAME%\Binaries\Win64
-copy Binaries\Win64\fceumm_libretro.dll %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%APP_NAME%\Binaries\Win64
-copy Binaries\Win64\beetle-vb-libretro.dll %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%APP_NAME%\Binaries\Win64
+copy Binaries\Win64\stella_libretro.dll %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%STAGED_PROJ%\Binaries\Win64
+copy Binaries\Win64\fceumm_libretro.dll %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%STAGED_PROJ%\Binaries\Win64
+copy Binaries\Win64\beetle-vb-libretro.dll %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%STAGED_PROJ%\Binaries\Win64
 copy readme.txt %APP_PATH%\dist\%APP_BUILD_DIR%\Windows
 xcopy atari2600 %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\atari2600\ /E /F /Y
 xcopy nes %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\nes\ /E /F /Y
@@ -37,10 +39,10 @@ del %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\*.sav0
 echo Signing .exe's...
 
 call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%APP_NAME%.exe
-call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%APP_NAME%\Binaries\Win64\%APP_NAME%-Win64-Shipping.exe "%APP_NAME%"
-call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%APP_NAME%\Binaries\Win64\stella_libretro.dll "%APP_NAME%"
-call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%APP_NAME%\Binaries\Win64\fceumm_libretro.dll "%APP_NAME%"
-call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%APP_NAME%\Binaries\Win64\beetle-vb-libretro.dll "%APP_NAME%"
+call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%STAGED_PROJ%\Binaries\Win64\%APP_NAME%-Win64-Shipping.exe "%APP_NAME%"
+call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%STAGED_PROJ%\Binaries\Win64\stella_libretro.dll "%APP_NAME%"
+call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%STAGED_PROJ%\Binaries\Win64\fceumm_libretro.dll "%APP_NAME%"
+call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%STAGED_PROJ%\Binaries\Win64\beetle-vb-libretro.dll "%APP_NAME%"
 
 echo "Waiting 4 seconds because NSIS does something and ruins the signing if I don't"
 timeout 4

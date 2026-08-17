@@ -17,6 +17,8 @@
 
 void OnWasRestartedInEditor();
 
+class UMaterial;
+
 enum eLightingMode
 {
 	LIGHTING_MODE_NORMAL,

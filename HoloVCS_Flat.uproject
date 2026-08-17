@@ -17,6 +17,10 @@
 		{
 			"Name": "LookingGlass",
 			"Enabled": false
+		},
+		{
+			"Name": "Landmass",
+			"Enabled": false
 		}
 	]
 }
