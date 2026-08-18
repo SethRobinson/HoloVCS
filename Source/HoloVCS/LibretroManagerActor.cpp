@@ -4,11 +4,56 @@
 #include "PlayerPawn.h"
 
 #include "Components/DirectionalLightComponent.h"
+#include "Components/PointLightComponent.h"
+#include "Engine/PointLight.h"
+#include "Engine/DirectionalLight.h"
 #include "Components/MeshComponent.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/Engine.h"
 #include "TimerManager.h"
+#include "EngineUtils.h"
+#include "Components/SceneCaptureComponent2D.h"
+#include "Modules/ModuleManager.h"
+#include "StatusDisplayActor.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Widgets/SWindow.h"
+#include "Engine/GameViewportClient.h"
+#include "GenericPlatform/GenericWindow.h"
+#include "GameFramework/GameUserSettings.h"
+
+#if PLATFORM_WINDOWS
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include <windows.h>
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
+
+//Keyboard input all routes through the UE game window; when any OTHER window of this process has
+//focus (the Looking Glass Bridge window - which is what you naturally click on), every hotkey and
+//game control goes dead. Watch for that and bounce focus straight back to the game window.
+//Focus belonging to a different app (browser etc) is left alone.
+static void KeepGameWindowFocused()
+{
+#if PLATFORM_WINDOWS
+	if (!GEngine || !GEngine->GameViewport) return;
+	TSharedPtr<SWindow> pWindow = GEngine->GameViewport->GetWindow();
+	if (!pWindow.IsValid() || !pWindow->GetNativeWindow().IsValid()) return;
+	HWND hGameWnd = (HWND)pWindow->GetNativeWindow()->GetOSWindowHandle();
+	if (!hGameWnd) return;
+
+	HWND hForeground = GetForegroundWindow();
+	if (!hForeground || hForeground == hGameWnd) return;
+
+	DWORD foregroundPid = 0;
+	GetWindowThreadProcessId(hForeground, &foregroundPid);
+	if (foregroundPid != GetCurrentProcessId()) return; //user is in another app, leave them be
+
+	SetForegroundWindow(hGameWnd);
+	LogMsg("Bounced focus from the Bridge window back to the game window");
+#endif
+}
+
+void FitLookingGlassCaptureToLayers(UWorld* pWorld);
 
 EPixelFormat TEX_PIXEL_FORMAT = EPixelFormat::PF_B8G8R8A8;
 // Sets default values
@@ -108,6 +153,21 @@ bool ALibretroManagerActor::SetupLayer(LayerInfo* pLayer, char* pActorName, int 
 
 		pLayer->m_pDynamicTexture->UpdateResource();
 		pLayer->m_pDynamicTexture->RefreshSamplerStates();
+
+		//Transient textures start as uninitialized VRAM. Upload the zeroed buffer once so layers
+		//the current game never blits to are transparent instead of garbage - the noise hid in
+		//the dim lit scene render but was glaring red/cyan static on the hologram.
+		{
+			FUpdateTextureRegion2D* pRegionTemp = new FUpdateTextureRegion2D(0, 0, 0, 0, pLayer->m_texWidth, pLayer->m_texHeight);
+			uint8* pTexTemp = new uint8[pLayer->mDataSize];
+			memcpy(pTexTemp, pLayer->m_pTextData, pLayer->mDataSize);
+			pLayer->m_pDynamicTexture->UpdateTextureRegions(0, 1, pRegionTemp, pLayer->m_texWidth * 4, 4, pTexTemp,
+				[](auto pTexData, auto pRegion)
+				{
+					delete[] pTexData;
+					delete pRegion;
+				});
+		}
 		pLayer->pUMatDyn = pComp1->CreateDynamicMaterialInstance(0, 0, "MatDyn");
 		pLayer->pUMatDyn->SetTextureParameterValue(TEXT("Texture"), pLayer->m_pDynamicTexture);
 
@@ -206,18 +266,45 @@ void ALibretroManagerActor::InitLayers()
 	
 	}
 
-	//auto pLight = g_pLibretroManager->m_pLibretroManagedActor->m_pLight->FindComponentByClass<UPointLightComponent>();
-	auto pLight = g_pLibretroManager->m_pLibretroManagedActor->m_pLight->FindComponentByClass<UDirectionalLightComponent>();
-
+	//The old build's rig is a POINT light in front of the diorama (real shadow maps project
+	//each sprite onto every layer behind it, sized by the projection) - the port had swapped it
+	//for a straight-on directional whose shadows hide exactly behind their casters. Restore the
+	//point light as the light of record; the port's helper directional stays off when it exists.
+	ULightComponent* pLight = NULL;
+	if (m_pLight)
+	{
+		pLight = m_pLight->FindComponentByClass<UPointLightComponent>();
+	}
+	if (!pLight)
+	{
+		for (TActorIterator<APointLight> itPL(GetWorld()); itPL; ++itPL)
+		{
+			pLight = itPL->GetLightComponent();
+			break;
+		}
+	}
 	if (pLight)
 	{
-		if (m_curLightingMode == LIGHTING_MODE_NONE)
+		//The map saved the light as Static, which contributes NOTHING at runtime without baked
+		//lighting (the 2D view looked unlit and shadow-free no matter what we toggled)
+		pLight->SetMobility(EComponentMobility::Movable);
+		//Tight bias or the shadow test skips right past the NES diorama's 2-unit layer gaps
+		pLight->ShadowBias = 0.05f;
+		pLight->ShadowSlopeBias = 0.15f;
+		pLight->MarkRenderStateDirty();
+		pLight->SetVisibility(m_curLightingMode != LIGHTING_MODE_NONE);
+		for (TActorIterator<ADirectionalLight> itDL(GetWorld()); itDL; ++itDL)
 		{
-			pLight->SetVisibility(false);
+			itDL->GetLightComponent()->SetVisibility(false);
 		}
-		else
+	}
+	else
+	{
+		//no point light in this map - drive whatever directional exists, as before
+		for (TActorIterator<ADirectionalLight> itDL(GetWorld()); itDL; ++itDL)
 		{
-			pLight->SetVisibility(true);
+			itDL->GetLightComponent()->SetVisibility(m_curLightingMode != LIGHTING_MODE_NONE);
+			break;
 		}
 	}
 
@@ -234,6 +321,201 @@ void ALibretroManagerActor::InitLayers()
 	if (m_libretroManager.m_pPlayerPawn)
 	{
 		m_libretroManager.m_pPlayerPawn->FitFlatCameraToLayers();
+	}
+
+	//and reframe the Looking Glass capture actor if one exists (hardware map only)
+	FitLookingGlassCaptureToLayers(GetWorld());
+}
+
+//The LookingGlassCapture actor in the map was placed/sized for the old 5.6-era world scale, and each
+//emulator uses a wildly different scale now (NES ~41 units, Atari ~445, VB ~310), so a static capture
+//can never frame them all.  Refit it to the current layer AABB whenever the layers rebuild.  The
+//plugin classes are resolved by NAME so the game module keeps zero compile-time plugin dependency
+//(this is a no-op in the flat build, where the actor doesn't exist).
+void FitLookingGlassCaptureToLayers(UWorld* pWorld)
+{
+	if (!pWorld) return;
+
+	TArray<AActor*> layerActors;
+	AddActorsByTag(&layerActors, pWorld, "Layers");
+	if (layerActors.Num() == 0) return;
+
+	//Bounds from VISIBLE primitives only - hidden actors (unused layers, another game's backdrop)
+	//still count in GetActorBounds and were inflating the hologram frame (Pitfall filled only a
+	//third of the screen because the box included invisible Castlevania-era geometry).
+	FBox box(ForceInit);
+	for (AActor* pActor : layerActors)
+	{
+		if (pActor->IsHidden()) { LogMsg("LKG fit: skipping hidden layer actor %s", TCHAR_TO_ANSI(*pActor->GetName())); continue; }
+		FBox actorBox(ForceInit);
+		for (UActorComponent* pC : pActor->GetComponents())
+		{
+			UPrimitiveComponent* pPrim = Cast<UPrimitiveComponent>(pC);
+			if (!pPrim || !pPrim->IsRegistered() || !pPrim->IsVisible() || pPrim->bHiddenInGame) continue;
+			actorBox += pPrim->Bounds.GetBox();
+		}
+		if (actorBox.IsValid)
+		{
+			box += actorBox;
+			FVector c = actorBox.GetCenter(), s = actorBox.GetSize();
+			LogMsg("LKG fit: %s center %.0f,%.0f,%.0f size %.0f x %.0f x %.0f",
+				TCHAR_TO_ANSI(*pActor->GetName()), c.X, c.Y, c.Z, s.X, s.Y, s.Z);
+		}
+	}
+	if (!box.IsValid) return;
+
+	//The quads display the core's full max_width/max_height texture, but the game image only fills
+	//base_width/base_height of it (anchored at the texture's top-left = world -Y/+Z as the capture
+	//sees it).  Crop the framing box to the used portion or games like Pitfall (320x228 used of a
+	//568x312 texture) render small and off-center on the hologram.
+	//EXCEPTION: Virtual Boy delivers pre-split layers through the custom refresh callback and they
+	//fill the whole texture - cropping there showed a quarter of the game zoomed in.
+	if (g_pLibretroManager && g_pLibretroManager->m_emulatorType != EMULATOR_VB)
+	{
+		auto& geo = g_pLibretroManager->m_game_av_info.geometry;
+		if (geo.max_width > 0 && geo.max_height > 0 &&
+			(geo.base_width < geo.max_width || geo.base_height < geo.max_height))
+		{
+			FVector vFullSize = box.GetSize();
+			float fracW = (float)geo.base_width / (float)geo.max_width;
+			float fracH = (float)geo.base_height / (float)geo.max_height;
+			box.Max.Y = box.Min.Y + vFullSize.Y * fracW;
+			box.Min.Z = box.Max.Z - vFullSize.Z * fracH;
+			LogMsg("LKG fit: cropped to used texture area (%.0f%% x %.0f%%)", fracW * 100.0f, fracH * 100.0f);
+		}
+	}
+
+	//One-shot lighting inventory - what light actors does this map actually have?
+	static bool s_bLoggedLights = false;
+	if (!s_bLoggedLights)
+	{
+		s_bLoggedLights = true;
+		for (TActorIterator<AActor> itL(pWorld); itL; ++itL)
+		{
+			ULightComponent* pLC = itL->FindComponentByClass<ULightComponent>();
+			if (!pLC) continue;
+			FVector v = itL->GetActorLocation();
+			LogMsg("LIGHT: %s (%s) at %.0f,%.0f,%.0f vis=%d castshadows=%d intensity=%.2f color=%.2f,%.2f,%.2f",
+				TCHAR_TO_ANSI(*itL->GetName()), TCHAR_TO_ANSI(*pLC->GetClass()->GetName()),
+				v.X, v.Y, v.Z, pLC->IsVisible() ? 1 : 0, pLC->CastShadows ? 1 : 0,
+				pLC->Intensity, pLC->GetLightColor().R, pLC->GetLightColor().G, pLC->GetLightColor().B);
+		}
+	}
+
+	//The LayerBG backdrop wall's map position was tuned for the NES layer span (about +-4 units)
+	//and sat INSIDE the much wider Atari (+-40) and VB (+-200) stacks, where it covered every
+	//layer behind it - Pitfall lost its background layer, VB games lost most of their layers.
+	//Park it just behind whatever stack is active (this also fixes the flat 2D view).
+	if (AActor* pBGWall = GetActorByTag(pWorld, "LayerBG"))
+	{
+		FVector vWallPos = box.GetCenter();
+		vWallPos.X = box.Max.X + 5.0f;
+		pBGWall->SetActorLocation(vWallPos);
+		LogMsg("LKG fit: parked LayerBG wall at %.0f,%.0f,%.0f (stack back is %.0f)",
+			vWallPos.X, vWallPos.Y, vWallPos.Z, box.Max.X);
+	}
+
+	for (TActorIterator<AActor> it(pWorld); it; ++it)
+	{
+		if (it->GetClass()->GetName() != TEXT("LookingGlassCapture")) continue;
+
+		it->SetActorLocation(box.GetCenter());
+
+		FVector vSize = box.GetSize();
+
+		for (UActorComponent* pComp : it->GetComponents())
+		{
+			if (pComp->GetClass()->GetName() != TEXT("LookingGlassSceneCaptureComponent2D")) continue;
+
+			//The map was saved with the 5.6-era "Custom" tiling (11x6, 4092x4092, 16:9-ish aspect).
+			//Switch to the plugin's Automatic preset so it matches whatever device is connected
+			//(Portrait: 48 views at 3360x3360, aspect 0.75 - a third fewer pixels per frame too).
+			//Re-registering the component is the only reflection-safe way to run the plugin's
+			//UpdateTilingProperties.  Pass -lkgmaptiling to keep the tiling saved in the map.
+			static bool bTilingApplied = false;
+			if (!bTilingApplied && !FParse::Param(FCommandLine::Get(), TEXT("lkgmaptiling")))
+			{
+				bTilingApplied = true;
+				bool bSet = false;
+				if (FProperty* pProp = FindFProperty<FProperty>(pComp->GetClass(), TEXT("TilingQuality")))
+				{
+					if (FEnumProperty* pEnumProp = CastField<FEnumProperty>(pProp))
+					{
+						pEnumProp->GetUnderlyingProperty()->SetIntPropertyValue(pEnumProp->ContainerPtrToValuePtr<void>(pComp), (int64)0); //0 = Q_Automatic
+						bSet = true;
+					}
+					else if (FByteProperty* pByteProp = CastField<FByteProperty>(pProp))
+					{
+						pByteProp->SetPropertyValue_InContainer(pComp, 0);
+						bSet = true;
+					}
+				}
+				if (bSet)
+				{
+					//OnRegister runs the plugin's UpdateTilingProperties, which resolves Automatic via Bridge
+					pComp->UnregisterComponent();
+					pComp->RegisterComponent();
+					LogMsg("LookingGlass tiling set to Automatic (device preset)");
+				}
+			}
+
+			//The hologram should contain exactly the layer diorama plus the in-world status text -
+			//the pawn's fullscreen tint plane and other scene junk live in the same world and the
+			//fitted camera sits among them.  ShowOnly is the engine half of the capture component,
+			//so no plugin dependency needed.
+			if (USceneCaptureComponent2D* pCaptureComp = Cast<USceneCaptureComponent2D>(pComp))
+			{
+				//TEMP PERF TEST: capture raw scene color, skipping the per-view post pipeline
+				if (FParse::Param(FCommandLine::Get(), TEXT("lkgscenecolor")))
+				{
+					pCaptureComp->CaptureSource = SCS_SceneColorHDR;
+				}
+				pCaptureComp->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
+				pCaptureComp->ShowOnlyActors.Empty();
+				for (AActor* pLayerActor : layerActors)
+				{
+					pCaptureComp->ShowOnlyActors.Add(pLayerActor);
+				}
+				if (AActor* pStatusActor = GetActorByTag(pWorld, "StatusDisplayActor"))
+				{
+					pCaptureComp->ShowOnlyActors.Add(pStatusActor);
+				}
+				//The backdrop wall (moon picture etc, set per game profile) sits behind the layer
+				//stack and must show through the layers' colorkey holes.  It's deliberately NOT in
+				//the framing AABB above - it's much bigger than the game screen.
+				if (AActor* pBGActor = GetActorByTag(pWorld, "LayerBG"))
+				{
+					pCaptureComp->ShowOnlyActors.Add(pBGActor);
+					FVector vBGOrigin, vBGExtent;
+					pBGActor->GetActorBounds(false, vBGOrigin, vBGExtent);
+					LogMsg("LKG fit: added LayerBG backdrop (center %.0f,%.0f,%.0f extent %.0f x %.0f x %.0f)",
+						vBGOrigin.X, vBGOrigin.Y, vBGOrigin.Z, vBGExtent.X, vBGExtent.Y, vBGExtent.Z);
+				}
+			}
+
+			//The capture's "Size" is the half-WIDTH of the frame at the focal plane (measured: Size
+			//20.9 = NES quad edge-to-edge).  The visible height is width / device aspect (Portrait:
+			//0.75, taller than wide), so fit whichever is binding: the width, or the height
+			//converted into width units (halfH * aspect).  10% margin so the game doesn't run
+			//edge-to-edge on the lens like it did before (old build kept a visible border).
+			float deviceAspect = 0.75f;
+			if (UFunction* pAspectFunc = pComp->FindFunction(TEXT("GetAspectRatio")))
+			{
+				struct { float ReturnValue; } aspectParams = { deviceAspect };
+				pComp->ProcessEvent(pAspectFunc, &aspectParams);
+				if (aspectParams.ReturnValue > 0.05f) deviceAspect = aspectParams.ReturnValue;
+			}
+			float captureSize = FMath::Max(vSize.Y, vSize.Z * deviceAspect) * 0.5f * 1.10f;
+			FParse::Value(FCommandLine::Get(), TEXT("lkgsize="), captureSize); //tuning override, no rebuild needed
+
+			if (UFunction* pFunc = pComp->FindFunction(TEXT("SetSize")))
+			{
+				struct { float InSize; } params = { captureSize };
+				pComp->ProcessEvent(pFunc, &params);
+				LogMsg("Fit LookingGlass capture: center %.0f,%.0f,%.0f capture size %.1f (aspect %.2f)",
+					box.GetCenter().X, box.GetCenter().Y, box.GetCenter().Z, captureSize, deviceAspect);
+			}
+		}
 	}
 }
 
@@ -288,6 +570,43 @@ void ALibretroManagerActor::BeginPlay()
 	LogMsg("Setting up");
 	Super::BeginPlay();
 
+	//fps readout for the hologram test builds (Seth wants to watch perf on the device)
+	m_bShowLKGFPS = FModuleManager::Get().IsModuleLoaded("LookingGlassRuntime");
+
+	//(the Bridge window steals focus when it opens; the periodic KeepGameWindowFocused check in
+	//Tick bounces it back, at boot and any time the user clicks the hologram window)
+
+	//Shipping builds default to fullscreen, so the focus bounce slammed a fullscreen black window
+	//over the whole main monitor. The LKG build's main window is just a controller/status window -
+	//keep it small and windowed.
+	if (m_bShowLKGFPS && GEngine)
+	{
+		if (UGameUserSettings* pSettings = GEngine->GetGameUserSettings())
+		{
+			if (pSettings->GetFullscreenMode() != EWindowMode::Windowed)
+			{
+				pSettings->SetFullscreenMode(EWindowMode::Windowed);
+				pSettings->SetScreenResolution(FIntPoint(1280, 720));
+				pSettings->ApplySettings(false);
+				LogMsg("Forced windowed mode for the main window (LKG build)");
+			}
+		}
+
+		//The hologram is the product - the main window is just an input/focus target, so skip
+		//scene-rendering the world into it (that "2D spectator view" was never asked for, and
+		//keeping its scene shadows presentable was a whole parallel workstream).  Pass
+		//-lkg2dview to re-enable it for side-by-side debugging - comparing the scene render
+		//against the panel is how several hologram bugs were found.
+		if (FModuleManager::Get().IsModuleLoaded("LookingGlassRuntime") && GEngine->GameViewport)
+		{
+			GEngine->GameViewport->bDisableWorldRendering = !FParse::Param(FCommandLine::Get(), TEXT("lkg2dview"));
+			if (GEngine->GameViewport->bDisableWorldRendering)
+			{
+				LogMsg("Main window world rendering off (LKG build) - pass -lkg2dview to get it back");
+			}
+		}
+	}
+
 	FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice();
 	FAudioDevice* MainAudioDevice = GEngine->GetMainAudioDeviceRaw();
 	LogMsg("Main audio device sample rate is %f", MainAudioDevice->GetSampleRate());
@@ -331,17 +650,40 @@ void ALibretroManagerActor::BeginPlay()
 		return;
 	}
 
-#if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
-	//Kill splash screen
-	TArray<AActor*> actors;
-	AddActorsByTag(&actors, GetWorld(), "SplashScreen");
-	
-	if (actors.Num() > 0)
+	//The help/splash quad floats in front of the diorama, and with real scene shadows restored
+	//it cast a giant rectangle over every game in Shipping (dev builds destroy it below, which
+	//is also why dev-build testing never saw the problem)
 	{
-		actors[0]->Destroy();
+		TArray<AActor*> splashActors;
+		AddActorsByTag(&splashActors, GetWorld(), "SplashScreen");
+		for (AActor* pSplash : splashActors)
+		{
+			TArray<UPrimitiveComponent*> prims;
+			pSplash->GetComponents<UPrimitiveComponent>(prims);
+			for (UPrimitiveComponent* pPrim : prims)
+			{
+				pPrim->SetCastShadow(false);
+			}
+		}
 	}
 
+	//Kill the splash/help screen in dev builds (fast test loop) AND in the Looking Glass build:
+	//it's invisible on the device but floats over the 2D spectator view mid-gameplay, and
+	//nothing tells the user it's waiting for a click
+	bool bKillSplash = FModuleManager::Get().IsModuleLoaded("LookingGlassRuntime");
+#if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
+	bKillSplash = true;
 #endif
+	if (bKillSplash)
+	{
+		TArray<AActor*> actors;
+		AddActorsByTag(&actors, GetWorld(), "SplashScreen");
+
+		if (actors.Num() > 0)
+		{
+			actors[0]->Destroy();
+		}
+	}
 
 }
 
@@ -399,8 +741,35 @@ void ALibretroManagerActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	//long-hitch detector: timestamp multi-second freezes so log.txt shows what surrounded them
+	{
+		static double s_lastTickTime = 0;
+		double tickNow = FPlatformTime::Seconds();
+		if (s_lastTickTime != 0 && tickNow - s_lastTickTime > 0.5)
+		{
+			LogMsg("HITCH: frame took %.2f seconds (previous tick to this one)", tickNow - s_lastTickTime);
+		}
+		s_lastTickTime = tickNow;
+	}
+
+	if (m_bShowLKGFPS)
+	{
+		//clicking the hologram window kills all input (it's a non-UE window); push focus back
+		static double s_nextFocusCheck = 0;
+		if (FPlatformTime::Seconds() > s_nextFocusCheck)
+		{
+			s_nextFocusCheck = FPlatformTime::Seconds() + 0.3;
+			KeepGameWindowFocused();
+		}
+	}
+
 	if (m_timeOfNextFPSUpdate < GetWorld()->GetRealTimeSeconds())
 	{
+		if (m_bShowLKGFPS)
+		{
+			//the sprite-quilt renderer draws its own fps counter top-left of each tile; this is just the log record
+			LogMsg("%d FPS", m_framesRendered);
+		}
 		m_framesRendered = 0;
 		m_timeOfNextFPSUpdate = GetWorld()->GetRealTimeSeconds() + 1.0f;
 	}
@@ -419,7 +788,7 @@ void ALibretroManagerActor::Tick(float DeltaTime)
 	{
 		if (m_layerInfo[i].GetPixelBuffer())
 		{
-		
+
 			if (C_INIT_TEXTURES_EVERY_FRAME)
 			{
 				FUpdateTextureRegion2D* pRegionTemp = new FUpdateTextureRegion2D(0, 0, 0, 0, m_layerInfo[i].m_texWidth, m_layerInfo[i].m_texHeight);
@@ -440,6 +809,49 @@ void ALibretroManagerActor::Tick(float DeltaTime)
 				m_layerInfo[i].m_pDynamicTexture->UpdateTextureRegions(0, 1, m_layerInfo[i].mUpdateTextureRegion, m_layerInfo[i].m_texWidth * 4, 4, m_layerInfo[i].m_pTextData);
 			}
 
+		}
+
+		//Report this layer's populated texel bounds (as UV min/max in custom primitive data) so
+		//the hologram's shadow stamps track actual pixels - the old build's per-pixel shadow
+		//maps did this for free.  Empty layers report a zero rect and cast nothing.
+		if (m_layerInfo[i].m_pActor && m_layerInfo[i].m_pTextData)
+		{
+			UMeshComponent* pComp = (UMeshComponent*)m_layerInfo[i].m_pActor->GetComponentByClass(UMeshComponent::StaticClass());
+			if (pComp)
+			{
+				const int w = m_layerInfo[i].m_texWidth;
+				const int h = m_layerInfo[i].m_texHeight;
+				const uint8* pData = m_layerInfo[i].m_pTextData;
+				int minX = w, minY = h, maxX = -1, maxY = -1;
+				for (int y = 0; y < h; y++)
+				{
+					const uint8* pRow = pData + y * m_layerInfo[i].m_texPitchBytes + 3; //alpha of BGRA
+					for (int x = 0; x < w; x++, pRow += 4)
+					{
+						if (*pRow)
+						{
+							if (x < minX) minX = x;
+							if (x > maxX) maxX = x;
+							if (y < minY) minY = y;
+							maxY = y;
+						}
+					}
+				}
+				if (maxX < 0)
+				{
+					pComp->SetCustomPrimitiveDataFloat(0, 0.0f);
+					pComp->SetCustomPrimitiveDataFloat(1, 0.0f);
+					pComp->SetCustomPrimitiveDataFloat(2, 0.0f);
+					pComp->SetCustomPrimitiveDataFloat(3, 0.0f);
+				}
+				else
+				{
+					pComp->SetCustomPrimitiveDataFloat(0, (float)minX / w);
+					pComp->SetCustomPrimitiveDataFloat(1, (float)minY / h);
+					pComp->SetCustomPrimitiveDataFloat(2, (float)(maxX + 1) / w);
+					pComp->SetCustomPrimitiveDataFloat(3, (float)(maxY + 1) / h);
+				}
+			}
 		}
 	}
 

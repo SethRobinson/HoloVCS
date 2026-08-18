@@ -108,6 +108,7 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	void SetTintBG(FVector color, float strength, bool bAllowShadows);
 	void SetBGPic();
+	void FindBGMeshIfNeeded();
 
 	//Each emulator spawns its layers at very different world scales/offsets, so re-aim and re-distance
 	//the flat camera to frame whatever is actually there.  Called after InitLayers.  No-op on LG hardware
@@ -162,6 +163,7 @@ public:
 
 
 	void OnAKey();
+	void OnNum0Key();
 	void OnNum1Key();
 	void OnNum2Key();
 	void OnNum3Key();

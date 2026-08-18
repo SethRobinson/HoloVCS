@@ -1,0 +1,82 @@
+// Looking Glass lenticular ("swizzle") shader - quilt in, per-subpixel view-interleaved
+// device image out. Ported from the legacy HoloPlay 1.2 plugin (HoloPlayLenticularShader.usf),
+// which rendered stall-free with no per-frame Bridge IPC. The vertex stage is the engine's
+// FScreenVS (ScreenVertexShader.usf); only the pixel stage lives here.
+
+#include "/Engine/Public/Platform.ush"
+#include "/Engine/Private/Common.ush"
+
+Texture2D InputTexture;
+SamplerState InputTextureSampler;
+
+float pitch;
+float slope;
+float center;
+float subp;
+float4 tile;
+float2 viewPortion;
+float4 aspect;
+int QuiltMode;
+int FlipYTexCoords;
+// Display gamma to encode with on output. The quilt render target is 16-bit and holds LINEAR
+// values (FCanvas skips its gamma encode for HDR targets); the window backbuffer is 8-bit
+// gamma-space, so we encode here. 1.0 = passthrough.
+float OutputGamma;
+
+float2 texArr(float3 uvz)
+{
+	// decide which section to take from based on the z.
+	float x = (fmod(uvz.z, tile.x) + uvz.x) / tile.x;
+	float y = (floor(uvz.z / tile.x) + uvz.y) / tile.y;
+	return float2(x, 1.0f - y) * viewPortion.xy;
+}
+
+void LenticularPS
+(
+	in noperspective float2 uv : TEXCOORD0,
+	out float4 OutColor : SV_Target0
+)
+{
+	// Debug mode: pass the raw quilt through
+	if (QuiltMode == 1)
+	{
+		float2 QuiltUV = uv;
+		if (FlipYTexCoords == 1) QuiltUV.y = 1 - QuiltUV.y;
+		OutColor = Texture2DSample(InputTexture, InputTextureSampler, QuiltUV);
+		OutColor.rgb = pow(saturate(OutColor.rgb), 1.0 / OutputGamma);
+		return;
+	}
+
+	float3 viewUV = float3(uv.xy, 0.0);
+	viewUV -= float3(0.5f, 0.5f, 0.5f);
+	float modx = saturate(step(aspect.y, aspect.x) * step(aspect.z, 0.5) + step(aspect.x, aspect.y) * step(0.5, aspect.z));
+
+	viewUV.x = modx * viewUV.x * aspect.x / aspect.y + (1.0 - modx) * viewUV.x;
+	viewUV.y = modx * viewUV.y + (1.0 - modx) * viewUV.y * aspect.y / aspect.x;
+	viewUV += 0.5;
+	clip(viewUV);
+	clip(-viewUV + 1.0);
+	float4 col = float4(0, 0, 0, 1);
+	float invert = 1.0f;
+	if (FlipYTexCoords == 1)
+	{
+		invert = -1.0f;
+	}
+	for (int subpixel = 0; subpixel < 3; subpixel++)
+	{
+		viewUV.z = (uv.x + subpixel * subp + uv.y * slope) * pitch - center;
+		viewUV.z = fmod(viewUV.z + ceil(abs(viewUV.z)), 1.0);
+		viewUV.z *= invert;
+		viewUV.z *= tile.z;
+		float3 coords1 = viewUV;
+		float3 coords2 = viewUV;
+		coords1.y = coords2.y = clamp(viewUV.y, 0.001, 0.999);
+		coords1.z = floor(viewUV.z);
+		coords2.z = ceil(viewUV.z);
+		float4 col1 = Texture2DSample(InputTexture, InputTextureSampler, texArr(coords1));
+		float4 col2 = Texture2DSample(InputTexture, InputTextureSampler, texArr(coords2));
+		col[subpixel] = lerp(col1, col2, viewUV.z - coords1.z)[subpixel];
+	}
+	col.rgb = pow(saturate(col.rgb), 1.0 / OutputGamma);
+	OutColor = col;
+}

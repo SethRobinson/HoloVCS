@@ -55,8 +55,12 @@ public:
 
 	void Release();
 
-	/** Maximal number of views rendered with a single draw call */
-	static constexpr uint8 MaxView = 8;
+	/** Maximal number of views rendered with a single scene render. On UE 5.8 every
+	 *  BeginRenderingViewFamily call costs ~15ms of fixed overhead (scene captures are expected to
+	 *  go through ISceneRenderBuilder now), so rendering the whole quilt as ONE multi-view family
+	 *  instead of 6-9 families of 8 took the hologram from ~10 fps to real-time. Init() row-wraps
+	 *  the views into a grid render target when one row would exceed the max texture width. */
+	static constexpr uint8 MaxView = 64;
 
 	static void CalculateViewRect(FIntRect& Rect, const FIntPoint& Size, int32 ViewRows, int32 ViewColumns, int32 ViewIndex);
 
@@ -188,6 +192,9 @@ public:
 
 	const FLookingGlassTilingQuality& GetTilingValues() { return TilingValues; }
 
+	// UFUNCTION so the game module can call it via ProcessEvent without a compile-time
+	// plugin dependency (used by the capture auto-fit to frame for the device aspect)
+	UFUNCTION(BlueprintCallable, Category = "LookingGlass")
 	float GetAspectRatio() const;
 
 	UTextureRenderTarget2D* GetTextureTarget2DRendering() const { return TextureTarget2DRendering; }

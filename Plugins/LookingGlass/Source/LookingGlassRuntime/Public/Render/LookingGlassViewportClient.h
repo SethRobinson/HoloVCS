@@ -315,6 +315,14 @@ private:
 
 	void RenderToQuilt(ULookingGlassSceneCaptureComponent2D* CaptureComponent, UTextureRenderTarget2D* InQuiltRT);
 
+	/** Fast path for sprite dioramas (HoloVCS): when the capture is in show-only mode and every
+	 *  listed primitive is a camera-facing textured quad with a dynamic material, the quilt is
+	 *  drawn directly (one rect per view per layer in a single render pass) instead of running
+	 *  a full scene render per view - UE 5.8 costs ~1.4ms of render-thread CPU per scene-capture
+	 *  view, which made 48-view quilts impossible at 60 fps. Returns false when the content
+	 *  doesn't fit these constraints, and the caller falls back to the scene-capture path. */
+	bool RenderSpriteQuilt(ULookingGlassSceneCaptureComponent2D* CaptureComponent, UTextureRenderTarget2D* InQuiltRT);
+
 	/**
 	 * @fn	bool FLookingGlassViewportClient::HandleScreenshotQuiltCommand(const TCHAR* Cmd, FOutputDevice& Ar);
 	 *

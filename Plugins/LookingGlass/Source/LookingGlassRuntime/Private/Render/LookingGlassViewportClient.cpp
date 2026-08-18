@@ -10,6 +10,7 @@
 
 #include "CanvasTypes.h"
 #include "ClearQuad.h"
+#include "RHITransition.h"
 
 #include "CanvasItem.h"
 #include "ImageUtils.h"
@@ -31,6 +32,22 @@
 #include "RendererInterface.h"
 #include "Modules/ModuleManager.h"
 #include "Engine/Console.h"
+#include "GlobalShader.h"
+#include "PipelineStateCache.h"
+#include "CommonRenderResources.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Components/MeshComponent.h"
+#include "Components/TextRenderComponent.h"
+#include "Components/DirectionalLightComponent.h"
+#include "Components/PointLightComponent.h"
+#include "Engine/DirectionalLight.h"
+#include "Engine/PointLight.h"
+#include "Engine/Font.h"
+#include "EngineUtils.h"
+#include "Misc/Paths.h"
+#include "HAL/FileManager.h"
+#include "HAL/PlatformStackWalk.h"
 
 #if WITH_EDITOR
 #include "UnrealEdGlobals.h"
@@ -46,8 +63,24 @@
 
 #include "RHIStaticStates.h"
 #include "CommonRenderResources.h" // for GFilterVertexDeclaration
+#include "GlobalRenderResources.h" // for GWhiteTexture
 
 #include "LookingGlassBridge.h"
+#include "Render/LookingGlassLenticularShader.h"
+
+// Defined in LookingGlassRuntime.cpp (lkg.SelfRender cvar)
+bool LookingGlassSelfRenderEnabled();
+
+// Debug: 1 = show the raw quilt in the self-render window instead of the lenticular output
+static TAutoConsoleVariable<int32> CVarLKGSelfRenderQuilt(
+	TEXT("lkg.SelfRenderQuilt"), 0,
+	TEXT("1 = self-render window shows the raw quilt (debug), 0 = lenticular device output"));
+
+// Debug: output gamma for the self-render lenticular pass. The sprite quilt is written
+// gamma-neutral (TargetGamma 1 on the RT), so no extra encode is wanted here.
+static TAutoConsoleVariable<float> CVarLKGSelfRenderGamma(
+	TEXT("lkg.SelfRenderGamma"), 1.0f,
+	TEXT("Display gamma the self-render pass encodes with (1 = pass quilt values through untouched)"));
 
 
 
@@ -159,7 +192,7 @@ FLookingGlassViewportClient::~FLookingGlassViewportClient()
 	FLookingGlassBridge& Bridge = ILookingGlassRuntime::Get().GetBridge();
 	if (Bridge.bInitialized)
 	{
-		Bridge.StopRendering();
+		Bridge.RequestStopRendering();
 	}
 }
 
@@ -235,6 +268,62 @@ static void CopyTexture(const FTextureRHIRef& SourceTexture, FTextureRHIRef& Des
 		RHICmdList.EndRenderPass();
 		RHICmdList.Transition(FRHITransitionInfo(DestinationTexture, ERHIAccess::RTV, ERHIAccess::SRVMask));
 	}
+}
+
+// Runs the lenticular ("swizzle") shader: quilt in, view-interleaved device image out.
+// This is how the legacy HoloPlay plugin drove the device, entirely in-process - no
+// Bridge call happens anywhere on this path.
+static void RenderLenticular_RenderThread(FRHICommandListImmediate& RHICmdList,
+	const FTextureRHIRef& QuiltTexture, FTextureRHIRef& DestinationTexture,
+	const FLookingGlassLenticularPS::FParameters& InParams)
+{
+	IRendererModule* RendererModule = &FModuleManager::GetModuleChecked<IRendererModule>("Renderer");
+
+	RHICmdList.Transition(FRHITransitionInfo(QuiltTexture, ERHIAccess::Unknown, ERHIAccess::SRVGraphics));
+	RHICmdList.Transition(FRHITransitionInfo(DestinationTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+
+	FRHIRenderPassInfo RPInfo(DestinationTexture, ERenderTargetActions::DontLoad_Store);
+	RHICmdList.BeginRenderPass(RPInfo, TEXT("LKGLenticular"));
+
+	RHICmdList.SetViewport(0, 0, 0.0f, (float)DestinationTexture->GetSizeX(), (float)DestinationTexture->GetSizeY(), 1.0f);
+
+	FGraphicsPipelineStateInitializer GraphicsPSOInit;
+	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+	GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+	GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
+	GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+
+	FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
+	TShaderMapRef<FScreenVS> VertexShader(ShaderMap);
+	TShaderMapRef<FLookingGlassLenticularPS> PixelShader(ShaderMap);
+
+	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
+
+	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit, 0);
+
+	FLookingGlassLenticularPS::FParameters Params = InParams;
+	Params.InputTexture = QuiltTexture;
+	// MUST be wrap addressing: FlipYTexCoords negates the view coordinate, so texArr()
+	// produces negative/overflowing UVs by design (the legacy plugin sampled with the render
+	// target's default wrap sampler). Clamp turns most of the output black.
+	Params.InputTextureSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
+	SetShaderParameters(RHICmdList, PixelShader, PixelShader.GetPixelShader(), Params);
+
+	// The legacy plugin's fullscreen quad flipped V (top=1, bottom=0); paired with FlipYTexCoords=1
+	RendererModule->DrawRectangle(RHICmdList, 0, 0,
+		(float)DestinationTexture->GetSizeX(),  // Dest Width
+		(float)DestinationTexture->GetSizeY(),  // Dest Height
+		0, 1,                                   // Source U, V
+		1, -1,                                  // Source USize, VSize
+		DestinationTexture->GetSizeXY(),        // Target buffer size
+		FIntPoint(1, 1),                        // Source texture size
+		VertexShader, EDRF_Default);
+
+	RHICmdList.EndRenderPass();
+	RHICmdList.Transition(FRHITransitionInfo(DestinationTexture, ERHIAccess::RTV, ERHIAccess::SRVMask));
 }
 
 void FLookingGlassViewportClient::Draw(FViewport* InViewport, FCanvas* InCanvas)
@@ -395,15 +484,29 @@ void FLookingGlassViewportClient::Draw(FViewport* InViewport, FCanvas* InCanvas)
 	const bool bShouldRender = true;
 #endif // WITH_EDITOR
 
+	// TEMP PERF DIAGNOSTIC: time the three phases of the hologram frame, report once a second
+	static double GPhaseAccum[3] = { 0, 0, 0 };
+	static int32 GPhaseFrames = 0;
+	static double GPhaseNextReport = 0;
+	double PhaseT0 = FPlatformTime::Seconds();
+
 	// Render scene to quilt. Update only when bShouldRender is true. If it is false, then previously rendered picture will be reused.
 	if (bShouldRender)
 	{
-		// Render the actual scene to quilt texture
-		RenderToQuilt(LookingGlassCaptureComponent.Get(), QuiltRT);
+		// Try the fast sprite-quilt path first (see RenderSpriteQuilt); fall back to full scene captures
+		if (!RenderSpriteQuilt(LookingGlassCaptureComponent.Get(), QuiltRT))
+		{
+			// Render the actual scene to quilt texture
+			RenderToQuilt(LookingGlassCaptureComponent.Get(), QuiltRT);
+		}
 	}
+
+	double PhaseT1 = FPlatformTime::Seconds();
 
 	// Synchronize game and rendering thread
 	FlushRenderingCommands();
+
+	double PhaseT2 = FPlatformTime::Seconds();
 
 	// Pass composed quilt to target: either device or debug window
 	FIntPoint Tiles(1, 1);
@@ -416,6 +519,20 @@ void FLookingGlassViewportClient::Draw(FViewport* InViewport, FCanvas* InCanvas)
 	}
 	VisualizeRenderTarget(InViewport, QuiltRT, bRenderOnDevice, Tiles, LookingGlassCaptureComponent->GetAspectRatio());
 
+	double PhaseT3 = FPlatformTime::Seconds();
+	GPhaseAccum[0] += PhaseT1 - PhaseT0;
+	GPhaseAccum[1] += PhaseT2 - PhaseT1;
+	GPhaseAccum[2] += PhaseT3 - PhaseT2;
+	GPhaseFrames++;
+	if (PhaseT3 > GPhaseNextReport && GPhaseFrames > 0)
+	{
+		UE_LOG(LookingGlassLogRender, Display, TEXT("LKG frame phases (avg ms over %d frames): RenderToQuilt %.1f, Flush %.1f, Visualize %.1f"),
+			GPhaseFrames, GPhaseAccum[0] * 1000.0 / GPhaseFrames, GPhaseAccum[1] * 1000.0 / GPhaseFrames, GPhaseAccum[2] * 1000.0 / GPhaseFrames);
+		GPhaseAccum[0] = GPhaseAccum[1] = GPhaseAccum[2] = 0;
+		GPhaseFrames = 0;
+		GPhaseNextReport = PhaseT3 + 1.0;
+	}
+
 	if (OnLookingGlassFrameReady.IsBound())
 	{
 		ProcessQuiltForMovie(QuiltRT);
@@ -424,6 +541,714 @@ void FLookingGlassViewportClient::Draw(FViewport* InViewport, FCanvas* InCanvas)
 	{
 		ProcessScreenshotQuilt(QuiltRT);
 	}
+}
+
+static TAutoConsoleVariable<int32> CVarLKGSpriteQuilt(
+	TEXT("lkg.SpriteQuilt"), 1,
+	TEXT("1 = render the quilt directly from the show-only textured quads (fast path), 0 = full scene capture per view"));
+
+static TAutoConsoleVariable<float> CVarLKGSpriteShadow(
+	TEXT("lkg.SpriteShadow"), 0.6f,
+	TEXT("Opacity of the drop shadow each sprite layer casts on the layers behind it (0 = off)"));
+
+static TAutoConsoleVariable<float> CVarLKGSpriteAmbient(
+	TEXT("lkg.SpriteAmbient"), 0.7f,
+	TEXT("Ambient floor for the sprite-quilt directional lighting (1 = fully unlit/no light influence)"));
+
+static TAutoConsoleVariable<int32> CVarLKGShowFPS(
+	TEXT("lkg.ShowFPS"), 1,
+	TEXT("1 = draw the fps counter into the top-left of every quilt tile"));
+
+static TAutoConsoleVariable<float> CVarLKGSpriteTilt(
+	TEXT("lkg.SpriteTilt"), 8.0f,
+	TEXT("Degrees the sprite-quilt camera is raised above the diorama (vertical off-axis shear, like the old build's slightly-looking-down framing). 0 = straight on"));
+
+static TAutoConsoleVariable<float> CVarLKGSpriteDepthDim(
+	TEXT("lkg.SpriteDepthDim"), 0.0f,
+	TEXT("How much darker the deepest layer renders vs the nearest (0 = off, matching the old build - the projected shadows provide the depth cue now)"));
+
+bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureComponent2D* CaptureComponent, UTextureRenderTarget2D* InQuiltRT)
+{
+	if (CVarLKGSpriteQuilt.GetValueOnGameThread() == 0)
+	{
+		return false;
+	}
+	if (CaptureComponent == nullptr || InQuiltRT == nullptr)
+	{
+		return false;
+	}
+	// Only meaningful when the game curated an explicit show-only list of quads
+	if (CaptureComponent->PrimitiveRenderMode != ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList)
+	{
+		return false;
+	}
+	// The projection shortcut below assumes an unrotated capture (quads parallel to the focal plane)
+	AActor* CaptureOwner = CaptureComponent->GetOwner();
+	if (CaptureOwner == nullptr || !CaptureOwner->GetActorRotation().IsNearlyZero(2.0))
+	{
+		return false;
+	}
+
+	// Gather the layer quads: every visible primitive must be a mesh with a dynamic material
+	// instance whose first texture parameter is the sprite texture, or we bail to the scene path
+	struct FSpriteLayer
+	{
+		const FTexture* Tex = nullptr;
+		FBox Box;
+		ESimpleElementBlendMode Blend = SE_BLEND_Translucent;
+		// Lit materials receive the directional light tint / depth dimming / shadows; unlit ones
+		// draw raw. The game's 8 key swaps layer materials between lit and unlit variants, and
+		// this is what makes that toggle work on the hologram too.
+		bool bLit = true;
+		// Per-layer shadow receiving, from the mesh flag the game sets per game profile
+		// (m_layerSetupInfo -> bReceiveMobileCSMShadows) and the backdrop's material choice
+		bool bReceiveShadows = true;
+		// The "LayerBG" backdrop wall: its material is emissive (full-bright in the scene render
+		// no matter the light), so it draws raw, colored only by the game's SetTintBG params
+		bool bBackdrop = false;
+		// Material color multiplier (the game's ColorTint/TintStrength on the backdrop MID)
+		FLinearColor Color = FLinearColor::White;
+		// UV rect of the texels that actually hold content (the game reports it via custom
+		// primitive data); shadow stamps are bounded by it and empty layers cast nothing
+		FVector4 ContentUV = FVector4(0, 0, 1, 1);
+		// Per-layer shadow casting, from the mesh flag (the splash screen and other overlay
+		// primitives get SetCastShadow(false) from the game)
+		bool bCastShadows = true;
+		// Diagnostics only
+		FString Name;
+	};
+	TArray<FSpriteLayer> Layers;
+	FString OverlayText;
+
+	for (const TObjectPtr<AActor>& ActorPtr : CaptureComponent->ShowOnlyActors)
+	{
+		AActor* Actor = ActorPtr.Get();
+		if (Actor == nullptr || Actor->IsHidden())
+		{
+			continue;
+		}
+		for (UActorComponent* C : Actor->GetComponents())
+		{
+			if (UTextRenderComponent* TextComp = Cast<UTextRenderComponent>(C))
+			{
+				OverlayText = TextComp->Text.ToString();
+				continue;
+			}
+			UMeshComponent* Mesh = Cast<UMeshComponent>(C);
+			if (Mesh == nullptr || !Mesh->IsRegistered() || !Mesh->IsVisible() || Mesh->bHiddenInGame)
+			{
+				continue;
+			}
+			// Throttled: in a bail-every-frame config these would flood the log at 60Hz
+			static double GNextBailLog = 0.0;
+			UMaterialInterface* Mat = Mesh->GetMaterial(0);
+			if (Mat == nullptr)
+			{
+				if (FPlatformTime::Seconds() > GNextBailLog)
+				{
+					GNextBailLog = FPlatformTime::Seconds() + 5.0;
+					UE_LOG(LookingGlassLogRender, Warning, TEXT("SpriteQuilt bail: %s/%s has no material"),
+						*Actor->GetName(), *Mesh->GetName());
+				}
+				return false;
+			}
+			// HoloVCS binds the emulator screen as the "Texture" parameter; try that name first,
+			// then fall back to the first texture parameter that has a value
+			UTexture* Tex = nullptr;
+			if (UMaterialInstanceDynamic* MID = Cast<UMaterialInstanceDynamic>(Mat))
+			{
+				MID->GetTextureParameterValue(FMaterialParameterInfo(TEXT("Texture")), Tex);
+				if (Tex == nullptr)
+				{
+					TArray<FMaterialParameterInfo> ParamInfos;
+					TArray<FGuid> ParamIds;
+					MID->GetAllTextureParameterInfo(ParamInfos, ParamIds);
+					for (const FMaterialParameterInfo& Info : ParamInfos)
+					{
+						UTexture* Candidate = nullptr;
+						if (MID->GetTextureParameterValue(Info, Candidate) && Candidate != nullptr)
+						{
+							Tex = Candidate;
+							break;
+						}
+					}
+				}
+			}
+			if (Tex == nullptr)
+			{
+				// Plain (non-dynamic) materials - the LayerBG backdrop wall picture is a stock
+				// UMaterial set per game profile - take the first texture the material references.
+				// (GetUsedTextures returns nothing at runtime here; the static reference list is
+				// what the material actually keeps loaded.)
+				for (const TObjectPtr<UObject>& Ref : Mat->GetReferencedTextures())
+				{
+					UTexture* Candidate = Cast<UTexture>(Ref.Get());
+					if (Candidate != nullptr && Candidate->GetResource() != nullptr)
+					{
+						Tex = Candidate;
+						break;
+					}
+				}
+			}
+			if (Tex == nullptr || Tex->GetResource() == nullptr)
+			{
+				if (FPlatformTime::Seconds() > GNextBailLog)
+				{
+					GNextBailLog = FPlatformTime::Seconds() + 5.0;
+					UE_LOG(LookingGlassLogRender, Warning, TEXT("SpriteQuilt bail: no usable texture on %s/%s (mat %s)"),
+						*Actor->GetName(), *Mesh->GetName(), *Mat->GetName());
+				}
+				return false;
+			}
+			FSpriteLayer Layer;
+			Layer.Tex = Tex->GetResource();
+			Layer.Box = Mesh->Bounds.GetBox();
+			// Opaque materials (the backdrop picture) must not be alpha-blended: their textures
+			// often carry no meaningful alpha channel and would vanish
+			Layer.Blend = (Mat->GetBlendMode() == BLEND_Opaque) ? SE_BLEND_Opaque : SE_BLEND_Translucent;
+			Layer.bLit = !Mat->GetShadingModels().HasShadingModel(MSM_Unlit);
+			Layer.bReceiveShadows = Mesh->bReceiveMobileCSMShadows;
+			Layer.bCastShadows = Mesh->CastShadow;
+			Layer.bBackdrop = Actor->ActorHasTag(FName(TEXT("LayerBG")));
+			const FCustomPrimitiveData& CPD = Mesh->GetCustomPrimitiveData();
+			if (CPD.Data.Num() >= 4)
+			{
+				Layer.ContentUV = FVector4(CPD.Data[0], CPD.Data[1], CPD.Data[2], CPD.Data[3]);
+			}
+			Layer.Name = FString::Printf(TEXT("%s(%s matblend=%d castshadow=%d)"),
+				*Actor->GetName(), *Mat->GetName(), (int32)Mat->GetBlendMode(), Mesh->CastShadow ? 1 : 0);
+			if (Layer.bBackdrop)
+			{
+				// Two backdrop flavors, judged by the BASE material (the mesh often holds an
+				// auto-named MID): the SetBGPic picture materials (castlevania_backdrop_Mat) are
+				// emissive - full bright in the scene render - while the BGLayer family is a LIT
+				// wall colored by SetTintBG's ColorTint/TintStrength (SMB sky blue, black to
+				// disable). Its no-shadow variant means the game asked for a shadow-free wall.
+				const FString BaseMatName = Mat->GetMaterial() ? Mat->GetMaterial()->GetName() : Mat->GetName();
+				// SetBGPic pictures AND the NoShadow tint wall are unlit in the old build
+				// (SMB's sky is a bright blue "lighting turned off" wall)
+				Layer.bLit = !BaseMatName.Contains(TEXT("backdrop")) && !BaseMatName.Contains(TEXT("NoShadow"));
+				if (UMaterialInstanceDynamic* BGMID = Cast<UMaterialInstanceDynamic>(Mat))
+				{
+					FLinearColor TintColor = FLinearColor::White;
+					float TintStrength = 0.0f;
+					if (BGMID->GetVectorParameterValue(FMaterialParameterInfo(TEXT("ColorTint")), TintColor) &&
+						BGMID->GetScalarParameterValue(FMaterialParameterInfo(TEXT("TintStrength")), TintStrength))
+					{
+						// The BGLayer materials REPLACE their texture with the tint as strength
+						// approaches 1 (SMB's wall is a solid sky blue) - at full strength draw
+						// a solid color instead of tinting the material's (mostly black) texture
+						const float S = FMath::Clamp(TintStrength, 0.0f, 1.0f);
+						if (S >= 0.99f)
+						{
+							Layer.Tex = GWhiteTexture;
+							Layer.Color = FLinearColor(TintColor.R, TintColor.G, TintColor.B, 1.0f);
+						}
+						else
+						{
+							Layer.Color = FLinearColor(
+								FMath::Lerp(1.0f, TintColor.R, S),
+								FMath::Lerp(1.0f, TintColor.G, S),
+								FMath::Lerp(1.0f, TintColor.B, S), 1.0f);
+						}
+					}
+				}
+				if (BaseMatName.Contains(TEXT("NoShadow")))
+				{
+					Layer.bReceiveShadows = false;
+				}
+			}
+			Layers.Add(Layer);
+		}
+	}
+	if (Layers.Num() == 0)
+	{
+		return false;
+	}
+
+	// Painter's algorithm: camera looks down +X, so farthest (largest X) draws first
+	Layers.Sort([](const FSpriteLayer& A, const FSpriteLayer& B) { return A.Box.GetCenter().X > B.Box.GetCenter().X; });
+
+	// One-shot diagnostic dump whenever the layer set changes shape
+	static uint32 GLastLayerDumpHash = 0;
+	uint32 LayerDumpHash = (uint32)Layers.Num();
+	for (const FSpriteLayer& L : Layers)
+	{
+		LayerDumpHash = LayerDumpHash * 31 + (L.Tex ? (uint32)L.Tex->GetSizeX() : 0);
+		LayerDumpHash = LayerDumpHash * 31 + (uint32)(int32)L.Box.GetCenter().X;
+	}
+	if (LayerDumpHash != GLastLayerDumpHash)
+	{
+		GLastLayerDumpHash = LayerDumpHash;
+		for (int32 i = 0; i < Layers.Num(); i++)
+		{
+			const FSpriteLayer& L = Layers[i];
+			const FVector C = L.Box.GetCenter();
+			const FVector S = L.Box.GetSize();
+			UE_LOG(LookingGlassLogRender, Display, TEXT("Sprite layer %d: %s X=%.0f center %.0f,%.0f size %.0fx%.0f tex=%dx%d lit=%d recv=%d bg=%d blend=%d"),
+				i, *L.Name, C.X, C.Y, C.Z, S.Y, S.Z,
+				L.Tex ? (int32)L.Tex->GetSizeX() : 0, L.Tex ? (int32)L.Tex->GetSizeY() : 0,
+				L.bLit ? 1 : 0, L.bReceiveShadows ? 1 : 0, L.bBackdrop ? 1 : 0, (int32)L.Blend);
+		}
+	}
+
+	// Depth-based dimming: deeper layers render darker, like the lit falloff of the old build
+	const float DeepLayerX = Layers[0].Box.GetCenter().X;
+	const float NearLayerX = Layers.Last().Box.GetCenter().X;
+	const float DepthDim = FMath::Clamp(CVarLKGSpriteDepthDim.GetValueOnGameThread(), 0.0f, 0.9f);
+	const float DepthDimRange = FMath::Max(DeepLayerX - NearLayerX, 1.0f);
+
+	// Frame parameters, mirroring ULookingGlassSceneCaptureComponent2D::RenderViews()
+	const FLookingGlassTilingQuality& Tiling = CaptureComponent->GetTilingValues();
+	const int32 NumTiles = Tiling.GetNumTiles();
+	const int32 TilesX = Tiling.TilesX;
+	const int32 TileSizeX = Tiling.TileSizeX;
+	const int32 TileSizeY = Tiling.TileSizeY;
+	const int32 PaddingY = Tiling.QuiltH - Tiling.TilesY * TileSizeY;
+	if (NumTiles <= 0 || TileSizeX <= 0 || TileSizeY <= 0)
+	{
+		return false;
+	}
+
+	const float CamDistance = CaptureComponent->GetCameraDistance();
+	const float TanHalfFOV = FMath::Tan(FMath::DegreesToRadians(CaptureComponent->FOV) * 0.5f);
+	const float Aspect = CaptureComponent->GetAspectRatio();
+	const FLGDeviceCalibration& Calibration = ILookingGlassRuntime::Get().GetCurrentCalibration();
+	const float ViewConeSweep = CamDistance * FMath::Tan(FMath::DegreesToRadians(Calibration.ViewCone));
+	const FVector CamPos = CaptureComponent->GetComponentLocation();
+	const FVector Focal = CamPos + FVector(CamDistance, 0.0f, 0.0f);
+
+	// Vertical off-axis: the camera is raised above the diorama and sheared back so the focal
+	// plane stays framed - the old build's capture sat high looking slightly down, which is a
+	// big part of its depth feel (near layers ride lower, the back wall peeks over them)
+	const float TiltOffset = CamDistance * FMath::Tan(FMath::DegreesToRadians(
+		FMath::Clamp(CVarLKGSpriteTilt.GetValueOnGameThread(), -30.0f, 30.0f)));
+
+	// The light of record is the map's POINT light (the old build's rig: shadows project from
+	// its position onto every layer behind the caster); a directional is the fallback for maps
+	// without one. If the game hides its light (8 key), the hologram renders unlit.
+	FLinearColor LayerTint = FLinearColor::White;
+	FVector LightPos = FVector::ZeroVector;
+	bool bHaveLightPos = false;
+	float ShadowStrength = 0.0f;
+	{
+		UWorld* World = CaptureComponent->GetWorld();
+		const float Ambient = FMath::Clamp(CVarLKGSpriteAmbient.GetValueOnGameThread(), 0.0f, 1.0f);
+		// Approximates the scene path's auto-exposure + filmic tonemap + display gamma.
+		// Two-point fit against the real 2D window: 0.095 linear renders white texels at
+		// 121/255 and 0.979 linear at 219/255 (the ACES shoulder flattens the bright end).
+		auto ToDisplay = [](float V) { return 0.864f * FMath::Pow(FMath::Max(V, 0.0f), 0.2545f); };
+
+		float EffectiveLux = 0.0f;
+		FLinearColor LightColor = FLinearColor::White;
+		float NdotL = 1.0f;
+		bool bFoundLight = false;
+		bool bLightCastsShadows = false;
+
+		for (TActorIterator<APointLight> It(World); It; ++It)
+		{
+			UPointLightComponent* LightComp = Cast<UPointLightComponent>(It->GetLightComponent());
+			if (LightComp == nullptr || !LightComp->IsRegistered() || !LightComp->IsVisible() || It->IsHidden())
+			{
+				continue;
+			}
+			LightPos = LightComp->GetComponentLocation();
+			bHaveLightPos = true;
+			// Illuminance at the focal plane: candela / distance^2 (UE units are cm)
+			float Candela = LightComp->Intensity;
+			if (LightComp->IntensityUnits == ELightUnits::Lumens)
+			{
+				Candela = LightComp->Intensity / (4.0f * PI);
+			}
+			const float DistM = FMath::Max(FVector::Dist(LightPos, Focal) / 100.0f, 0.1f);
+			EffectiveLux = Candela / (DistM * DistM);
+			LightColor = LightComp->GetLightColor();
+			bLightCastsShadows = LightComp->CastShadows;
+			bFoundLight = true;
+			break;
+		}
+		if (!bFoundLight)
+		{
+			for (TActorIterator<ADirectionalLight> It(World); It; ++It)
+			{
+				UDirectionalLightComponent* LightComp = Cast<UDirectionalLightComponent>(It->GetLightComponent());
+				if (LightComp == nullptr || !LightComp->IsRegistered() || !LightComp->IsVisible() || It->IsHidden())
+				{
+					continue;
+				}
+				const FVector LightDir = LightComp->GetForwardVector();
+				// Quads face -X (toward the capture): N = (-1,0,0), so NdotL = saturate(+LightDir.X)
+				NdotL = FMath::Clamp((float)LightDir.X, 0.0f, 1.0f);
+				EffectiveLux = LightComp->Intensity;
+				LightColor = LightComp->GetLightColor();
+				bLightCastsShadows = LightComp->CastShadows;
+				// Synthesize a far-away light position along the light direction so the same
+				// projection code handles both light types (scale ~1, offset ~direction)
+				LightPos = Focal - LightDir * (CamDistance * 20.0f);
+				bHaveLightPos = LightDir.X > 0.05;
+				bFoundLight = true;
+				break;
+			}
+		}
+
+		if (bFoundLight)
+		{
+			FLinearColor DisplayLight;
+			if (bHaveLightPos && EffectiveLux > 0.0f && NdotL >= 1.0f)
+			{
+				// The old rig's point light hits the camera-facing layers head-on from a nearly
+				// uniform distance, so the old build's lit look is FULL brightness plus shadows.
+				// Only the light's color tints; the shadows do the lighting work.
+				const float MaxComp = FMath::Max3(LightColor.R, LightColor.G, LightColor.B);
+				DisplayLight = (MaxComp > KINDA_SMALL_NUMBER) ? (LightColor / MaxComp) : FLinearColor::White;
+			}
+			else
+			{
+				// Directional fallback: match the tonemapped 2D view (two-point fit against the
+				// real scene render: dark end and the ACES shoulder)
+				const FLinearColor LinearLight = LightColor * (EffectiveLux / PI);
+				DisplayLight = FLinearColor(ToDisplay(LinearLight.R), ToDisplay(LinearLight.G), ToDisplay(LinearLight.B), 1.0f);
+			}
+			const float Brightness = Ambient + (1.0f - Ambient) * NdotL;
+			LayerTint = FLinearColor(
+				FMath::Clamp(DisplayLight.R * Brightness, 0.0f, 1.0f),
+				FMath::Clamp(DisplayLight.G * Brightness, 0.0f, 1.0f),
+				FMath::Clamp(DisplayLight.B * Brightness, 0.0f, 1.0f), 1.0f);
+
+			if (bLightCastsShadows && bHaveLightPos)
+			{
+				ShadowStrength = FMath::Clamp(CVarLKGSpriteShadow.GetValueOnGameThread(), 0.0f, 1.0f);
+			}
+
+			static bool bLoggedLight = false;
+			if (!bLoggedLight)
+			{
+				bLoggedLight = true;
+				UE_LOG(LookingGlassLogRender, Display, TEXT("Sprite light: pos %s lux %.3f color %s -> tint %s shadows=%d"),
+					*LightPos.ToString(), EffectiveLux, *LightColor.ToString(), *LayerTint.ToString(), ShadowStrength > 0.0f ? 1 : 0);
+			}
+		}
+
+		// The game's 8 key swaps layer materials to unlit variants - an unlit scene shows no
+		// shadows in the 2D view, so none on the hologram either (the backdrop is always
+		// "unlit"/emissive, so judge by the actual game layers)
+		bool bAnyLitLayer = false;
+		for (const FSpriteLayer& L : Layers)
+		{
+			if (L.bLit && !L.bBackdrop) { bAnyLitLayer = true; break; }
+		}
+		if (!bAnyLitLayer)
+		{
+			ShadowStrength = 0.0f;
+		}
+	}
+
+	// Track our own fps for the on-quilt readout
+	static int32 GSpriteQuiltFrames = 0;
+	static int32 GSpriteQuiltLastFPS = 0;
+	static double GSpriteQuiltNextFPSTime = 0.0;
+	GSpriteQuiltFrames++;
+	const double Now = FPlatformTime::Seconds();
+	if (Now >= GSpriteQuiltNextFPSTime)
+	{
+		if (GSpriteQuiltNextFPSTime != 0.0)
+		{
+			GSpriteQuiltLastFPS = GSpriteQuiltFrames;
+		}
+		GSpriteQuiltFrames = 0;
+		GSpriteQuiltNextFPSTime = Now + 1.0;
+	}
+
+	FGameTime GameTime = FGameTime::CreateUndilated(FApp::GetCurrentTime() - GStartTime, FApp::GetDeltaTime());
+
+	// SHADOW MASKS, one per receiving layer, built once per frame (the light projection is pure
+	// world math, so masks are view-independent). Each mask's alpha = UNION of every nearer
+	// caster's silhouette projected from the light onto this layer's plane, multiplied by the
+	// receiver's own texture alpha. That is what a real shadow map computes: every caster always
+	// casts, every pixel darkens at most ONCE no matter how many casters cover it, and shadow
+	// only lands where the receiver has pixels. No content-size thresholds anywhere - they made
+	// whole layers pop dark/light as the level scrolled and silently killed the player's shadow.
+	TArray<const FTexture*> LayerMasks;
+	LayerMasks.Init(nullptr, Layers.Num());
+	if (ShadowStrength > 0.0f)
+	{
+		// Rooted pool of scratch RTs: index 0 accumulates the inverted caster union for the
+		// receiver currently being built, the rest hold one finished mask per receiving layer
+		static TArray<UTextureRenderTarget2D*> GMaskPool;
+		const int32 MaskSize = 512;
+		int32 PoolUsed = 1;
+		auto GetPoolRT = [&](int32 Index) -> UTextureRenderTarget2D*
+		{
+			while (GMaskPool.Num() <= Index)
+			{
+				UTextureRenderTarget2D* RT = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), UTextureRenderTarget2D::StaticClass());
+				RT->AddToRoot();
+				RT->ClearColor = FLinearColor(0, 0, 0, 0);
+				RT->TargetGamma = 1.0f;
+				RT->AddressX = TA_Clamp;
+				RT->AddressY = TA_Clamp;
+				RT->InitCustomFormat(MaskSize, MaskSize, PF_B8G8R8A8, false);
+				RT->UpdateResourceImmediate();
+				GMaskPool.Add(RT);
+			}
+			return GMaskPool[Index];
+		};
+		// A finished mask is sampled by a later canvas; canvas flushes only ever transition
+		// their own target to RTV, so make the RTV -> SRV hand-off explicit
+		auto FlushToTexture = [](FCanvas& InCanvas, FTextureRenderTargetResource* Res)
+		{
+			InCanvas.Flush_GameThread();
+			ENQUEUE_RENDER_COMMAND(LKGShadowMaskToSRV)(
+				[Res](FRHICommandListImmediate& RHICmdList)
+				{
+					RHICmdList.Transition(FRHITransitionInfo(Res->GetRenderTargetTexture(), ERHIAccess::Unknown, ERHIAccess::SRVGraphics));
+				});
+		};
+
+		for (int32 RecvIdx = 0; RecvIdx < Layers.Num(); RecvIdx++)
+		{
+			const FSpriteLayer& Recv = Layers[RecvIdx];
+			if (!Recv.bReceiveShadows)
+			{
+				continue;
+			}
+			const float RecvX = Recv.Box.GetCenter().X;
+			const float RInvW = 1.0f / FMath::Max((float)(Recv.Box.Max.Y - Recv.Box.Min.Y), 1.0f);
+			const float RInvH = 1.0f / FMath::Max((float)(Recv.Box.Max.Z - Recv.Box.Min.Z), 1.0f);
+
+			// Project each nearer caster's populated content rect onto this layer's plane;
+			// receivers no caster reaches skip mask building entirely
+			struct FStamp { const FTexture* Tex; FVector4 UV; float X0, Y0, X1, Y1; };
+			TArray<FStamp, TInlineAllocator<16>> Stamps;
+			for (int32 CasterIdx = RecvIdx + 1; CasterIdx < Layers.Num(); CasterIdx++)
+			{
+				const FSpriteLayer& Caster = Layers[CasterIdx];
+				const float CasterX = Caster.Box.GetCenter().X;
+				if (!Caster.bCastShadows || CasterX - LightPos.X < 1.0f)
+				{
+					continue;	// light must be in front of the caster
+				}
+				const FVector4& CUV = Caster.ContentUV;
+				if (CUV.Z - CUV.X <= 0.0 || CUV.W - CUV.Y <= 0.0)
+				{
+					continue;	// empty layers cast nothing
+				}
+				// Texture UV -> world on the caster quad (U spans Y min->max, V spans Z
+				// top->bottom), then project from the light onto the receiver's plane. The
+				// projection scale (Lr-Lx)/(Lc-Lx) stays near 1 for the far-forward light,
+				// which is why the old build's shadows hugged their casters.
+				const float CY0 = FMath::Lerp((float)Caster.Box.Min.Y, (float)Caster.Box.Max.Y, (float)CUV.X);
+				const float CY1 = FMath::Lerp((float)Caster.Box.Min.Y, (float)Caster.Box.Max.Y, (float)CUV.Z);
+				const float CZ1 = FMath::Lerp((float)Caster.Box.Max.Z, (float)Caster.Box.Min.Z, (float)CUV.Y);
+				const float CZ0 = FMath::Lerp((float)Caster.Box.Max.Z, (float)Caster.Box.Min.Z, (float)CUV.W);
+				const float S = FMath::Clamp((RecvX - LightPos.X) / (CasterX - LightPos.X), 1.0f, 3.0f);
+				const float PY0 = LightPos.Y + (CY0 - LightPos.Y) * S;
+				const float PY1 = LightPos.Y + (CY1 - LightPos.Y) * S;
+				const float PZ0 = LightPos.Z + (CZ0 - LightPos.Z) * S;
+				const float PZ1 = LightPos.Z + (CZ1 - LightPos.Z) * S;
+
+				FStamp Stamp;
+				Stamp.Tex = Caster.Tex;
+				Stamp.UV = CUV;
+				Stamp.X0 = (PY0 - (float)Recv.Box.Min.Y) * RInvW * MaskSize;
+				Stamp.X1 = (PY1 - (float)Recv.Box.Min.Y) * RInvW * MaskSize;
+				Stamp.Y0 = ((float)Recv.Box.Max.Z - PZ1) * RInvH * MaskSize;
+				Stamp.Y1 = ((float)Recv.Box.Max.Z - PZ0) * RInvH * MaskSize;
+				if (Stamp.X1 <= Stamp.X0 || Stamp.Y1 <= Stamp.Y0 ||
+					Stamp.X1 <= 0.0f || Stamp.X0 >= MaskSize || Stamp.Y1 <= 0.0f || Stamp.Y0 >= MaskSize)
+				{
+					continue;
+				}
+				Stamps.Add(Stamp);
+			}
+			if (Stamps.Num() == 0)
+			{
+				continue;
+			}
+
+			UTextureRenderTarget2D* UnionRT = GetPoolRT(0);
+			UTextureRenderTarget2D* MaskRT = GetPoolRT(PoolUsed);
+			FTextureRenderTargetResource* UnionRes = UnionRT->GameThread_GetRenderTargetResource();
+			FTextureRenderTargetResource* MaskRes = MaskRT->GameThread_GetRenderTargetResource();
+			if (UnionRes == nullptr || MaskRes == nullptr)
+			{
+				continue;
+			}
+			PoolUsed++;
+
+			// Pass 1: inverted caster union. Alpha starts at 1 and every caster silhouette
+			// multiplies in (1 - alpha) via SE_BLEND_AlphaHoldout, so overlapping casters
+			// (Castlevania's stacked tree layers) still only count once. NOTE: the plain
+			// SE_BLEND_Translucent never writes dest alpha (BF_Zero/BF_One) - building a mask
+			// with it leaves alpha at the clear value and the stamp draws nothing.
+			{
+				FCanvas UnionCanvas(UnionRes, nullptr, GameTime, GMaxRHIFeatureLevel);
+				UnionCanvas.Clear(FLinearColor(0, 0, 0, 1));
+				for (const FStamp& Stamp : Stamps)
+				{
+					FCanvasTileItem Item(FVector2D(Stamp.X0, Stamp.Y0), Stamp.Tex,
+						FVector2D(Stamp.X1 - Stamp.X0, Stamp.Y1 - Stamp.Y0),
+						FVector2D(Stamp.UV.X, Stamp.UV.Y), FVector2D(Stamp.UV.Z, Stamp.UV.W), FLinearColor::White);
+					Item.BlendMode = SE_BLEND_AlphaHoldout;	// dest alpha *= 1 - caster alpha
+					UnionCanvas.DrawItem(Item);
+				}
+				FlushToTexture(UnionCanvas, UnionRes);
+			}
+
+			// Pass 2: mask alpha = receiver alpha * caster union. Solid receivers (the backdrop
+			// wall, opaque photo materials) count as alpha 1 everywhere; game layers contribute
+			// their colorkey alpha so shadow never floats in their transparent space.
+			{
+				const FTexture* RecvAlphaTex = (Recv.bBackdrop || Recv.Blend == SE_BLEND_Opaque) ? GWhiteTexture : Recv.Tex;
+				FCanvas MaskCanvas(MaskRes, nullptr, GameTime, GMaxRHIFeatureLevel);
+				MaskCanvas.Clear(FLinearColor(0, 0, 0, 0));
+				FCanvasTileItem RecvItem(FVector2D(0, 0), RecvAlphaTex, FVector2D(MaskSize, MaskSize),
+					FVector2D(0, 0), FVector2D(1, 1), FLinearColor(0, 0, 0, 1));
+				RecvItem.BlendMode = SE_BLEND_AlphaBlend;	// dest alpha = receiver alpha
+				MaskCanvas.DrawItem(RecvItem);
+				FCanvasTileItem UnionItem(FVector2D(0, 0), UnionRes, FVector2D(MaskSize, MaskSize),
+					FVector2D(0, 0), FVector2D(1, 1), FLinearColor::White);
+				UnionItem.BlendMode = SE_BLEND_AlphaHoldout;	// dest alpha *= 1 - (1 - union) = union
+				MaskCanvas.DrawItem(UnionItem);
+				FlushToTexture(MaskCanvas, MaskRes);
+			}
+			LayerMasks[RecvIdx] = MaskRes;
+		}
+	}
+
+	FTextureRenderTargetResource* QuiltRes = InQuiltRT->GameThread_GetRenderTargetResource();
+	FCanvas Canvas(QuiltRes, nullptr, GameTime, GMaxRHIFeatureLevel);
+	Canvas.Clear(FLinearColor::Black);
+
+	// Draws a texture rect clipped to its tile (FCanvas has no scissor, so clip analytically,
+	// remapping UVs to the clipped portion)
+	auto DrawClippedTile = [&Canvas](const FTexture* Tex, float X0, float Y0, float X1, float Y1,
+		const FIntRect& TileRect, const FLinearColor& Color, ESimpleElementBlendMode Blend = SE_BLEND_Translucent,
+		float InU0 = 0.0f, float InV0 = 0.0f, float InU1 = 1.0f, float InV1 = 1.0f)
+	{
+		if (X1 <= X0 || Y1 <= Y0 ||
+			X1 <= TileRect.Min.X || X0 >= TileRect.Max.X ||
+			Y1 <= TileRect.Min.Y || Y0 >= TileRect.Max.Y)
+		{
+			return;
+		}
+		float U0 = InU0, V0 = InV0, U1 = InU1, V1 = InV1;
+		const float InvW = (InU1 - InU0) / (X1 - X0);
+		const float InvH = (InV1 - InV0) / (Y1 - Y0);
+		if (X0 < TileRect.Min.X) { U0 += (TileRect.Min.X - X0) * InvW; X0 = TileRect.Min.X; }
+		if (X1 > TileRect.Max.X) { U1 -= (X1 - TileRect.Max.X) * InvW; X1 = TileRect.Max.X; }
+		if (Y0 < TileRect.Min.Y) { V0 += (TileRect.Min.Y - Y0) * InvH; Y0 = TileRect.Min.Y; }
+		if (Y1 > TileRect.Max.Y) { V1 -= (Y1 - TileRect.Max.Y) * InvH; Y1 = TileRect.Max.Y; }
+
+		FCanvasTileItem Tile(FVector2D(X0, Y0), Tex, FVector2D(X1 - X0, Y1 - Y0),
+			FVector2D(U0, V0), FVector2D(U1, V1), Color);
+		Tile.BlendMode = Blend;
+		Canvas.DrawItem(Tile);
+	};
+
+	const FString FPSText = (CVarLKGShowFPS.GetValueOnGameThread() != 0 && GSpriteQuiltLastFPS > 0)
+		? FString::Printf(TEXT("%d FPS"), GSpriteQuiltLastFPS) : FString();
+
+	for (int32 View = 0; View < NumTiles; View++)
+	{
+		// Same tile placement convention as CopyToQuiltShader_RenderThread
+		const int32 RI = NumTiles - View - 1;
+		const int32 TileX = (View % TilesX) * TileSizeX;
+		const int32 TileY = (RI / TilesX) * TileSizeY + PaddingY;
+		const FIntRect TileRect(TileX, TileY, TileX + TileSizeX, TileY + TileSizeY);
+
+		const float ViewLerp = (NumTiles > 1) ? ((float)View / (NumTiles - 1.0f) - 0.5f) : 0.0f;
+		const float ViewOffset = ViewLerp * ViewConeSweep;
+
+		int32 LayerIdx = -1;
+
+		for (const FSpriteLayer& Layer : Layers)
+		{
+			LayerIdx++;
+			const float LayerX = Layer.Box.GetCenter().X;
+			const float Depth = LayerX - CamPos.X;	// distance from camera plane
+			if (Depth < 10.0f)
+			{
+				continue;
+			}
+
+			// Off-axis projection: camera slides +Y by ViewOffset (and +Z by TiltOffset), frustum
+			// shears back so the focal plane (X = Focal.X) is identical in every view
+			auto NdcX = [&](float Y)
+			{
+				return ((Y - Focal.Y - ViewOffset) / Depth + ViewOffset / CamDistance) / TanHalfFOV;
+			};
+			auto NdcZ = [&](float Z)
+			{
+				return Aspect * ((Z - Focal.Z - TiltOffset) / Depth + TiltOffset / CamDistance) / TanHalfFOV;
+			};
+			auto ToTileX = [&](float Ndc) { return TileX + (Ndc * 0.5f + 0.5f) * TileSizeX; };
+			auto ToTileY = [&](float Ndc) { return TileY + (0.5f - Ndc * 0.5f) * TileSizeY; };
+
+			// Unlit layers (the 8-key materials, the emissive backdrop) draw raw like the 2D
+			// view; Layer.Color carries the game's SetTintBG coloring for the backdrop
+			const FLinearColor& Base = Layer.bLit ? LayerTint : FLinearColor::White;
+			const float Dim = Layer.bLit
+				? 1.0f - DepthDim * FMath::Clamp((LayerX - NearLayerX) / DepthDimRange, 0.0f, 1.0f)
+				: 1.0f;
+			const FLinearColor Tint(
+				Base.R * Dim * Layer.Color.R,
+				Base.G * Dim * Layer.Color.G,
+				Base.B * Dim * Layer.Color.B, 1.0f);
+			DrawClippedTile(Layer.Tex,
+				ToTileX(NdcX(Layer.Box.Min.Y)),
+				ToTileY(NdcZ(Layer.Box.Max.Z)),
+				ToTileX(NdcX(Layer.Box.Max.Y)),
+				ToTileY(NdcZ(Layer.Box.Min.Z)),
+				TileRect, Tint, Layer.Blend);
+
+			// Shadows: one darkening stamp from this layer's pre-built mask (union of every
+			// nearer caster's silhouette projected from the light, already multiplied by this
+			// layer's own alpha). Drawn across the same screen rect as the layer itself, right
+			// after it, so nearer layers still cover it (occlusion via painter's order).
+			if (ShadowStrength > 0.0f && LayerMasks[LayerIdx] != nullptr)
+			{
+				DrawClippedTile(LayerMasks[LayerIdx],
+					ToTileX(NdcX(Layer.Box.Min.Y)),
+					ToTileY(NdcZ(Layer.Box.Max.Z)),
+					ToTileX(NdcX(Layer.Box.Max.Y)),
+					ToTileY(NdcZ(Layer.Box.Min.Z)),
+					TileRect, FLinearColor(0.0f, 0.0f, 0.0f, ShadowStrength));
+			}
+		}
+
+		// FPS counter: top-left of every tile
+		if (!FPSText.IsEmpty() && GEngine != nullptr)
+		{
+			FCanvasTextItem FPSItem(FVector2D(TileX + TileSizeX * 0.05f, TileY + TileSizeY * 0.03f),
+				FText::FromString(FPSText), GEngine->GetLargeFont(), FLinearColor::White);
+			FPSItem.Scale = FVector2D(2.0f, 2.0f);
+			FPSItem.EnableShadow(FLinearColor::Black);
+			Canvas.DrawItem(FPSItem);
+		}
+
+		// Status text (rom names etc): bottom of the tile, scaled down if it would spill into
+		// the neighboring tile
+		if (!OverlayText.IsEmpty() && GEngine != nullptr)
+		{
+			float TextScale = 2.0f;
+			const float ApproxWidth = OverlayText.Len() * 10.0f * TextScale;
+			const float MaxWidth = TileSizeX * 0.92f;
+			if (ApproxWidth > MaxWidth)
+			{
+				TextScale *= MaxWidth / ApproxWidth;
+			}
+			FCanvasTextItem TextItem(FVector2D(TileX + TileSizeX * 0.04f, TileY + TileSizeY * 0.9f),
+				FText::FromString(OverlayText), GEngine->GetLargeFont(), FLinearColor::White);
+			TextItem.Scale = FVector2D(TextScale, TextScale);
+			TextItem.EnableShadow(FLinearColor::Black);
+			Canvas.DrawItem(TextItem);
+		}
+	}
+
+	Canvas.Flush_GameThread();
+
+	return true;
 }
 
 void FLookingGlassViewportClient::VisualizeRenderTarget(FViewport* InViewport, UTextureRenderTarget2D* QuiltRT, bool bRenderOnDevice, const FIntPoint& Tiles, float Aspect)
@@ -435,18 +1260,105 @@ void FLookingGlassViewportClient::VisualizeRenderTarget(FViewport* InViewport, U
 		return;
 	}
 
+	if (bRenderOnDevice && LookingGlassSelfRenderEnabled())
+	{
+		// Self-render: run the lenticular shader from the quilt into our own device window's
+		// backbuffer. No Bridge call happens per frame, so a Bridge stall can never freeze
+		// or pause the hologram (the legacy HoloPlay plugin worked exactly this way).
+		const FLGDeviceCalibration& Cal = ILookingGlassRuntime::Get().GetCurrentCalibration();
+		if (Cal.Width <= 0 || Cal.Height <= 0 || InViewport->GetSizeXY().X <= 0)
+		{
+			return;
+		}
+
+		FLookingGlassLenticularPS::FParameters Params;
+		FMemory::Memzero(Params);
+
+		// Raw factory calibration to shader values, same math the legacy plugin used
+		const float RawSlope = (FMath::Abs(Cal.Slope) > KINDA_SMALL_NUMBER) ? Cal.Slope : 1.0f;
+		const float ScreenInches = (float)Cal.Width / ((Cal.DPI > 1.0f) ? Cal.DPI : 324.0f);
+		Params.pitch = Cal.Pitch * ScreenInches * FMath::Cos(FMath::Atan(1.0f / RawSlope));
+		Params.slope = (float)Cal.Height / ((float)Cal.Width * RawSlope);
+		Params.center = Cal.Center;
+		Params.subp = 1.0f / (3.0f * (float)Cal.Width) * ((Cal.FlipX > 0.5f) ? -1.0f : 1.0f);
+
+		const int32 NumViews = FMath::Max(1, Tiles.X * Tiles.Y);
+		Params.tile = FVector4f((float)Tiles.X, (float)Tiles.Y, (float)NumViews, (float)NumViews);
+
+		// Used fraction of the quilt texture; 1.0 when tiles fill it exactly (Portrait: 8x6 into
+		// 3360x3360 is exact) and for the single-tile 2D mode
+		float PortionX = 1.0f, PortionY = 1.0f;
+		TWeakObjectPtr<ULookingGlassSceneCaptureComponent2D> CaptureComponent = LookingGlass::GetGameLookingGlassCaptureComponent();
+		if (NumViews > 1 && CaptureComponent.IsValid())
+		{
+			const FLookingGlassTilingQuality& TilingValues = CaptureComponent->GetTilingValues();
+			if (TilingValues.TilesX == Tiles.X && TilingValues.TilesY == Tiles.Y &&
+				TilingValues.PortionX > 0.0f && TilingValues.PortionY > 0.0f)
+			{
+				PortionX = TilingValues.PortionX;
+				PortionY = TilingValues.PortionY;
+			}
+		}
+		Params.viewPortion = FVector2f(PortionX, PortionY);
+
+		const float DeviceAspect = (float)InViewport->GetSizeXY().X / (float)InViewport->GetSizeXY().Y;
+		Params.aspect = FVector4f(DeviceAspect, DeviceAspect, 0.0f, 0.0f);
+		Params.QuiltMode = CVarLKGSelfRenderQuilt.GetValueOnGameThread();
+		Params.FlipYTexCoords = 1;
+		// The 16-bit quilt holds linear values; the window backbuffer is gamma-space
+		Params.OutputGamma = FMath::Max(0.1f, CVarLKGSelfRenderGamma.GetValueOnGameThread());
+
+		ENQUEUE_RENDER_COMMAND(LKGRenderLenticular)(
+			[RenderTarget, InViewport, Params](FRHICommandListImmediate& RHICmdList)
+			{
+				FTextureRHIRef ViewportRT = InViewport->GetRenderTargetTexture();
+				FTextureRHIRef Quilt = RenderTarget->GetRenderTargetTexture();
+				if (ViewportRT.IsValid() && Quilt.IsValid())
+				{
+					RenderLenticular_RenderThread(RHICmdList, Quilt, ViewportRT, Params);
+				}
+			});
+		return;
+	}
+
 	if (bRenderOnDevice)
 	{
 		// Prepare Bridge if needed
 		FLookingGlassBridge& Bridge = ILookingGlassRuntime::Get().GetBridge();
 #if 1
+		// Bridge calls have hard thread affinity AND stall for 0.7-20s in the field
+		// (DrawInteropQuiltTextureDX itself, measured). The whole Bridge lifecycle therefore
+		// lives on its own thread - initialized there, window created there, drawn there - and
+		// this call just queues the latest frame and returns. Stalls only pause the hologram;
+		// offenders are logged to lkg_diag.txt next to the top-level exe.
 		void* RTNativeHandle = RenderTarget->GetTexture2DRHI()->GetNativeResource();
-		if (!Bridge.IsRendering())
+		Bridge.QueueDraw(RTNativeHandle, Tiles.X, Tiles.Y, Aspect);
+
+		// Mid-stall diagnostic: when a bridge draw has been blocked >2s, capture that thread's
+		// callstack ONCE per stall - it names the exact API the stall parks in (service CPU is
+		// idle during stalls, so this is a blocked wait; the stack says on what)
 		{
-			Bridge.StartRendering();
+			static bool GStackCapturedThisStall = false;
+			uint32 BridgeThreadId = 0;
+			if (Bridge.IsDrawStuck(2.0, BridgeThreadId))
+			{
+				if (!GStackCapturedThisStall && BridgeThreadId != 0)
+				{
+					GStackCapturedThisStall = true;
+					ANSICHAR StackTrace[16384];
+					StackTrace[0] = 0;
+					FPlatformStackWalk::ThreadStackWalkAndDump(StackTrace, UE_ARRAY_COUNT(StackTrace), 0, BridgeThreadId);
+					const FString DiagLine = FString::Printf(TEXT("MID-STALL bridge thread callstack:\n%s"), ANSI_TO_TCHAR(StackTrace));
+					FFileHelper::SaveStringToFile(DiagLine, *(FPaths::RootDir() / TEXT("lkg_diag.txt")),
+						FFileHelper::EEncodingOptions::AutoDetect, &IFileManager::Get(), FILEWRITE_Append);
+					UE_LOG(LookingGlassLogRender, Warning, TEXT("%s"), *DiagLine);
+				}
+			}
+			else
+			{
+				GStackCapturedThisStall = false;
+			}
 		}
-		// Then render
-		Bridge.DrawTexture(RTNativeHandle, Tiles.X, Tiles.Y, Aspect);
 #else
 		// Do the sync with device in rendering thread. For some reason, at least with Bridge 2.4.9 it hangs
 		// in Bridge API.
@@ -1047,6 +1959,12 @@ UTextureRenderTarget2D* FLookingGlassViewportClient::GetQuiltRT(TWeakObjectPtr<U
 		StaticQuiltRT->ClearColor = FLinearColor::Red;
 		// We should create a RT in particular pixel format, and make it shareable, in order to being able to use it in Bridge
 		StaticQuiltRT->bGPUSharedFlag = true;
+		// Keep the whole sprite chain gamma-neutral: emulator textures are SRGB=0 and already
+		// hold display-encoded palette values. TargetGamma 1 stops FCanvas applying its 1/2.2
+		// display encode on top (and the lenticular pass encodes nothing either), so vertex
+		// tints and shadow alphas multiply the displayed value EXACTLY - with the default 2.2
+		// chain a 0.47 tint reached the panel as 0.86 and all lighting looked washed out.
+		StaticQuiltRT->TargetGamma = 1.0f;
 		StaticQuiltRT->InitCustomFormat(TilingValues.QuiltW, TilingValues.QuiltH, PF_A2B10G10R10, false);
 		StaticQuiltRT->UpdateResource();
 		StaticQuiltRT->UpdateResourceImmediate();

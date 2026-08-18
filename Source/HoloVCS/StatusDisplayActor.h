@@ -12,7 +12,7 @@ using std::string;
 
 class UTextRenderComponent;
 
-void ShowStatusMessage(string message, float forcedTimeToShow = 0);
+void ShowStatusMessage(string message, float forcedTimeToShow = 0, float textSizeMult = 1.0f);
 
 UCLASS()
 class HOLOVCS_API AStatusDisplayActor : public AActor
@@ -34,4 +34,5 @@ public:
 	void SetTextTimer(double timer);
 	double m_viewTimer = 0;
 	UTextRenderComponent* m_pTextComponent = NULL;
+	float m_baseTextWorldSize = 0; //captured on first message so size multipliers have a reference
 };

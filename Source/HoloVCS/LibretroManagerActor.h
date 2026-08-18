@@ -154,6 +154,7 @@ public:
 
 	int m_framesRendered = 0;
 	float m_timeOfNextFPSUpdate = 0;
+	bool m_bShowLKGFPS = false; //fps readout on the in-world status text, on for Looking Glass builds
 	eLightingMode m_curLightingMode = LIGHTING_MODE_NORMAL;
 
 protected:

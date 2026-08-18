@@ -184,6 +184,7 @@ public:
 	bool m_useAudio = true;
 	int m_frameSkip = 0; //0 means no skipping, normal
 	double m_targetFPS = 0; //0 means no limit
+	bool m_bUncapFPS = false; //true = skip the pacing busy-wait entirely (0 hotkey, for fps measurement)
 	double m_mainTimer = 0;
 	double m_timeOfLastFrame = 0;
 	JoyPadButtonStates m_joyPad;

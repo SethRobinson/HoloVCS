@@ -25,6 +25,7 @@
 #include "Engine/GameEngine.h"
 
 #include "Interfaces/IPluginManager.h"
+#include "ShaderCore.h" // AddShaderSourceDirectoryMapping
 
 #if WITH_EDITOR
 #include "ISequencerObjectChangeListener.h"
@@ -36,8 +37,25 @@
 
 #define PLUGIN_NAME TEXT("LookingGlass")
 
+// Self-rendered lenticular output: the plugin's own window sits on the device and runs the
+// lenticular shader directly, so Bridge is only consulted for calibration at boot. The Bridge
+// interop draw path (0) blocks 0.7-20s per call in the field (see docs/lkg_bridge_stall_report.md).
+static TAutoConsoleVariable<int32> CVarLKGSelfRender(
+	TEXT("lkg.SelfRender"), 1,
+	TEXT("1 = render the lenticular device output in our own window (no per-frame Bridge IPC), 0 = Bridge interop draws the quilt"));
+
+bool LookingGlassSelfRenderEnabled()
+{
+	return CVarLKGSelfRender.GetValueOnGameThread() != 0;
+}
+
 void FLookingGlassRuntimeModule::StartupModule()
 {
+	// The lenticular global shader lives in the plugin's Shaders dir; map it before the
+	// global shader map compiles (this module loads at PostConfigInit)
+	FString PluginShaderDir = FPaths::Combine(IPluginManager::Get().FindPlugin(PLUGIN_NAME)->GetBaseDir(), TEXT("Shaders"));
+	AddShaderSourceDirectoryMapping(TEXT("/Plugin/LookingGlass"), PluginShaderDir);
+
 	// Create all managers
 	Managers.Add(LookingGlassLaunchManager = MakeShareable(new FLookingGlassLaunchManager()));
 	Managers.Add(LookingGlassCommandLineManager = MakeShareable(new FLookingGlassCommandLineManager()));
@@ -49,6 +67,13 @@ void FLookingGlassRuntimeModule::StartupModule()
 
 	FCoreDelegates::GetOnPostEngineInit().AddLambda([this]()
 		{
+			// Commandlets (e.g. the UAT cook) have no Slate application and need none of this;
+			// FSlateApplication::Get() below would assert and kill the cook.
+			if (!FSlateApplication::IsInitialized())
+			{
+				return;
+			}
+
 			// Init all managers
 			InitAllManagers();
 
@@ -119,7 +144,7 @@ void FLookingGlassRuntimeModule::OnDisplayMetricsChanged(const FDisplayMetrics& 
 
 void FLookingGlassRuntimeModule::PrepareDisplays()
 {
-	Bridge.ReadDisplays();
+	Bridge.RequestReadDisplays();
 }
 
 #if WITH_EDITOR
@@ -214,6 +239,14 @@ void FLookingGlassRuntimeModule::StartPlayer(ELookingGlassModeType LookingGlassM
 		FVector2D ClientSize(100, 100);
 		FVector2D ScreenPosition(100, -200);
 
+		// StartPlayer runs at game-viewport creation, which happens BEFORE the PostEngineInit
+		// hook that initializes the Bridge - initialize on demand (idempotent, blocks only at
+		// boot) so the device list is populated when we decide where the window goes
+		if (!Bridge.bInitialized)
+		{
+			Bridge.Initialize();
+		}
+
 		ELookingGlassPlacement PlacementMode = WindowSettings.PlacementMode;
 		// If there's no displays with selected ScreenIndex, use debug window
 		if (PlacementMode == ELookingGlassPlacement::Automatic && !Bridge.Displays.IsValidIndex(ScreenIndex))
@@ -231,9 +264,22 @@ void FLookingGlassRuntimeModule::StartPlayer(ELookingGlassModeType LookingGlassM
 			bIsRenderingOnDevice = false;
 		}
 
+		bool bSelfRender = false;
 		if (bIsRenderingOnDevice)
 		{
 			CurrentCalibration = Bridge.Displays[ScreenIndex];
+
+			bSelfRender = LookingGlassSelfRenderEnabled();
+			if (bSelfRender)
+			{
+				// Our own borderless window covers the device and runs the lenticular shader;
+				// the Bridge window (whose per-frame draws stall) is never created
+				ClientSize = FVector2D(CurrentCalibration.Width, CurrentCalibration.Height);
+				ScreenPosition = FVector2D(CurrentCalibration.XPos, CurrentCalibration.YPos);
+				WindowType = EWindowMode::WindowedFullscreen;
+				UE_LOG(LookingGlassLogPlayer, Display, TEXT("Self-render window on device at %d,%d size %dx%d"),
+					CurrentCalibration.XPos, CurrentCalibration.YPos, CurrentCalibration.Width, CurrentCalibration.Height);
+			}
 		}
 		else
 		{
@@ -248,18 +294,21 @@ void FLookingGlassRuntimeModule::StartPlayer(ELookingGlassModeType LookingGlassM
 			.ClientSize(ClientSize)
 			.AdjustInitialSizeAndPositionForDPIScale(false)
 			.Title(FText::FromString(TEXT("LookingGlass Window")))
-			.FocusWhenFirstShown(true)
+			.FocusWhenFirstShown(!bSelfRender)
 			.ScreenPosition(ScreenPosition)
 			.UseOSWindowBorder(false)
-			.CreateTitleBar(true)
-			.LayoutBorder(FMargin(5, 5, 5, 5))
+			.CreateTitleBar(!bSelfRender)
+			.LayoutBorder(bSelfRender ? FMargin(0) : FMargin(5, 5, 5, 5))
 			.AutoCenter(AutoCenter)
 			.SaneWindowPlacement(AutoCenter == EAutoCenter::None)
-			.SizingRule(ESizingRule::UserSized)
-			.IsTopmostWindow(WindowSettings.bToptmostDebugWindow);
+			.SizingRule(bSelfRender ? ESizingRule::FixedSize : ESizingRule::UserSized)
+			// Self-render window opens without focus, so make it topmost or it starts (and
+			// stays) behind whatever desktop windows sit on the device
+			.IsTopmostWindow(bSelfRender ? true : WindowSettings.bToptmostDebugWindow);
 
-		// Always make a ViewportClient, because rendering code is located in this class
-		if (bIsRenderingOnDevice)
+		// Always make a ViewportClient, because rendering code is located in this class.
+		// In self-render mode the window IS the device output, so it stays visible.
+		if (bIsRenderingOnDevice && !bSelfRender)
 		{
 			LookingGlassWindow->HideWindow();
 		}
@@ -520,6 +569,14 @@ void FLookingGlassRuntimeModule::StartPlayerSeparateProccess()
 	auto LookingGlassSettings = GetDefault<ULookingGlassSettings>();
 	bLockInMainViewport = LookingGlassSettings->LookingGlassWindowSettings.bLockInMainViewport;
 	auto LastExecutedPlayModeType = bLockInMainViewport ? ELookingGlassModeType::PlayMode_InMainViewport : LookingGlassSettings->LookingGlassWindowSettings.LastExecutedPlayModeType;
+
+	// Self-render puts the lenticular output in the plugin's own window; main-viewport mode has
+	// no such window, so it must run in separate-window mode regardless of saved/cooked config
+	if (LookingGlassSelfRenderEnabled())
+	{
+		LastExecutedPlayModeType = ELookingGlassModeType::PlayMode_InSeparateWindow;
+		bLockInMainViewport = false;
+	}
 
 #if WITH_EDITOR
 	// Try to parse if this is standalone mode

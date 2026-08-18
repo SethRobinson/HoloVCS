@@ -298,7 +298,9 @@ void UpdateSuperMarioBros(void* pProfileManager)
 	LibretroManager* pL = pProf->m_pLibretroManager;
 	static byte keepList[128];
 
-	pL->m_pPlayerPawn->SetTintBG(FVector(146.0/255.0, 146.0 / 255.0, 1.0f), 1.0f, false);
+	//NOTE: the old build passed bAllowShadows=true here (sky wall receives shadows); the port
+	//had flipped it to false, which is why the 2D view lost its wall shadows in Mario
+	pL->m_pPlayerPawn->SetTintBG(FVector(146.0/255.0, 146.0 / 255.0, 1.0f), 1.0f, true);
 
 	ClearLayers();
 	FIntRect rectFull = FIntRect(0, 0, pL->m_game_av_info.geometry.base_width, pL->m_game_av_info.geometry.base_height);

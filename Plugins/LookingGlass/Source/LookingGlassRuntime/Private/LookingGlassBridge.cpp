@@ -3,6 +3,15 @@
 #include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/FileManager.h"
+#include "HAL/Runnable.h"
+#include "HAL/RunnableThread.h"
+#include "Misc/ScopeLock.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Misc/DateTime.h"
+#include "Templates/Atomic.h"
+#include "Async/Async.h"
+#include "Containers/Queue.h"
 
 #if WITH_EDITOR
 #include "Framework/Application/SlateApplication.h"
@@ -49,15 +58,23 @@ static void ReportError(const FString& Message)
 {
 	UE_LOG(LogLookingGlassBridge, Error, TEXT("%s"), *Message);
 #if WITH_EDITOR
-	FNotificationInfo Info(FText::FromString(Message));
-	Info.ExpireDuration = 15.0f;
-	Info.bUseSuccessFailIcons = true;
-	Info.Image = FAppStyle::GetBrush(TEXT("MessageLog.Warning"));
-	TSharedPtr<SNotificationItem> NotificationItem = FSlateNotificationManager::Get().AddNotification(Info);
+	// May be called from the bridge thread - Slate notifications must run on the game thread
+	AsyncTask(ENamedThreads::GameThread, [Message]()
+	{
+		if (!FSlateApplication::IsInitialized())
+		{
+			return;
+		}
+		FNotificationInfo Info(FText::FromString(Message));
+		Info.ExpireDuration = 15.0f;
+		Info.bUseSuccessFailIcons = true;
+		Info.Image = FAppStyle::GetBrush(TEXT("MessageLog.Warning"));
+		TSharedPtr<SNotificationItem> NotificationItem = FSlateNotificationManager::Get().AddNotification(Info);
+	});
 #endif // WITH_EDITOR
 }
 
-bool FLookingGlassBridge::Initialize()
+bool FLookingGlassBridge::Initialize_BridgeThread()
 {
 	// Load the Bridge
 	BridgeController = new ControllerWithCalibrationTemplates();
@@ -136,7 +153,7 @@ bool FLookingGlassBridge::Initialize()
 			Calibration.Center, Calibration.Pitch, Calibration.Slope, Calibration.DPI, Calibration.FlipX, Calibration.Width, Calibration.Height, Calibration.Aspect);
 	}
 
-	ReadDisplays();
+	ReadDisplays_BridgeThread();
 
 	if (Displays.Num() == 0)
 	{
@@ -146,7 +163,7 @@ bool FLookingGlassBridge::Initialize()
 	return true;
 }
 
-void FLookingGlassBridge::ReadDisplays()
+void FLookingGlassBridge::ReadDisplays_BridgeThread()
 {
 	Displays.Empty();
 
@@ -200,22 +217,251 @@ void FLookingGlassBridge::ReadDisplays()
 			nullptr);
 
 		BridgeController->GetDisplayAspectForDisplay(DisplayId, &Display.Aspect);
-	}
-}
 
-void FLookingGlassBridge::Shutdown()
-{
-	if (BridgeController != nullptr)
-	{
-		BridgeController->Uninitialize();
-		delete BridgeController;
-		BridgeController = nullptr;
+		long WinX = 0, WinY = 0;
+		BridgeController->GetWindowPositionForDisplay(DisplayId, &WinX, &WinY);
+		Display.XPos = (int32)WinX;
+		Display.YPos = (int32)WinY;
+
+		UE_LOG(LogLookingGlassBridge, Display, TEXT("Display %s (%s): Center=%g, Pitch=%g, Slope=%g, DPI=%g, FlipX=%g, Width=%d, Height=%d, Aspect=%g, Pos=%d,%d"),
+			*Display.Name, *Display.Serial, Display.Center, Display.Pitch, Display.Slope, Display.DPI, Display.FlipX,
+			Display.Width, Display.Height, Display.Aspect, Display.XPos, Display.YPos);
 	}
 }
 
 static_assert(sizeof(int32) == sizeof(WINDOW_HANDLE));
 
-void FLookingGlassBridge::StartRendering()
+static void LKGBridgeDiag(const FString& Message)
+{
+	// Shipping builds have no UE log - append to a diag file next to the top-level exe
+	const FString Line = FString::Printf(TEXT("%s (%s)\n"), *Message, *FDateTime::Now().ToString());
+	FFileHelper::SaveStringToFile(Line, *(FPaths::RootDir() / TEXT("lkg_diag.txt")),
+		FFileHelper::EEncodingOptions::AutoDetect, &IFileManager::Get(), FILEWRITE_Append);
+	UE_LOG(LogLookingGlassBridge, Warning, TEXT("%s"), *Message);
+}
+
+/**
+ * The one thread every Bridge SDK call runs on (the SDK has hard thread affinity to whichever
+ * thread initialized the controller, and its calls stall for 0.7-20 seconds in the field - on
+ * the game thread those stalls froze the whole game). The thread pumps Windows messages so the
+ * bridge window it creates behaves, drains queued commands, and presents the latest pending
+ * quilt frame; stalls only ever block this thread.
+ */
+class FLookingGlassBridgeThread : public FRunnable
+{
+public:
+	FLookingGlassBridgeThread(FLookingGlassBridge* InBridge)
+		: Bridge(InBridge)
+	{
+		WakeEventHandle = CreateEventW(nullptr, 0, 0, nullptr);
+		Thread = FRunnableThread::Create(this, TEXT("LookingGlassBridge"), 0, TPri_AboveNormal);
+	}
+
+	virtual ~FLookingGlassBridgeThread()
+	{
+		bQuit = true;
+		SetEvent(WakeEventHandle);
+		if (Thread)
+		{
+			Thread->WaitForCompletion();
+			delete Thread;
+		}
+		CloseHandle(WakeEventHandle);
+	}
+
+	/** Fire-and-forget command */
+	void Enqueue(TUniqueFunction<void()> Function)
+	{
+		Commands.Enqueue(MoveTemp(Function));
+		SetEvent(WakeEventHandle);
+	}
+
+	/** Runs the command on the bridge thread and blocks until it finishes (boot/shutdown only) */
+	void EnqueueAndWait(TUniqueFunction<void()> Function)
+	{
+		FEvent* DoneEvent = FPlatformProcess::GetSynchEventFromPool(false);
+		Enqueue([&Function, DoneEvent]()
+		{
+			Function();
+			DoneEvent->Trigger();
+		});
+		DoneEvent->Wait();
+		FPlatformProcess::ReturnSynchEventToPool(DoneEvent);
+	}
+
+	/** Latest-wins frame submission */
+	void QueueDraw(void* Texture, int32 QuiltDX, int32 QuiltDY, float Aspect)
+	{
+		{
+			FScopeLock Lock(&PendingLock);
+			PendingTexture = Texture;
+			PendingTiles = FIntPoint(QuiltDX, QuiltDY);
+			PendingAspect = Aspect;
+			bHasPending = true;
+		}
+		SetEvent(WakeEventHandle);
+	}
+
+	virtual uint32 Run() override
+	{
+		while (!bQuit)
+		{
+			// Pump messages for any windows created on this thread (the bridge window), and wake
+			// on either a new message or our event
+			MSG Msg;
+			while (PeekMessageW(&Msg, nullptr, 0, 0, PM_REMOVE))
+			{
+				TranslateMessage(&Msg);
+				DispatchMessageW(&Msg);
+			}
+
+			// Drain commands
+			TUniqueFunction<void()> Command;
+			while (Commands.Dequeue(Command))
+			{
+				Command();
+				Command = nullptr;
+			}
+
+			// Present the newest pending frame, if any
+			void* Texture = nullptr;
+			FIntPoint Tiles(1, 1);
+			float Aspect = 1.0f;
+			bool bDraw = false;
+			{
+				FScopeLock Lock(&PendingLock);
+				if (bHasPending)
+				{
+					Texture = PendingTexture;
+					Tiles = PendingTiles;
+					Aspect = PendingAspect;
+					bHasPending = false;
+					bDraw = true;
+				}
+			}
+			if (bDraw && Bridge->bInitialized)
+			{
+				DrawStartTime = FPlatformTime::Seconds();
+				bDrawInFlight = true;
+				if (!Bridge->IsRendering())
+				{
+					Bridge->StartRendering_BridgeThread();
+				}
+				Bridge->DrawTexture_BridgeThread(Texture, Tiles.X, Tiles.Y, Aspect);
+				bDrawInFlight = false;
+				continue; // check for newer work before sleeping
+			}
+
+			MsgWaitForMultipleObjects(1, &WakeEventHandle, 0, 100, QS_ALLINPUT);
+		}
+		return 0;
+	}
+
+public:
+	// Mid-stall diagnostics: which thread to stack-walk and whether a draw is currently blocked
+	TAtomic<bool> bDrawInFlight { false };
+	TAtomic<double> DrawStartTime { 0.0 };
+	uint32 GetThreadId() const { return Thread ? Thread->GetThreadID() : 0; }
+
+private:
+	FLookingGlassBridge* Bridge = nullptr;
+	FRunnableThread* Thread = nullptr;
+	HANDLE WakeEventHandle = nullptr;
+	TQueue<TUniqueFunction<void()>, EQueueMode::Mpsc> Commands;
+	FCriticalSection PendingLock;
+	void* PendingTexture = nullptr;
+	FIntPoint PendingTiles = FIntPoint(1, 1);
+	float PendingAspect = 1.0f;
+	bool bHasPending = false;
+	TAtomic<bool> bQuit { false };
+};
+
+bool FLookingGlassBridge::Initialize()
+{
+	// Idempotent: StartPlayer initializes on demand (game viewports are created before
+	// PostEngineInit), and the PostEngineInit hook may then call this a second time
+	if (bInitialized)
+	{
+		return true;
+	}
+
+	if (BridgeThread == nullptr)
+	{
+		BridgeThread = new FLookingGlassBridgeThread(this);
+	}
+
+	// Block once at boot - after this, every Bridge interaction is asynchronous
+	bool bResult = false;
+	BridgeThread->EnqueueAndWait([this, &bResult]()
+	{
+		bResult = Initialize_BridgeThread();
+	});
+	return bResult;
+}
+
+void FLookingGlassBridge::Shutdown()
+{
+	if (BridgeThread != nullptr)
+	{
+		BridgeThread->EnqueueAndWait([this]()
+		{
+			if (bInitialized)
+			{
+				StopRendering_BridgeThread();
+			}
+			if (BridgeController != nullptr)
+			{
+				BridgeController->Uninitialize();
+				delete BridgeController;
+				BridgeController = nullptr;
+			}
+		});
+		delete BridgeThread;
+		BridgeThread = nullptr;
+	}
+}
+
+void FLookingGlassBridge::RequestReadDisplays()
+{
+	if (BridgeThread != nullptr && bInitialized)
+	{
+		BridgeThread->Enqueue([this]()
+		{
+			ReadDisplays_BridgeThread();
+		});
+	}
+}
+
+void FLookingGlassBridge::RequestStopRendering()
+{
+	if (BridgeThread != nullptr && bInitialized)
+	{
+		BridgeThread->Enqueue([this]()
+		{
+			StopRendering_BridgeThread();
+		});
+	}
+}
+
+void FLookingGlassBridge::QueueDraw(void* Texture, int32 QuiltDX, int32 QuiltDY, float Aspect)
+{
+	if (BridgeThread != nullptr && bInitialized)
+	{
+		BridgeThread->QueueDraw(Texture, QuiltDX, QuiltDY, Aspect);
+	}
+}
+
+bool FLookingGlassBridge::IsDrawStuck(double StuckSeconds, uint32& OutBridgeThreadId) const
+{
+	if (BridgeThread == nullptr || !BridgeThread->bDrawInFlight)
+	{
+		return false;
+	}
+	OutBridgeThreadId = BridgeThread->GetThreadId();
+	return (FPlatformTime::Seconds() - BridgeThread->DrawStartTime) > StuckSeconds;
+}
+
+void FLookingGlassBridge::StartRendering_BridgeThread()
 {
 	check(bInitialized);
 
@@ -230,7 +476,7 @@ void FLookingGlassBridge::StartRendering()
 	}
 }
 
-void FLookingGlassBridge::StopRendering()
+void FLookingGlassBridge::StopRendering_BridgeThread()
 {
 	check(bInitialized);
 
@@ -245,24 +491,48 @@ void FLookingGlassBridge::StopRendering()
 	}
 }
 
-void FLookingGlassBridge::DrawTexture(void* Texture, int32 QuiltDX, int32 QuiltDY, float Aspect)
+void FLookingGlassBridge::DrawTexture_BridgeThread(void* Texture, int32 QuiltDX, int32 QuiltDY, float Aspect)
 {
 	check(bInitialized);
+
+	// Fine-grained stall diagnostics: each sub-call is timed separately so lkg_diag.txt can name
+	// the exact Bridge API that stalled (DrawInteropQuiltTextureDX measured at up to 19.75s)
+	double T0 = FPlatformTime::Seconds();
 
 	// Just in case - check if there's already a registered texture
 	if (TextureRegistered != Texture && TextureRegistered != nullptr)
 	{
+		LKGBridgeDiag(FString::Printf(TEXT("Bridge texture handle CHANGED %p -> %p, re-registering"), TextureRegistered, Texture));
 		BridgeController->UnregisterTextureDX(LGWindow, (IUnknown*)TextureRegistered);
 		TextureRegistered = nullptr;
+		const double Elapsed = FPlatformTime::Seconds() - T0;
+		if (Elapsed > 0.25)
+		{
+			LKGBridgeDiag(FString::Printf(TEXT("Bridge UnregisterTextureDX stalled for %.2f seconds"), Elapsed));
+		}
 	}
 
+	T0 = FPlatformTime::Seconds();
 	if (TextureRegistered == nullptr)
 	{
 		BridgeController->RegisterTextureDX(LGWindow, (IUnknown*)Texture);
 		TextureRegistered = Texture;
+		const double Elapsed = FPlatformTime::Seconds() - T0;
+		if (Elapsed > 0.25)
+		{
+			LKGBridgeDiag(FString::Printf(TEXT("Bridge RegisterTextureDX stalled for %.2f seconds"), Elapsed));
+		}
 	}
 
+	T0 = FPlatformTime::Seconds();
 	BridgeController->DrawInteropQuiltTextureDX(LGWindow, (IUnknown*)TextureRegistered, QuiltDX, QuiltDY, Aspect, 1.0f);
+	{
+		const double Elapsed = FPlatformTime::Seconds() - T0;
+		if (Elapsed > 0.25)
+		{
+			LKGBridgeDiag(FString::Printf(TEXT("Bridge DrawInteropQuiltTextureDX stalled for %.2f seconds - on bridge thread, game unaffected"), Elapsed));
+		}
+	}
 }
 
 #undef LOCTEXT_NAMESPACE

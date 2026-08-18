@@ -856,6 +856,13 @@ void LibretroManager::InitEmulator()
 #endif
 	}
 
+	//-rom=partialname on the command line overrides the hardcoded startup rom
+	FString romOverride;
+	if (FParse::Value(FCommandLine::Get(), TEXT("rom="), romOverride) && !romOverride.IsEmpty())
+	{
+		g_partialRomNameToLoadOnStartup = toString(romOverride);
+	}
+
 	if (g_loadStateOnFirstLoad && !g_partialRomNameToLoadOnStartup.empty())
 	{
 		SetRomToLoadByPartialFileName(g_partialRomNameToLoadOnStartup);
@@ -1433,16 +1440,22 @@ void LibretroManager::Update()
 	m_useAudio = true;
 	m_profManager.Update();
 
-	//slow down things?
-	if (m_frameSkip == 0 && m_targetFPS != 0)
+	//slow down things?  (this pacing wait is what caps the whole app at m_targetFPS - the 0 hotkey
+	//sets m_bUncapFPS to bypass it so the fps counter can show true throughput)
+	//Sleep for the bulk of the wait and only spin the last ~1.5ms: the old pure busy-wait burned
+	//a full CPU core every frame for the same timing precision.
+	if (m_frameSkip == 0 && m_targetFPS != 0 && !m_bUncapFPS)
 	{
+		double desiredInterval = 1.0 / m_targetFPS;
 		while (1)
 		{
-			double interval = FPlatformTime::Seconds() - m_timeOfLastFrame;
-			//LogMsg("Interval: %.2f", interval);
-
-			double desiredInterval = 1.0 / m_targetFPS;
-			if (interval > desiredInterval) break;
+			double remaining = desiredInterval - (FPlatformTime::Seconds() - m_timeOfLastFrame);
+			if (remaining <= 0) break;
+			if (remaining > 0.002)
+			{
+				FPlatformProcess::SleepNoStats((float)(remaining - 0.0015));
+			}
+			//else: spin the final stretch for frame-accurate pacing
 		}
 		m_timeOfLastFrame = FPlatformTime::Seconds();
 

@@ -8,7 +8,7 @@ public class HoloVCSTarget : TargetRules
     public HoloVCSTarget(TargetInfo Target) : base(Target)
     {
         bOverrideBuildEnvironment = true;
-        //bUseLoggingInShipping = true;
+        //bUseLoggingInShipping = true; //can't be enabled with the installed engine - Core.lib is prebuilt with NO_LOGGING and LogTemp fails to link
         Type = TargetType.Game;
         DefaultBuildSettings = BuildSettingsVersion.V7; //UE 5.8 wants V7, keeps the "Target Upgrade Required" popup away
         IncludeOrderVersion = EngineIncludeOrderVersion.Latest;

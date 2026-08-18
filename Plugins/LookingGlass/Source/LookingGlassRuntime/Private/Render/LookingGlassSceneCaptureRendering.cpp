@@ -134,6 +134,8 @@ static void SetupViewVamilyForSceneCapture(
 		{
 			View->ShowOnlyPrimitives.Emplace();
 
+			// Upstream bug: these two loops added the show-only primitives to HiddenPrimitives, which
+			// left ShowOnlyPrimitives empty and made show-only captures render nothing.
 			for (auto It = SceneCaptureComponent->ShowOnlyComponents.CreateConstIterator(); It; ++It)
 			{
 				// If the primitive component was destroyed, the weak pointer will return NULL.
@@ -141,9 +143,9 @@ static void SetupViewVamilyForSceneCapture(
 				if (PrimitiveComponent)
 				{
 #if ENGINE_MAJOR_VERSION < 5 || ENGINE_MINOR_VERSION >= 4
-					View->HiddenPrimitives.Add(PrimitiveComponent->GetPrimitiveSceneId());
+					View->ShowOnlyPrimitives->Add(PrimitiveComponent->GetPrimitiveSceneId());
 #else
-					View->HiddenPrimitives.Add(PrimitiveComponent->ComponentId);
+					View->ShowOnlyPrimitives->Add(PrimitiveComponent->ComponentId);
 #endif
 				}
 			}
@@ -159,9 +161,9 @@ static void SetupViewVamilyForSceneCapture(
 						if (UPrimitiveComponent* PrimComp = Cast<UPrimitiveComponent>(Component))
 						{
 #if ENGINE_MAJOR_VERSION < 5 || ENGINE_MINOR_VERSION >= 4
-							View->HiddenPrimitives.Add(PrimComp->GetPrimitiveSceneId());
+							View->ShowOnlyPrimitives->Add(PrimComp->GetPrimitiveSceneId());
 #else
-							View->HiddenPrimitives.Add(PrimComp->ComponentId);
+							View->ShowOnlyPrimitives->Add(PrimComp->ComponentId);
 #endif
 						}
 					}

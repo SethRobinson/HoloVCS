@@ -10,7 +10,10 @@
 #include "Materials/Material.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
+#include "Engine/PointLight.h"
 #include "Components/DirectionalLightComponent.h"
+#include "Engine/DirectionalLight.h"
+#include "EngineUtils.h"
 #include "Components/InputComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Engine/Engine.h"
@@ -30,7 +33,7 @@ APlayerPawn::APlayerPawn()
 	m_pFlatCamera->SetFieldOfView(14.0f);
 
 	ConstructorHelpers::FObjectFinder<UMaterial> newMat(TEXT("/Game/Textures/castlevania_backdrop_Mat"));
-	
+
 	//make sure it was found
 	if (newMat.Succeeded())
 	{
@@ -41,8 +44,21 @@ APlayerPawn::APlayerPawn()
 	{
 		LogMsg("Error, couldn't find castlevania_backdrop_Mat");
 	}
-	
-} 
+
+	//The old project's pawn blueprint assigned these in the editor; the ported map lost the
+	//references, which left the backdrop wall on WorldGridMaterial (a giant noise wall on the
+	//hologram) because SetTintBG built its dynamic instance from a null parent.
+	ConstructorHelpers::FObjectFinder<UMaterial> bgMat(TEXT("/Game/Textures/BGLayer"));
+	if (bgMat.Succeeded())
+	{
+		m_pBGMatNormal = bgMat.Object;
+	}
+	ConstructorHelpers::FObjectFinder<UMaterial> bgMatNS(TEXT("/Game/Textures/BGLayer_NoShadow"));
+	if (bgMatNS.Succeeded())
+	{
+		m_pBGNoShadowMat = bgMatNS.Object;
+	}
+}
 
 // Called when the game starts or when spawned
 void APlayerPawn::BeginPlay()
@@ -50,9 +66,19 @@ void APlayerPawn::BeginPlay()
 	Super::BeginPlay();
 
 	auto crap = GetActorByTag(GetWorld(), "LayerBG");
+	if (crap == NULL)
+	{
+		LogMsg("PlayerPawn: no LayerBG actor found at BeginPlay");
+	}
 	if (crap != NULL)
 	{
 		m_pMesh = (UStaticMeshComponent*) GetComponentByTag(crap, "StaticMeshComponent");
+		if (!m_pMesh)
+		{
+			//the ported map's LayerBG mesh lost its component tag - any static mesh on it will do
+			m_pMesh = crap->FindComponentByClass<UStaticMeshComponent>();
+			LogMsg("PlayerPawn: LayerBG mesh via class fallback: %s", m_pMesh ? "found" : "STILL NOT FOUND");
+		}
 		if (m_pMesh)
 		{
 			auto pMat = m_pMesh->GetMaterial(0);
@@ -74,9 +100,11 @@ void APlayerPawn::BeginPlay()
 void APlayerPawn::SetTintBG(FVector color, float strength, bool bAllowShadows)
 {
 	
+	FindBGMeshIfNeeded();
+
 	if (!g_pLibretroManager || !m_pMesh)
 	{
-		LogMsg("Error with SetTintBG");
+		LogMsg("Error with SetTintBG (manager=%d mesh=%d)", g_pLibretroManager ? 1 : 0, m_pMesh ? 1 : 0);
 		return;
 	}
 
@@ -86,27 +114,21 @@ void APlayerPawn::SetTintBG(FVector color, float strength, bool bAllowShadows)
 
 	auto pMat = m_pMesh->GetMaterial(0);
 
-	if (bAllowShadows && g_pLibretroManager->m_pLibretroManagedActor->m_curLightingMode != LIGHTING_MODE_NONE)
+	UMaterial* pWantedParent = (bAllowShadows && g_pLibretroManager->m_pLibretroManagedActor->m_curLightingMode != LIGHTING_MODE_NONE)
+		? m_pBGMatNormal : m_pBGNoShadowMat;
+	if (pWantedParent == NULL)
 	{
-		if (pMat->GetMaterial() != m_pBGMatNormal)
-		{
-			if (m_pBGMat)
-			{
-				//free it?  I don't know how though
-			}
-			m_pBGMat = UMaterialInstanceDynamic::Create(m_pBGMatNormal, NULL);
-			m_pMesh->SetMaterial(0, m_pBGMat);
-		}
-	}
-	else
-	{
-		if (pMat->GetMaterial() != m_pBGNoShadowMat)
-		{
-			m_pBGMat = UMaterialInstanceDynamic::Create(m_pBGNoShadowMat, NULL);
-			m_pMesh->SetMaterial(0, m_pBGMat);
-		}
+		LogMsg("SetTintBG: BG material reference missing (BGLayer/BGLayer_NoShadow), leaving backdrop alone");
+		return;
 	}
 
+	UMaterialInstanceDynamic* pMID = Cast<UMaterialInstanceDynamic>(pMat);
+	if (pMID == NULL || pMID->GetMaterial() != pWantedParent)
+	{
+		pMID = UMaterialInstanceDynamic::Create(pWantedParent, NULL);
+		m_pMesh->SetMaterial(0, pMID);
+	}
+	m_pBGMat = pMID;
 	m_pBGMat->SetScalarParameterValue(TEXT("TintStrength"), strength);
 	m_pBGMat->SetVectorParameterValue("ColorTint", color);
 }
@@ -235,9 +257,27 @@ void APlayerPawn::UpdateFlatCamera(float DeltaTime)
 	m_pFlatCamera->SetWorldRotation(camRot);
 }
 
+void APlayerPawn::FindBGMeshIfNeeded()
+{
+	//The game profiles can run before our BeginPlay, so the wall mesh is found on demand.
+	//The ported map also lost the "StaticMeshComponent" tag, hence the class fallback.
+	if (m_pMesh != NULL) return;
+
+	if (auto pBG = GetActorByTag(GetWorld(), "LayerBG"))
+	{
+		m_pMesh = (UStaticMeshComponent*)GetComponentByTag(pBG, "StaticMeshComponent");
+		if (!m_pMesh)
+		{
+			m_pMesh = pBG->FindComponentByClass<UStaticMeshComponent>();
+		}
+	}
+}
+
 void APlayerPawn::SetBGPic()
 {
 	//uh, add a way to dynamically load the texture?  Currently it's just a moon
+	FindBGMeshIfNeeded();
+
 	if (m_pMesh)
 	{
 		//LogMsg("Setting custom BG image");
@@ -432,6 +472,24 @@ void APlayerPawn::OnAKey()
 	g_pLibretroManager->SetSampleRate();
 }
 
+void APlayerPawn::OnNum0Key()
+{
+	//toggle every frame limiter (vsync, engine cap and the emulator pacing busy-wait) to see
+	//true throughput on the fps counter - the game runs fast while uncapped, like frameskip
+	static bool bUncapped = false;
+	bUncapped = !bUncapped;
+	if (GEngine)
+	{
+		GEngine->Exec(GetWorld(), bUncapped ? TEXT("r.VSync 0") : TEXT("r.VSync 1"));
+		GEngine->Exec(GetWorld(), bUncapped ? TEXT("t.MaxFPS 0") : TEXT("t.MaxFPS 60"));
+	}
+	if (g_pLibretroManager)
+	{
+		g_pLibretroManager->m_bUncapFPS = bUncapped;
+	}
+	ShowStatusMessage(bUncapped ? "FPS cap OFF" : "FPS cap ON (60)");
+}
+
 void APlayerPawn::OnNum1Key()
 {
 	g_pLibretroManager->SetFrameSkip(0);
@@ -474,9 +532,36 @@ void APlayerPawn::OnNum6Key()
 
 void APlayerPawn::OnNum7Key()
 {
-	//auto pLight = g_pLibretroManager->m_pLibretroManagedActor->m_pLight->FindComponentByClass<UPointLightComponent>();
-	auto pLight = g_pLibretroManager->m_pLibretroManagedActor->m_pLight->FindComponentByClass<UDirectionalLightComponent>();
-
+	//The rig's light of record is the point light (the old build's setup); fall back to a
+	//directional for maps that only have that. m_pLight is an editor-set property that isn't
+	//wired up in every map.
+	ULightComponent* pLight = nullptr;
+	AActor* pLightActor = g_pLibretroManager->m_pLibretroManagedActor->m_pLight;
+	if (pLightActor)
+	{
+		pLight = pLightActor->FindComponentByClass<UPointLightComponent>();
+	}
+	if (!pLight)
+	{
+		for (TActorIterator<APointLight> it(GetWorld()); it; ++it)
+		{
+			pLight = it->GetLightComponent();
+			if (pLight) break;
+		}
+	}
+	if (!pLight)
+	{
+		for (TActorIterator<ADirectionalLight> it(GetWorld()); it; ++it)
+		{
+			pLight = it->GetLightComponent();
+			if (pLight) break;
+		}
+	}
+	if (!pLight)
+	{
+		ShowStatusMessage("No light found");
+		return;
+	}
 
 	if (pLight->CastShadows)
 	{
@@ -589,6 +674,7 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(FKey("Period"), IE_Pressed, this, &APlayerPawn::OnPeriodKey);
 	PlayerInputComponent->BindKey(FKey("R"), IE_Pressed, this, &APlayerPawn::OnResetGame);
 	PlayerInputComponent->BindKey(FKey("A"), IE_Pressed, this, &APlayerPawn::OnAKey);
+	PlayerInputComponent->BindKey(FKey("Zero"), IE_Pressed, this, &APlayerPawn::OnNum0Key);
 	PlayerInputComponent->BindKey(FKey("One"), IE_Pressed, this, &APlayerPawn::OnNum1Key);
 	PlayerInputComponent->BindKey(FKey("Two"), IE_Pressed, this, &APlayerPawn::OnNum2Key);
 	PlayerInputComponent->BindKey(FKey("Three"), IE_Pressed, this, &APlayerPawn::OnNum3Key);
@@ -607,6 +693,7 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(EKeys::Period, IE_Pressed, this, &APlayerPawn::OnPeriodKey);
 	PlayerInputComponent->BindKey(EKeys::R, IE_Pressed, this, &APlayerPawn::OnResetGame);
 	PlayerInputComponent->BindKey(EKeys::A, IE_Pressed, this, &APlayerPawn::OnAKey);
+	PlayerInputComponent->BindKey(EKeys::Zero, IE_Pressed, this, &APlayerPawn::OnNum0Key);
 	PlayerInputComponent->BindKey(EKeys::One, IE_Pressed, this, &APlayerPawn::OnNum1Key);
 	PlayerInputComponent->BindKey(EKeys::Two, IE_Pressed, this, &APlayerPawn::OnNum2Key);
 	PlayerInputComponent->BindKey(EKeys::Three, IE_Pressed, this, &APlayerPawn::OnNum3Key);

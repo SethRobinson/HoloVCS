@@ -49,7 +49,7 @@ void AStatusDisplayActor::SetTextTimer(double timer)
 
 //An easy way to show an occasional status message from anywhere.  (assuming it's called in a main thread)
 
-void ShowStatusMessage(string message, float forcedTimeToShow)
+void ShowStatusMessage(string message, float forcedTimeToShow, float textSizeMult)
 {
 	AStatusDisplayActor* pActor = (AStatusDisplayActor * ) GetActorByTag(GEngine->GetCurrentPlayWorld(), "StatusDisplayActor");
 
@@ -58,8 +58,13 @@ void ShowStatusMessage(string message, float forcedTimeToShow)
 		LogMsg("Can't find an actor with name StatusDisplayActor! So much for showing in-game status messages");
 		return;
 	}
-	
+
 	UTextRenderComponent *pComp = (UTextRenderComponent*)pActor->GetComponentByClass(UTextRenderComponent::StaticClass());
+	if (pActor->m_baseTextWorldSize == 0)
+	{
+		pActor->m_baseTextWorldSize = pComp->WorldSize;
+	}
+	pComp->SetWorldSize(pActor->m_baseTextWorldSize * textSizeMult);
     pComp->SetText(FText::FromString(message.c_str()));
 	if (forcedTimeToShow == 0)
 	{
