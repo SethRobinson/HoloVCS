@@ -96,7 +96,9 @@ but burns the 5.6 escape hatch like any other resave.
     line overrides the computed capture size for tuning.
   - The plugin fork's show-only path was broken upstream (added show-only prims to HiddenPrimitives,
     fixed in LookingGlassSceneCaptureRendering.cpp).
-  The F9 quilt-screenshot hotkey did not respond in -game main-viewport mode.
+  The F9 quilt-screenshot hotkey did not respond in -game main-viewport mode; use the
+  `lkg.SaveQuilt` console command instead (added Aug 2026, works from the automation harness via
+  `exec lkg.SaveQuilt`, writes to Saved/Screenshots - see docs/automation_workflow.md).
 - Tiling: the game forces the plugin's Automatic preset at fit time (resolves per-device via
   Bridge; Portrait = 8x6 tiles, 3360x3360, aspect 0.75). Pass `-lkgmaptiling` to keep the tiling
   saved in the map (the 5.6-era Custom 11x6/4092/0.5625). Framing also crops to the USED portion
@@ -112,7 +114,8 @@ but burns the 5.6 escape hatch like any other resave.
 - FPS counter: hardware builds show FPS on the in-world status text (5x size) once per second and
   log "N FPS" to the log; the plugin also logs per-phase frame times ("LKG frame phases") once a
   second from the viewport client.
-- PERFORMANCE: SOLVED at 60 fps via the custom sprite-quilt renderer
+- PERFORMANCE: SOLVED, locked 60 fps in normal play (vsync/pacing cap); ~250 fps measured
+  uncapped (hotkey 0) on the Portrait, vs ~13 fps max before. Via the custom sprite-quilt renderer
   (FLookingGlassViewportClient::RenderSpriteQuilt in the plugin fork). UE 5.8's deferred renderer
   costs ~1.4ms render-thread CPU per scene-capture view no matter how simple the scene (measured:
   view count, family count, Bridge, vsync, post effects, capture source, Lumen/VSM all eliminated
@@ -387,6 +390,14 @@ Virtual Boy is different: the patched beetle-vb returns pre-split layers via a n
 split backgrounds. Startup ROM is hardcoded by partial name ("astle") near the top of
 LibretroManager.cpp.
 
+Feature docs (read before working on these):
+- Automation harness (file-based game control/screenshots/video, no window focus), the NES
+  state dump tool (N key), and the NES profile-authoring method: `docs/automation_workflow.md`.
+  Also covers the UE 5.8 "Unreal MCP" editor plugin (enabled in the FLAT uproject only).
+- Legend of Zelda profile (first profile authored with the automation workflow, Aug 2026):
+  tile IDs, layer scheme, and the SetTileColorIndex-vs-Zelda palette gotcha are in that same
+  doc. Obstacle keep-list is overworld-only so far; dungeons/rocks pending.
+
 ## Gotchas learned the hard way
 
 - `g_pLibretroManager` is a raw global set in `LibretroManager::Init` and cleared in the destructor.
@@ -447,11 +458,20 @@ LibretroManager.cpp.
 
 ## Verifying the game (AI agents take note)
 
-Do quick bursts, not long soaks: launch, screenshot the specific emulator/screen you are checking,
-send the ROM-cycle keys ("," / ".") for the next one, screenshot, then KILL the process. The whole
-pass should take well under a minute. Never leave a game instance running while doing other work
-(Seth's machine, Seth's GPU). The staged/shipping build writes a Proton-style log.txt next to the
-top-level exe; the editor build logs to Saved/Logs/HoloVCS_Flat.log.
+USE THE AUTOMATION HARNESS: the game watches `Saved/Automation/commands.txt` for commands
+(screenshots, emulated joypad input, rom switching, per-layer texture dumps, video, console exec)
+and none of it needs window focus - drive it via `tools\holo_auto.ps1`. Full command list and
+workflow: `docs/automation_workflow.md`. Never foreground the game window or send desktop
+keystrokes while Seth is using the machine; the launch itself is the only unavoidable focus grab.
+Wait for "harness ready" in Saved/Automation/ai_log.txt after launching.
+
+Do quick bursts, not long soaks: launch (`-rom=partial` picks the game), check via harness
+screenshots, then KILL the process. Never leave a game instance running while doing other work
+(Seth's machine, Seth's GPU). A running -game instance also blocks Build.bat. The
+staged/shipping build writes a Proton-style log.txt next to the top-level exe; the editor build
+logs to Saved/Logs/HoloVCS_Flat.log. `savestate`/`loadstate` harness commands write/load
+`<rom>.sav0` checkpoints - use them to skip menus after a relaunch (Zelda has one at the
+overworld start).
 
 ## Computer Control
 
@@ -460,8 +480,10 @@ top-level exe; the editor build logs to Saved/Logs/HoloVCS_Flat.log.
   SendInput, clicking, typing, or any other mechanism that controls visible apps.
 - Permission to complete a task, inspect an app, compare behavior, or proceed
   autonomously does not imply permission to control the desktop.
-- Standing exception granted by Seth: the game verification bursts above (foregrounding the HoloVCS
-  game window, sending its hotkeys, screenshotting it, killing the process). Nothing beyond that.
+- Standing exception granted by Seth: launching and killing HoloVCS game processes for the
+  verification bursts above. Everything else goes through the automation harness file channel
+  (docs/automation_workflow.md) - do NOT foreground the game window or synthesize desktop
+  keyboard/mouse input; Seth is often using the machine while agents work (his request, Aug 2026).
 
 ## Security
 
@@ -490,7 +512,9 @@ top-level exe; the editor build logs to Saved/Logs/HoloVCS_Flat.log.
   `..\base_setup.bat` (defines PROJECT_DIR, RT_PROJECTS, PROTON_DIR) and `app_info_setup.bat`
   (APP_NAME/APP_DIR/UE_DIR).
 - `BuildAndRunWin64Release.bat` is the local test loop: incremental Shipping cook/stage to
-  `dist\win64_test` with roms included (never distribute that folder), then launches it.
+  `dist\win64_test` with roms included (never distribute that folder), then launches it. Both test
+  bats preserve `*.sav0` save states (S/L hotkeys) across restages via a dist\savstate_keep_* backup;
+  PackageWin64Release.bat still scrubs *.sav0 from real releases.
 - `BuildAndRunWin64LKG.bat` is the same loop for the Looking Glass hardware build (HoloVCS.uproject,
   target HoloVCSLKG, boots /Game/Maps/NewMap): stages to `dist\win64_lkg_test` (top exe
   `HoloVCSLKG.exe`), then launches. Pass `nolaunch` to skip the launch. Never run the two stage

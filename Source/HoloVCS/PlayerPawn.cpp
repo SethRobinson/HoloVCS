@@ -641,6 +641,20 @@ void APlayerPawn::OnLKey()
 	g_pLibretroManager->LoadStateFromFile();
 }
 
+void APlayerPawn::OnNKey()
+{
+	if (!g_pLibretroManager) return;
+
+	if (g_pLibretroManager->m_emulatorType != EMULATOR_NES)
+	{
+		ShowStatusMessage("NES state dump only works for NES games");
+		return;
+	}
+
+	g_pLibretroManager->m_bNesDumpRequested = true;
+	ShowStatusMessage("Dumping NES state to Saved/nes_state_dump.txt");
+}
+
 void APlayerPawn::OnCommaKey()
 {
 	g_pLibretroManager->ModRom(-1);
@@ -684,6 +698,7 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(FKey("Seven"), IE_Pressed, this, &APlayerPawn::OnNum7Key);
 	PlayerInputComponent->BindKey(FKey("Eight"), IE_Pressed, this, &APlayerPawn::OnNum8Key);
 	PlayerInputComponent->BindKey(FKey("P"), IE_Pressed, this, &APlayerPawn::OnPKey);
+	PlayerInputComponent->BindKey(FKey("N"), IE_Pressed, this, &APlayerPawn::OnNKey);
 #else
 	PlayerInputComponent->BindKey(EKeys::Equals, IE_Pressed, this, &APlayerPawn::OnAddKey);
 	PlayerInputComponent->BindKey(EKeys::Hyphen, IE_Pressed, this, &APlayerPawn::OnSubtractKey);
@@ -703,6 +718,7 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(EKeys::Seven, IE_Pressed, this, &APlayerPawn::OnNum7Key);
 	PlayerInputComponent->BindKey(EKeys::Eight, IE_Pressed, this, &APlayerPawn::OnNum8Key);
 	PlayerInputComponent->BindKey(EKeys::P, IE_Pressed, this, &APlayerPawn::OnPKey);
+	PlayerInputComponent->BindKey(EKeys::N, IE_Pressed, this, &APlayerPawn::OnNKey);
 #endif
 	//mouse orbits the flat camera around the layer diorama, see UpdateFlatCamera
 	InputComponent->BindAxisKey(EKeys::MouseX, this, &APlayerPawn::OnMouseX);

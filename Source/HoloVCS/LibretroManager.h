@@ -12,6 +12,7 @@
 #include "libretro.h"
 #include "Shared/UnrealMisc.h"
 #include "NesHacker.h"
+#include "AutomationHarness.h"
 #include "GameProfileManager.h"
 #include "Windows/WindowsHWrapper.h" //HINSTANCE/LoadLibrary for the core dll loading
 
@@ -166,6 +167,7 @@ public:
 	void DisableAllBlitPasses();
 	bool GetGamePaused() { return m_bGamePaused; }
 	void SetGamePaused(bool bNew);
+	bool SwitchRomByPartialName(string name); //live rom switch, used by the automation harness
 
 	ALibretroManagerActor* m_pLibretroManagedActor = NULL;
 	APlayerPawn* m_pPlayerPawn = NULL;
@@ -191,6 +193,7 @@ public:
 	float m_audioStatisticsTimer = 0;
 	int m_framesWrittenInPeriod;
 	bool m_bGamePaused = false;
+	bool m_bNesDumpRequested = false; //set by the N hotkey; UpdateNES writes Saved/nes_state_dump.txt next frame
 
 	string m_rootPath;
 	string m_romPath;
@@ -209,6 +212,8 @@ public:
 	int m_activeRomIndex = 0;
 
 	NesHacker m_nesHacker;
+	AutomationHarness m_autoHarness;
+	int m_autoButtonHoldFrames[C_MAX_JOYPAD_BUTTONS] = {}; //harness-injected holds, OR'd into the input callback, decremented per visible frame
 	GameProfileManager m_profManager;
 	uint8* m_pSaveStateBuffer[C_SAVE_STATE_COUNT];
 	

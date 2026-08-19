@@ -18,6 +18,7 @@ public:
 	void ChangeIfOnList(byte* pTileToSet, byte* pList, int listSize, byte fillTile);
 	void SetTileColorIndex(int indexSlot, byte newColorIndex);
 	void ReplaceHorizontalPairInNametable(byte* pSave, int saveSize, byte left, byte right, byte newLeft, byte newRight);
+	void DumpToFile(byte* pSave, int saveSize); //writes nametables/palettes/RAM to Saved/nes_state_dump.txt (N key), for authoring game profiles
 
 	byte* m_pNESRAM;
 	byte* m_pTilePals;

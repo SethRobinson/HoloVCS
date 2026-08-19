@@ -1,4 +1,6 @@
 #include "NesHacker.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 
 NesHacker::NesHacker()
@@ -181,6 +183,80 @@ void NesHacker::SetTileColorIndex(int indexSlot, byte newColorIndex)
 {
 	CheckIfMapped();
 	m_pTilePals[indexSlot] = newColorIndex;
+}
+
+//Dumps the interesting PPU/CPU state from a save-state buffer to a text file, so whoever is authoring a game profile can
+//figure out which nametable tile IDs are what by comparing against a screenshot.  Trigger with the N key.
+void NesHacker::DumpToFile(byte* pSave, int saveSize)
+{
+	SetupMemoryMappingIfNeeded(pSave, saveSize);
+
+	if (!m_pNametable[0] || !m_pTilePals || !m_pNESRAM)
+	{
+		LogMsg("NES state dump: memory mapping incomplete, can't dump");
+		return;
+	}
+
+	FString out;
+	out.Reserve(64 * 1024);
+
+	for (int nt = 0; nt < 2; nt++)
+	{
+		out += FString::Printf(TEXT("== Nametable %d tile IDs (32 cols x 30 rows, hex) ==\n"), nt);
+		for (int y = 0; y < 30; y++)
+		{
+			out += FString::Printf(TEXT("row %02d: "), y);
+			for (int x = 0; x < 32; x++)
+			{
+				out += FString::Printf(TEXT("%02x "), m_pNametable[nt][y * 32 + x]);
+			}
+			out += TEXT("\n");
+		}
+
+		out += FString::Printf(TEXT("== Nametable %d attributes (64 bytes) ==\n"), nt);
+		for (int y = 0; y < 8; y++)
+		{
+			out += FString::Printf(TEXT("attr %02d: "), y);
+			for (int x = 0; x < 8; x++)
+			{
+				out += FString::Printf(TEXT("%02x "), m_pNametable[nt][960 + y * 8 + x]);
+			}
+			out += TEXT("\n");
+		}
+	}
+
+	out += TEXT("== BG palettes (PRAM 0-15) ==\n");
+	for (int i = 0; i < 16; i++)
+	{
+		out += FString::Printf(TEXT("%02x "), m_pTilePals[i]);
+	}
+	out += TEXT("\n== Sprite palettes (PRAM 16-31) ==\n");
+	for (int i = 0; i < 16; i++)
+	{
+		out += FString::Printf(TEXT("%02x "), m_pSpriPals[i]);
+	}
+
+	out += TEXT("\n== CPU RAM (2KB) ==\n");
+	for (int line = 0; line < 128; line++)
+	{
+		out += FString::Printf(TEXT("%04x: "), line * 16);
+		for (int i = 0; i < 16; i++)
+		{
+			out += FString::Printf(TEXT("%02x "), m_pNESRAM[line * 16 + i]);
+		}
+		out += TEXT("\n");
+	}
+
+	FString path = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("nes_state_dump.txt"));
+
+	if (FFileHelper::SaveStringToFile(out, *path))
+	{
+		LogMsg("NES state dump written to %s", TCHAR_TO_UTF8(*path));
+	}
+	else
+	{
+		LogMsg("NES state dump FAILED writing %s", TCHAR_TO_UTF8(*path));
+	}
 }
 
 void NesHacker::Reset()

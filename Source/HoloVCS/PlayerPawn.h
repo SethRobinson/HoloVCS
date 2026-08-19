@@ -180,6 +180,7 @@ public:
 
 	void OnCommaKey();
 	void OnPeriodKey();
+	void OnNKey();
 	void OnResetGame();
 
 };

@@ -694,7 +694,7 @@ int16_t retro_input_state_callback(unsigned port, unsigned device, unsigned inde
 		if (id < C_MAX_JOYPAD_BUTTONS)
 		{
 			//LogMsg("Scanning button %d which is %d", id, (int)g_pLibretroManager->m_joyPad.m_button[id]);
-			return g_pLibretroManager->m_joyPad.m_button[id];
+			return g_pLibretroManager->m_joyPad.m_button[id] || g_pLibretroManager->m_autoButtonHoldFrames[id] > 0;
 		}
 		else
 		{
@@ -813,6 +813,13 @@ void LibretroManager::DisableAllBlitPasses()
 void LibretroManager::SetGamePaused(bool bNew)
 {
 	m_bGamePaused = bNew;
+}
+
+bool LibretroManager::SwitchRomByPartialName(string name)
+{
+	if (!SetRomToLoadByPartialFileName(name)) return false;
+	InitEmulator(); //same reload path the ,/. rom-cycle keys use
+	return true;
 }
 
 bool LibretroManager::SetRomToLoadByPartialFileName(string name)
@@ -1014,6 +1021,7 @@ void LibretroManager::Init(ALibretroManagerActor * pLibretroManagedActor)
 	g_pLibretroManager = this;
 	m_pLibretroManagedActor = pLibretroManagedActor;
 	m_pPlayerPawn = (APlayerPawn*)GetActorByTag(m_pLibretroManagedActor->GetWorld(), "PlayerPawn");
+	m_autoHarness.Init(this);
 
 	LogMsg("Let's init the emu core we want from its dll!");
 	
@@ -1433,12 +1441,20 @@ void LibretroManager::LoadStateFromFile()
 
 void LibretroManager::Update()
 {
+	m_autoHarness.Update(); //before the early-outs so pause/unpause and rom switching work anytime
+
 	if (!m_core.m_bActive) return;
-	
+
 	if (m_bGamePaused) return;
 
 	m_useAudio = true;
 	m_profManager.Update();
+
+	//harness-injected button holds tick down once per visible frame (not per rewound render pass)
+	for (int i = 0; i < C_MAX_JOYPAD_BUTTONS; i++)
+	{
+		if (m_autoButtonHoldFrames[i] > 0) m_autoButtonHoldFrames[i]--;
+	}
 
 	//slow down things?  (this pacing wait is what caps the whole app at m_targetFPS - the 0 hotkey
 	//sets m_bUncapFPS to bypass it so the fps counter can show true throughput)
