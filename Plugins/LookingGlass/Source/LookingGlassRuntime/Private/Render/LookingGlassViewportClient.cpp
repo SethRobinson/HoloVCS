@@ -88,6 +88,12 @@ static FName LevelEditorModuleName(TEXT("LevelEditor"));
 
 FOnLookingGlassFrameReady FLookingGlassViewportClient::OnLookingGlassFrameReady;
 
+// The live viewport client, for the lkg.SaveQuilt console command. The plugin window's own
+// exec routing (LookingGlass.ScreenshotQuilt) is unreachable from GEngine->Exec in separate
+// window mode, and the F9 hotkey needs that window focused - a console command works from
+// anywhere (including the game's automation harness).
+static FLookingGlassViewportClient* GActiveLKGViewportClient = nullptr;
+
 
 void FLookingGlassScreenshotRequest::RequestScreenshot(const FString & InFilename, bool bAddFilenameSuffix, FLookingGlassScreenshotRequest::FQuiltSettings InQuiltSettings)
 {
@@ -167,6 +173,7 @@ FLookingGlassViewportClient::FLookingGlassViewportClient()
 	, bLastModeWas2D(false)
 	, Viewport(nullptr)
 {
+	GActiveLKGViewportClient = this;
 #if WITH_EDITOR
 	if (FModuleManager::Get().IsModuleLoaded(LevelEditorModuleName))
 	{
@@ -180,6 +187,10 @@ FLookingGlassViewportClient::FLookingGlassViewportClient()
 
 FLookingGlassViewportClient::~FLookingGlassViewportClient()
 {
+	if (GActiveLKGViewportClient == this)
+	{
+		GActiveLKGViewportClient = nullptr;
+	}
 #if WITH_EDITOR
 	if (FModuleManager::Get().IsModuleLoaded(LevelEditorModuleName))
 	{
@@ -546,6 +557,25 @@ void FLookingGlassViewportClient::Draw(FViewport* InViewport, FCanvas* InCanvas)
 static TAutoConsoleVariable<int32> CVarLKGSpriteQuilt(
 	TEXT("lkg.SpriteQuilt"), 1,
 	TEXT("1 = render the quilt directly from the show-only textured quads (fast path), 0 = full scene capture per view"));
+
+// Save the next rendered quilt as a png in Saved/Screenshots (same pipeline as the F9 hotkey,
+// but reachable from any exec source - the automation harness uses "exec lkg.SaveQuilt").
+// The file gets the usual _qsCxRaA.AA suffix naming.
+static FAutoConsoleCommand CCmdLKGSaveQuilt(
+	TEXT("lkg.SaveQuilt"),
+	TEXT("Save the next rendered quilt to Saved/Screenshots as a png."),
+	FConsoleCommandDelegate::CreateLambda([]()
+	{
+		if (GActiveLKGViewportClient)
+		{
+			GActiveLKGViewportClient->TakeQuiltScreenshot();
+			UE_LOG(LookingGlassLogRender, Display, TEXT("lkg.SaveQuilt: quilt screenshot queued"));
+		}
+		else
+		{
+			UE_LOG(LookingGlassLogRender, Warning, TEXT("lkg.SaveQuilt: no active LookingGlass viewport client"));
+		}
+	}));
 
 static TAutoConsoleVariable<float> CVarLKGSpriteShadow(
 	TEXT("lkg.SpriteShadow"), 0.6f,
