@@ -21,6 +21,10 @@
 		{
 			"Name": "Landmass",
 			"Enabled": false
+		},
+		{
+			"Name": "ModelContextProtocol",
+			"Enabled": true
 		}
 	]
 }
