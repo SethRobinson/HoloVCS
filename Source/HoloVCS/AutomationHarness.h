@@ -10,6 +10,7 @@
 
 #pragma once
 #include "Shared/UnrealMisc.h"
+#include "InputCoreTypes.h" //FKey for the 'key' command holds
 
 class LibretroManager;
 
@@ -25,6 +26,8 @@ private:
 	void ProcessCommandLine(const FString& line);
 	void AppendToLog(const FString& msg);
 	bool ButtonIdFromName(const FString& name, int& idOut);
+	void SendKeyEvent(const FKey& key, bool bDown);
+	void TickKeyHolds();
 
 	LibretroManager* m_pManager = NULL;
 	FString m_autoDir;
@@ -35,4 +38,8 @@ private:
 	int m_videoFramesLeft = 0;
 	int m_videoFrameIndex = 0;
 	FString m_videoDir;
+
+	//'key' command: synthesized UE key events held for N ticks, released here
+	struct KeyHold { FKey m_key; int m_ticksLeft; };
+	TArray<KeyHold> m_keyHolds;
 };

@@ -69,7 +69,11 @@ void HelpScreen::Hide()
 	{
 		m_pManagerActor->m_libretroManager.SetGamePaused(m_bWasPausedBeforeShow);
 	}
-	LogMsg("Help hidden");
+	else
+	{
+		LogMsg("HelpScreen::Hide: NO manager actor, pause not restored!");
+	}
+	LogMsg("Help hidden (restored pause %d)", (int)m_bWasPausedBeforeShow);
 }
 
 void HelpScreen::Toggle()

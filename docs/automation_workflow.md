@@ -29,7 +29,8 @@ Commands:
 
 | Command | What it does |
 |---|---|
-| `press <btn>[,btn,...] [frames]` | Hold emulated joypad buttons N visible frames (default 8). Buttons: up down left right a b start select l r. Injected at the libretro input callback, so it works regardless of window focus and never touches the desktop keyboard. |
+| `press <btn>[,btn,...] [frames]` | Hold emulated joypad buttons N visible frames (default 8). Buttons: up down left right a b start select l r. Injected at the libretro input callback, so it works regardless of window focus and never touches the desktop keyboard. GOTCHA: holds only tick down while the emulator is UNPAUSED; a press sent while paused stays pending and fires on unpause. |
+| `key <FKeyName> [ticks]` | Synthesized KEYBOARD press through the full UE input path (Slate -> viewport -> PlayerInput -> pawn bindings), held N engine ticks (default 2). FKey names: `SpaceBar`, `LeftControl`, `Enter`, `Tab`, `W`, `One`, `Slash`... Use this to test hotkeys and the real key-to-joypad mappings headlessly; `press` bypasses all of that. Works without window focus and while paused (so it can dismiss the help screen). |
 | `shot [name]` | Engine screenshot (FScreenshotRequest) to `Saved/Automation/shots/<name>.png`. Captures the viewport even when the window is behind other windows. Do NOT minimize the window though. |
 | `video <frames> [name]` | Per-frame screenshots to `Saved/Automation/video/<name>/frame_%05d.png`. Halves the frame rate while active (~28 fps); fine for short clips. No ffmpeg on this machine; read frames directly or assemble elsewhere. |
 | `dump` | NES state dump (see below). |
@@ -44,6 +45,11 @@ Commands:
 Workflow rules learned:
 - Launch is the only focus grab: `UnrealEditor.exe HoloVCS_Flat.uproject -game -windowed -resx=1280 -resy=720 -rom=<partial>`. After that, never foreground the window; the old SendKeys/CopyFromScreen approach is retired (Seth uses the machine while automated work runs).
 - Wait for `harness ready` in `Saved/Automation/ai_log.txt` before sending commands (delete the log first for a clean signal).
+- STAGED SHIPPING BUILDS BOOT PAUSED: the help screen auto-shows on the first live frame and pauses
+  the emulator. Send `help off` first (its ack `help now off` is unreliable evidence though - it
+  prints the current state even when there was nothing to hide), and confirm via log.txt's
+  `SetGamePaused: 1 -> 0` line. While paused, `press` holds sit pending and the game looks
+  input-dead. Editor -game runs never auto-show.
 - A running -game instance still blocks Build.bat; kill the process, build, relaunch, `loadstate`.
 - A running STAGED instance locks `dist\win64_test` and fails BuildAndRunWin64Release.bat with Error_FailedToDeleteStagingDirectory: `Get-Process HoloVCS*` and kill before staging. That bat has NO `nolaunch` flag (only the LKG one does) and always launches the staged exe at the end.
 - Both test bats preserve `*.sav0` save states across restages (dist\savstate_keep_* backup/restore around the UAT call); PackageWin64Release.bat scrubs *.sav0 from real releases.

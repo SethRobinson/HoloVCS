@@ -1,6 +1,8 @@
 #include "AutomationHarness.h"
 #include "LibretroManager.h"
 #include "LibretroManagerActor.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Input/Events.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/DateTime.h"
@@ -46,8 +48,53 @@ bool AutomationHarness::ButtonIdFromName(const FString& name, int& idOut)
 	return false;
 }
 
+//Synthesizes a real UE key event through Slate - no OS input, no window focus needed.  This
+//drives the same path the physical keyboard does (viewport -> PlayerController -> PlayerInput ->
+//pawn bindings), unlike 'press' which injects at the libretro callback below all of that.
+void AutomationHarness::SendKeyEvent(const FKey& key, bool bDown)
+{
+	if (!FSlateApplication::IsInitialized()) return;
+
+	const uint32* pKeyCode = NULL;
+	const uint32* pCharCode = NULL;
+	FInputKeyManager::Get().GetCodesFromKey(key, pKeyCode, pCharCode);
+
+	//a real modifier keypress reports its own modifier bit set; match that so chord logic behaves
+	bool bCtrl = (key == EKeys::LeftControl || key == EKeys::RightControl);
+	bool bShift = (key == EKeys::LeftShift || key == EKeys::RightShift);
+	bool bAlt = (key == EKeys::LeftAlt || key == EKeys::RightAlt);
+	FModifierKeysState mods(bShift && bDown, false, bCtrl && bDown, false, bAlt && bDown, false, false, false, false);
+
+	FKeyEvent evt(key, mods, FSlateApplication::Get().GetUserIndexForKeyboard(), false,
+		pCharCode ? *pCharCode : 0, pKeyCode ? *pKeyCode : 0);
+	if (bDown)
+	{
+		FSlateApplication::Get().ProcessKeyDownEvent(evt);
+	}
+	else
+	{
+		FSlateApplication::Get().ProcessKeyUpEvent(evt);
+	}
+}
+
+void AutomationHarness::TickKeyHolds()
+{
+	for (int i = m_keyHolds.Num() - 1; i >= 0; i--)
+	{
+		m_keyHolds[i].m_ticksLeft--;
+		if (m_keyHolds[i].m_ticksLeft <= 0)
+		{
+			SendKeyEvent(m_keyHolds[i].m_key, false);
+			m_keyHolds.RemoveAt(i);
+		}
+	}
+}
+
 void AutomationHarness::Update()
 {
+	//key releases must tick even while the emulator is paused (the physical keyboard works then too)
+	TickKeyHolds();
+
 	//per-frame video capture runs even while a command file isn't present
 	if (m_videoFramesLeft > 0)
 	{
@@ -167,6 +214,24 @@ void AutomationHarness::ProcessCommandLine(const FString& line)
 		else if (parts.Num() >= 2 && parts[1] == TEXT("off")) m_pManager->m_helpScreen.Hide();
 		else m_pManager->m_helpScreen.Toggle();
 		AppendToLog(FString::Printf(TEXT("help now %s"), m_pManager->m_helpScreen.IsVisible() ? TEXT("on") : TEXT("off")));
+	}
+	else if (cmd == TEXT("key") && parts.Num() >= 2)
+	{
+		//key <FKeyName> [ticks] - synthesized keyboard press through the FULL UE input path
+		//(Slate -> viewport -> PlayerInput -> pawn bindings), held for N ticks (default 2).
+		//FKey names: SpaceBar, LeftControl, Enter, Tab, W, One, ...  Works without window focus.
+		FKey key(*parts[1]);
+		if (!key.IsValid())
+		{
+			AppendToLog(FString::Printf(TEXT("key: unknown key '%s'"), *parts[1]));
+		}
+		else
+		{
+			int ticks = (parts.Num() >= 3) ? FMath::Clamp(FCString::Atoi(*parts[2]), 1, 3600) : 2;
+			SendKeyEvent(key, true);
+			m_keyHolds.Add({ key, ticks });
+			AppendToLog(FString::Printf(TEXT("key %s held %d ticks"), *key.ToString(), ticks));
+		}
 	}
 	else if (cmd == TEXT("savestate"))
 	{

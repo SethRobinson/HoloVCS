@@ -110,7 +110,8 @@ but burns the 5.6 escape hatch like any other resave.
   native ~50.27Hz refresh, correct behavior, not a performance bug.
 - Startup ROM: `-rom=partialname` (e.g. `-rom=itfall`) overrides the hardcoded startup ROM - much
   faster than cycling with ","/"." for testing. NOTE: the ROM-cycle keys stopped responding via
-  SendKeys after the VB core loaded; unresolved, use -rom= instead.
+  SendKeys after the VB core loaded; unresolved, use -rom= instead (or the harness
+  `key Comma`/`key Period` commands, which need no window focus at all).
 - FPS counter: hardware builds show FPS on the in-world status text (5x size) once per second and
   log "N FPS" to the log; the plugin also logs per-phase frame times ("LKG frame phases") once a
   second from the viewport client.
@@ -487,6 +488,16 @@ and none of it needs window focus - drive it via `tools\holo_auto.ps1`. Full com
 workflow: `docs/automation_workflow.md`. Never foreground the game window or send desktop
 keystrokes while Seth is using the machine; the launch itself is the only unavoidable focus grab.
 Wait for "harness ready" in Saved/Automation/ai_log.txt after launching.
+
+Staged SHIPPING builds boot PAUSED under the auto-shown help screen: send `help off` first or ALL
+emulator input looks dead (`press` holds sit pending while paused). log.txt logs every
+`SetGamePaused` transition, so a wrongly-stuck pause is visible there instead of masquerading as
+broken controls (that misread cost a whole debugging session in Aug 2026; the actual staged binary
+was also 8 minutes older than the commit being tested, so ALWAYS restage before judging behavior).
+The harness `key <FKeyName> [ticks]` command drives the REAL keyboard path (Slate -> viewport ->
+PlayerInput -> pawn bindings) with no window focus needed; `press` bypasses UE input entirely.
+Keyboard-to-NES mapping verified end-to-end with it (Space=A jump, Ctrl=B whip, Enter=Start,
+Castlevania on-screen proof), Aug 2026.
 
 Do quick bursts, not long soaks: launch (`-rom=partial` picks the game), check via harness
 screenshots, then KILL the process. Never leave a game instance running while doing other work

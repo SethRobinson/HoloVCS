@@ -773,6 +773,8 @@ void LibretroManager::DisableAllBlitPasses()
 }
 void LibretroManager::SetGamePaused(bool bNew)
 {
+	//a silently wrong pause state makes ALL emulator input look dead, so every transition gets logged
+	if (m_bGamePaused != bNew) LogMsg("SetGamePaused: %d -> %d (helpVisible %d)", (int)m_bGamePaused, (int)bNew, (int)m_helpScreen.IsVisible());
 	//an unpause from anywhere else (P key, rom switch/reset, harness) closes the help screen;
 	//the help's own Hide() clears visibility before calling here, so this can't recurse
 	if (!bNew && m_helpScreen.IsVisible())
