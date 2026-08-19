@@ -51,7 +51,7 @@ Workflow rules learned:
   `SetGamePaused: 1 -> 0` line. While paused, `press` holds sit pending and the game looks
   input-dead. Editor -game runs never auto-show.
 - A running -game instance still blocks Build.bat; kill the process, build, relaunch, `loadstate`.
-- A running STAGED instance locks `dist\win64_test` and fails BuildAndRunWin64Release.bat with Error_FailedToDeleteStagingDirectory: `Get-Process HoloVCS*` and kill before staging. That bat has NO `nolaunch` flag (only the LKG one does) and always launches the staged exe at the end.
+- A running STAGED instance locks `dist\win64_test` and fails BuildAndRunWin64Release.bat with Error_FailedToDeleteStagingDirectory: `Get-Process HoloVCS*` and kill before staging. That bat has NO `nolaunch` flag (only the LKG one does) and always launches the staged exe at the end - and then BLOCKS until that game exits, so "the bat finished" is useless as a staging-done signal. Detect staging completion by watching for the HoloVCS process appearing (or `harness ready` in ai_log.txt) instead.
 - Both test bats preserve `*.sav0` save states across restages (dist\savstate_keep_* backup/restore around the UAT call); PackageWin64Release.bat scrubs *.sav0 from real releases.
 - `loadstate` after boot is the checkpoint trick: menus, file registration etc survive as a `.sav0` even though the frontend has no SRAM persistence. Zelda has one saved from the overworld start; make one per game/situation being worked on.
 
