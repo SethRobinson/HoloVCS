@@ -188,6 +188,13 @@ void GameProfileManager::Init(LibretroManager* pManager)
 
 void GameProfileManager::UpdateNES()
 {
+	if (m_pLibretroManager->m_bNesDumpRequested)
+	{
+		m_pLibretroManager->m_bNesDumpRequested = false;
+		//grab a fresh state into scratch slot 1 (safe: every NES profile overwrites slot 1 before reading it)
+		m_pLibretroManager->SaveState(1);
+		m_pLibretroManager->m_nesHacker.DumpToFile(m_pLibretroManager->m_pSaveStateBuffer[1], m_pLibretroManager->m_maxSaveStateSize);
+	}
 
 	if (m_curGameProfileIndex != 0)
 	{
@@ -438,6 +445,124 @@ void UpdateTetrisNES(void* pProfileManager)
 	pL->RenderFrame("01");
 }
 
+//The Legend of Zelda.  Screen layout: rows 0-63 are the HUD (minimap/rupees/items), rows 64-239 are the
+//11x16 tile play area.  The diorama: full playfield as the deep ground plane, solid/obstacle tiles
+//(rocks, trees, dungeon walls etc) extruded forward Castlevania-style, sprites in front of those, HUD in front.
+//The HUD's item icons and the minimap blip are SPRITES, so the sprite pass also blits its HUD strip to the
+//HUD layer or they'd hide behind the opaque HUD.
+void UpdateZelda(void* pProfileManager)
+{
+	GameProfileManager* pProf = (GameProfileManager*)pProfileManager;
+	LibretroManager* pL = pProf->m_pLibretroManager;
+
+	pL->m_pPlayerPawn->SetBGPic();
+	ClearLayers();
+
+	pL->DisableBlitPass(BLIT_PASS0); //a junk render to speed up time
+	for (int i = 0; i < pL->m_frameSkip; i++)
+	{
+		pL->RenderFrame("00"); //bg, sprites and optional |<num> to specify the active palette offset to use for bg when not rendering bg
+	}
+
+	pL->SaveState(1); //a copy for the visual tricks we're going to do later
+	pL->m_nesHacker.SetupMemoryMappingIfNeeded(pL->m_pSaveStateBuffer[1], pL->m_maxSaveStateSize);
+
+	//Zelda's game mode byte at $12 (values dumped empirically): 0 = title/attract, 1 = file select
+	//menus, 5 = gameplay (subscreen included), 4/6/7 = screen-scroll transition, 8 = game over.
+	byte gameMode = pL->m_nesHacker.m_pNESRAM ? pL->m_nesHacker.m_pNESRAM[0x12] : 5;
+
+	if (gameMode == 0 || gameMode == 1 || gameMode == 8)
+	{
+		//title/menus/game over: the gameplay layer split looks wrong on these, so render simple:
+		//whole BG on one layer, sprites floating in front of it
+		pL->DisableAllBlitPasses();
+		pL->SetupBlitPass(BLIT_PASS0, 2, FIntRect(0, 0, 256, 240), COLOR_KEY_STYLE_NONE, FLinearColor(0, 0, 0, 0));
+		pL->RenderFrame("10");
+		pL->SaveState(0);
+		pL->m_useAudio = false;
+
+		pL->m_nesHacker.SetTileColorIndex(0, 0x00); //known grey fill for the sprite pass colorkey
+		pL->LoadState(1);
+		pL->DisableAllBlitPasses();
+		pL->SetupBlitPass(BLIT_PASS0, 3, FIntRect(0, 0, 256, 240), COLOR_KEY_STYLE_1COLOR, FLinearColor(107, 109, 107, 0));
+		pL->RenderFrame("01");
+		pL->LoadState(0);
+		return;
+	}
+
+	//Screen-scroll transition detection - extrusion sits these frames out (see the obstacle pass
+	//comments below for why).
+	bool bScrolling = (gameMode == 4 || gameMode == 6 || gameMode == 7);
+
+	//real render: HUD -> layer 4 (front), full play area -> layer 1 (the deep ground plane)
+	pL->DisableAllBlitPasses();
+	pL->SetupBlitPass(BLIT_PASS0, 4, FIntRect(0, 0, 256, 64), COLOR_KEY_STYLE_NONE, FLinearColor(0, 0, 0, 0));
+	pL->SetupBlitPass(BLIT_PASS1, 1, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_NONE, FLinearColor(0, 0, 0, 0));
+	pL->RenderFrame("10");
+	pL->SaveState(0); //the real one we're going to save for the next frame
+	pL->m_useAudio = false;  //don't process any more audio
+
+	//obstacle pass: keep only the solid/raised tiles, everything else becomes the fill tile which renders
+	//as the backdrop color.  Zelda's backdrop (PALRAM[0]) is BLACK on the overworld and in dungeons, so we
+	//key the masked BG pass on black.  NOTE: forcing PALRAM[0] via SetTileColorIndex does NOT survive a
+	//BG-on render here (Zelda rewrites the palette from its RAM shadow every frame), but it DOES hold for
+	//the sprites-only pass fill, so the grey trick below is sprite-pass only.  Proven via dumplayers.
+
+	//Obstacle extrusion, TWO masked re-renders (tile IDs from the N-key dumps):
+	//- wall trees (d8-db) keyed on black only: their art uses the ground color as a highlight
+	//  (24% of tree pixels, measured), so keying the ground color here would moth-eat them.
+	//- ground-keyed set, keyed on black AND the ground color so the ground-painted parts stay
+	//  flat and only the object shape extrudes: forest-edge diagonals (cc-d7, dc-df), standalone
+	//  rocks (c8-cb), standalone trees (c4-c7).
+	//Extrusion sits out the screen-scroll modes entirely: the game rewrites nametable rows
+	//mid-frame during scrolls, bypassing the tile filter and smearing unfiltered stripes across
+	//the extruded layers.  A 3D-through-the-scroll attempt (ground-keying the wall-tree pass
+	//during scrolls) was tried and looked bad on the device, so scrolls render as a plain 2D
+	//slide and the extrusion pops back on arrival.
+
+	static byte keepWallTrees[] = { 0xd8, 0xd9, 0xda, 0xdb };
+	static byte keepGroundKeyed[] = { 0xc4, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb,
+		0xcc, 0xcd, 0xce, 0xcf, 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7, 0xdc, 0xdd, 0xde, 0xdf };
+	byte fillTile = 0x24; //blank tile, renders as the backdrop color (PALRAM[0], black)
+	FLinearColor blackKey(0, 0, 0, 0);
+	FLinearColor groundKey(255, 255, 74, 0); //overworld ground ($37 in our rgb palette), sampled from the layer buffer
+
+	if (!bScrolling)
+	{
+		pL->CopyState(1, 2); //pristine copy - each masked pass mutates the nametables from clean
+
+		//wall trees -> layers 2 and 3
+		pL->m_nesHacker.DeleteNametableTilesNotInList(pL->m_pSaveStateBuffer[1], pL->m_maxSaveStateSize, keepWallTrees, sizeof(keepWallTrees), fillTile);
+		pL->LoadState(1);
+		pL->DisableAllBlitPasses();
+		pL->SetupBlitPass(BLIT_PASS0, 2, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_BLACK, blackKey);
+		pL->SetupBlitPass(BLIT_PASS1, 3, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_BLACK, blackKey);
+		pL->RenderFrame("10");
+
+		//edge diagonals, standalone rocks and trees -> layers 2 and 3, ground-colored parts keyed away
+		pL->CopyState(2, 1);
+		pL->m_nesHacker.DeleteNametableTilesNotInList(pL->m_pSaveStateBuffer[1], pL->m_maxSaveStateSize, keepGroundKeyed, sizeof(keepGroundKeyed), fillTile);
+		pL->LoadState(1);
+		pL->DisableAllBlitPasses();
+		pL->SetupBlitPass(BLIT_PASS0, 2, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_2COLOR, blackKey, groundKey);
+		pL->SetupBlitPass(BLIT_PASS1, 3, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_2COLOR, blackKey, groundKey);
+		pL->RenderFrame("10");
+	}
+
+	//sprite pass: with BG off the scanlines fill with PALRAM[0], which we force to NES $00
+	//(107,109,107 grey in the rgb palette) so black sprite pixels survive the key.
+	pL->m_nesHacker.SetTileColorIndex(0, 0x00);
+	//Play-area sprites -> layer 3 (in front of the extruded obstacles), HUD-strip sprites -> layer 4.
+	pL->LoadState(1);
+	pL->DisableAllBlitPasses();
+	pL->SetupBlitPass(BLIT_PASS0, 3, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_1COLOR, FLinearColor(107, 109, 107, 0));
+	pL->SetupBlitPass(BLIT_PASS1, 4, FIntRect(0, 0, 256, 64), COLOR_KEY_STYLE_1COLOR, FLinearColor(107, 109, 107, 0));
+	pL->RenderFrame("01");
+
+	pL->LoadState(0);
+}
+
+
 GameProfileManager::GameProfileManager()
 {
 	//setup the profile data.  DON'T CHANGE THE NAMES without also changing anything in ApplyStartingGameSpecificSetup
@@ -448,6 +573,7 @@ GameProfileManager::GameProfileManager()
 	m_profileVec.push_back(GameProfile("Wario Land VB", "fb4dc9f4ebd506702eb49e99a62bd803", UpdateDefaultVB));
 	m_profileVec.push_back(GameProfile("Jack Bros. VB", "ee873c9969c15e92ca9a0f689c4ce5ea", UpdateDefaultVB));
 	m_profileVec.push_back(GameProfile("Tetris NES", "5b0e571558c8c796937b96af469561c6", UpdateTetrisNES));
+	m_profileVec.push_back(GameProfile("Legend of Zelda", "d3f453931146e95b04a31647de80fdab", UpdateZelda)); //PRG 1
 
 	
 
