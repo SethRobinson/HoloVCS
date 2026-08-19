@@ -101,9 +101,12 @@ public:
 	void SetTextureSmoothingToUse(bool bfilteringOn);
 	int GetUnusedLayerID(); //returns -1 for none
 	int GetLayerCount() { return m_layerCount; }
-	
+	void SetUserDepthScale(float scale); //clamps, re-spreads the live layers, shows a status message
+	void ApplyLayerDepth(); //reposition existing layer actors to the current depth spread (no respawn)
+
 	int m_layerCount = 5;
 	float m_total3dDepth = 150;
+	float m_userDepthScale = 1.0f; //user multiplier on m_total3dDepth ([ and ] hotkeys); survives rom switches
 	float m_depthOffsetForAllLayers = 0;
 	bool m_setTextureSmoothing = false;
 	int m_layerWidth = 256;

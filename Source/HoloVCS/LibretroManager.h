@@ -13,6 +13,7 @@
 #include "Shared/UnrealMisc.h"
 #include "NesHacker.h"
 #include "AutomationHarness.h"
+#include "HelpScreen.h"
 #include "GameProfileManager.h"
 #include "Windows/WindowsHWrapper.h" //HINSTANCE/LoadLibrary for the core dll loading
 
@@ -159,8 +160,6 @@ public:
 	void DisableBlitPass(int blitPassIndex);
 	bool IsCoreLoaded() { return m_core.m_bActive; }
 	void SetupBlitPass(int blitPassIndex, int layer, FIntRect srcRect, eColorKeyStyle colorKeyStyle, FLinearColor colorKey, FLinearColor colorKey2 = FLinearColor(0, 0, 0, 0));
-	void UpdateAudioStatistics(int framesWritten);
-	void SetSampleRate();
 	void SaveStateToFile();
 	void LoadStateFromFile();
 	void ResetRom();
@@ -190,8 +189,6 @@ public:
 	double m_mainTimer = 0;
 	double m_timeOfLastFrame = 0;
 	JoyPadButtonStates m_joyPad;
-	float m_audioStatisticsTimer = 0;
-	int m_framesWrittenInPeriod;
 	bool m_bGamePaused = false;
 	bool m_bNesDumpRequested = false; //set by the N hotkey; UpdateNES writes Saved/nes_state_dump.txt next frame
 
@@ -213,6 +210,7 @@ public:
 
 	NesHacker m_nesHacker;
 	AutomationHarness m_autoHarness;
+	HelpScreen m_helpScreen;
 	int m_autoButtonHoldFrames[C_MAX_JOYPAD_BUTTONS] = {}; //harness-injected holds, OR'd into the input callback, decremented per visible frame
 	GameProfileManager m_profManager;
 	uint8* m_pSaveStateBuffer[C_SAVE_STATE_COUNT];
@@ -228,8 +226,6 @@ protected:
 	void ClearAllLayers();
 	void LoadRomList();
 
-		int m_framesWrittenInLastPeriod;
-	
 private:
 };
 

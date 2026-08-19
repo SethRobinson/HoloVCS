@@ -160,6 +160,14 @@ void AutomationHarness::ProcessCommandLine(const FString& line)
 		m_pManager->SetGamePaused(false);
 		AppendToLog(TEXT("unpaused"));
 	}
+	else if (cmd == TEXT("help"))
+	{
+		//help [on|off] - no arg toggles.  Same as the ? hotkey (pauses the game while up)
+		if (parts.Num() >= 2 && parts[1] == TEXT("on")) m_pManager->m_helpScreen.Show();
+		else if (parts.Num() >= 2 && parts[1] == TEXT("off")) m_pManager->m_helpScreen.Hide();
+		else m_pManager->m_helpScreen.Toggle();
+		AppendToLog(FString::Printf(TEXT("help now %s"), m_pManager->m_helpScreen.IsVisible() ? TEXT("on") : TEXT("off")));
+	}
 	else if (cmd == TEXT("savestate"))
 	{
 		m_pManager->SaveStateToFile();

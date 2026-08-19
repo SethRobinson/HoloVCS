@@ -442,8 +442,6 @@ bool retro_environment_callback(unsigned cmd, void* data)
 		LogMsg("FPS %f, sample rate: %f", (float)pInfo->timing.fps, (float)pInfo->timing.sample_rate);
 
 		g_pLibretroManager->m_pLibretroManagedActor->SetSampleRate(pInfo->timing.sample_rate);
-		g_pLibretroManager->m_audioStatisticsTimer = FPlatformTime::Seconds();
-		g_pLibretroManager->m_framesWrittenInPeriod = 0;
 		break;
 	}
 
@@ -601,49 +599,12 @@ void retro_audio_sample_callback(int16_t left, int16_t right)
 	return;
 }
 
-void LibretroManager::SetSampleRate()
-{
-	//time to computer stuff
-	float timeTaken = (FPlatformTime::Seconds() - m_audioStatisticsTimer);
-	const float SECONDS_REQUIRED = 10;
-
-	if (timeTaken < SECONDS_REQUIRED)
-	{
-		//Sorry, I refuse to use the fstring stuff
-		char st[256];
-		snprintf(st, sizeof(st), "Try again in %.2f seconds, we need more time to measure audio speed", SECONDS_REQUIRED - timeTaken);
-		ShowStatusMessage(st);
-		return;
-	}
-
-	m_framesWrittenInLastPeriod = (double)m_framesWrittenInPeriod / (FPlatformTime::Seconds() - m_audioStatisticsTimer);
-	ShowStatusMessage(string("Samplerate: ") + toString(m_framesWrittenInLastPeriod));
-	m_framesWrittenInPeriod = 0;
-	
-	if (m_framesWrittenInLastPeriod < 3)
-	{
-		ShowStatusMessage(string("Invalid sample rate, ignoring - ") + toString(m_framesWrittenInLastPeriod));
-	}
-	else
-	{
-		m_pLibretroManagedActor->SetSampleRate(m_framesWrittenInLastPeriod);
-		m_audioStatisticsTimer = FPlatformTime::Seconds();
-	}
-}
-
-void LibretroManager::UpdateAudioStatistics(int framesWritten)
-{
-	m_framesWrittenInPeriod += framesWritten;
-}
-
 size_t retro_audio_sample_batch_callback(const int16_t* data, size_t frames)
 {
 	
 	if (!g_pLibretroManager->m_useAudio) return frames; //this audio can be trashed, it's probably because I couldn't figure out how to turn it off when doing
 														//some extra visual renders
 	auto* pAudioBufferComp = g_pLibretroManager->m_pLibretroManagedActor->m_pRTAudioBufferComponent;
-
-	g_pLibretroManager->UpdateAudioStatistics(frames);
 
 	if (pAudioBufferComp->GetBufferGenerator())
 	{
@@ -812,6 +773,12 @@ void LibretroManager::DisableAllBlitPasses()
 }
 void LibretroManager::SetGamePaused(bool bNew)
 {
+	//an unpause from anywhere else (P key, rom switch/reset, harness) closes the help screen;
+	//the help's own Hide() clears visibility before calling here, so this can't recurse
+	if (!bNew && m_helpScreen.IsVisible())
+	{
+		m_helpScreen.NotifyExternallyUnpaused();
+	}
 	m_bGamePaused = bNew;
 }
 
@@ -967,13 +934,6 @@ void LibretroManager::InitEmulator()
 	
 	DisableAllBlitPasses();
 
-	//setup timing based on what the core tells us
-	m_audioStatisticsTimer = FPlatformTime::Seconds();
-	m_framesWrittenInPeriod = 0;
-
-	m_audioStatisticsTimer = FPlatformTime::Seconds();
-	m_framesWrittenInPeriod = 0;
-	
 	m_profManager.ApplyStartingGameSpecificSetup();
 
 	m_pLibretroManagedActor->InitLayers();
@@ -1152,7 +1112,8 @@ void retro_video_refresh_callback(const void* data, unsigned width, unsigned hei
 	for (int pass = 0; pass < C_MAX_BLITPASS_COUNT; pass++)
 	{
 		BlitPass* pBlitPass = &g_pLibretroManager->m_blitPass[pass];
-		if (!pBlitPass->m_bActive) break; //stop here
+		if (!pBlitPass->m_bActive) break; //stop here - passes after a gap are IGNORED, so
+		                                  //profiles must set up pass indices contiguously
 
 		uint8* pSrc = (uint8*)data;
 		LayerInfo* pDestLayer = g_pLibretroManager->m_pLibretroManagedActor->GetLayer(pBlitPass->m_activeLayerIndex);
@@ -1378,12 +1339,6 @@ void LibretroManager::RenderFrame(const char* pRenderFlags)
 
 void LibretroManager::SetFrameSkip(int frameSkip)
 {
-	if (frameSkip != m_frameSkip)
-	{
-		m_audioStatisticsTimer = FPlatformTime::Seconds();
-		m_framesWrittenInPeriod = 0;
-	}
-
 	m_frameSkip = frameSkip;
 	ShowStatusMessage(string("Frameskip: " + toString(m_frameSkip)));
 }
@@ -1446,6 +1401,8 @@ void LibretroManager::Update()
 	if (!m_core.m_bActive) return;
 
 	if (m_bGamePaused) return;
+
+	m_helpScreen.TickAutoShow(); //after the early-outs so the diorama has frames behind the panel
 
 	m_useAudio = true;
 	m_profManager.Update();

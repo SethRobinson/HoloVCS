@@ -5,6 +5,8 @@
 #include "LibretroManager.h"
 #include "LibretroManagerActor.h"
 #include "StatusDisplayActor.h"
+#include "HoloHUD.h"
+#include "GameFramework/PlayerController.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/Material.h"
@@ -64,6 +66,17 @@ APlayerPawn::APlayerPawn()
 void APlayerPawn::BeginPlay()
 {
 	Super::BeginPlay();
+
+	//swap in our canvas HUD (draws the help screen) - done here at runtime so the plain
+	//GameModeBase and the maps stay untouched
+	if (APlayerController* pPC = GetWorld()->GetFirstPlayerController())
+	{
+		pPC->ClientSetHUD(AHoloHUD::StaticClass());
+	}
+	else
+	{
+		LogMsg("PlayerPawn: no PlayerController found, help screen HUD not installed");
+	}
 
 	auto crap = GetActorByTag(GetWorld(), "LayerBG");
 	if (crap == NULL)
@@ -300,9 +313,24 @@ void APlayerPawn::Tick(float DeltaTime)
 
 const float C_JOYSTICK_DEAD_ZONE = 0.3f;
 
+//Any input while the help screen is up only dismisses it.  Call this FIRST in every
+//pressed-input handler: true means the help was up (and just closed), so the input is spent
+//and the handler's real action must not run (no accidental save states or rom switches from
+//the "press any key" dismissal).
+static bool HelpSwallowedInput()
+{
+	if (g_pLibretroManager && g_pLibretroManager->m_helpScreen.IsVisible())
+	{
+		g_pLibretroManager->m_helpScreen.Hide();
+		return true;
+	}
+	return false;
+}
+
 void APlayerPawn::Move_XAxis(float AxisValue)
 {
 	if (!g_pLibretroManager) return; //axis events fire every frame, even during startup/teardown when there's no manager
+	if (FMath::Abs(AxisValue) > C_JOYSTICK_DEAD_ZONE) HelpSwallowedInput(); //movement closes the help like the old splash
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_LEFT] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_RIGHT] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
 }
@@ -310,6 +338,7 @@ void APlayerPawn::Move_XAxis(float AxisValue)
 void APlayerPawn::Move_YAxis(float AxisValue)
 {
 	if (!g_pLibretroManager) return;
+	if (FMath::Abs(AxisValue) > C_JOYSTICK_DEAD_ZONE) HelpSwallowedInput();
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_UP] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_DOWN] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
 }
@@ -340,6 +369,7 @@ void APlayerPawn::OnMouseY(float AxisValue)
 
 void APlayerPawn::JoyPad_B_Pressed()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = true;
 }
 
@@ -350,6 +380,7 @@ void APlayerPawn::JoyPad_B_Released()
 
 void APlayerPawn::JoyPad_A_Pressed()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_A] = true;
 }
 
@@ -360,6 +391,7 @@ void APlayerPawn::JoyPad_A_Released()
 
 void APlayerPawn::JoyPad_Y_Pressed()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_Y] = true;
 }
 
@@ -371,6 +403,7 @@ void APlayerPawn::JoyPad_Y_Released()
 //I disabled X because no HoloVCS supported emulator uses it and the VB editor uses to toggle low battery I guess
 void APlayerPawn::JoyPad_X_Pressed()
 {
+	HelpSwallowedInput();
 	//g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_X] = true;
 }
 
@@ -381,6 +414,7 @@ void APlayerPawn::JoyPad_X_Released()
 
 void APlayerPawn::JoyPad_Start_Pressed()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START] = true;
 }
 
@@ -391,7 +425,7 @@ void APlayerPawn::JoyPad_Start_Released()
 
 void APlayerPawn::JoyPad_Select_Pressed()
 {
-	
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_SELECT] = true;
 }
 
@@ -402,6 +436,7 @@ void APlayerPawn::JoyPad_Select_Released()
 
 void APlayerPawn::JoyPad_LShoulder_Pressed()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L] = true;
 	g_pLibretroManager->SaveStateToFile();
 }
@@ -413,6 +448,7 @@ void APlayerPawn::JoyPad_LShoulder_Released()
 
 void APlayerPawn::JoyPad_RShoulder_Pressed()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R] = true;
 	g_pLibretroManager->LoadStateFromFile();
 }
@@ -420,6 +456,7 @@ void APlayerPawn::JoyPad_RShoulder_Pressed()
 
 void APlayerPawn::JoyPad_LeftStick_Pressed()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L3] = true;
 
 	OnResetGame();
@@ -431,6 +468,7 @@ void APlayerPawn::JoyPad_LeftStick_Released()
 
 void APlayerPawn::JoyPad_RightStick_Pressed()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R3] = true;
 	g_pLibretroManager->ModRom(1);
 
@@ -442,12 +480,14 @@ void APlayerPawn::JoyPad_RightStick_Released()
 
 void APlayerPawn::JoyPad_RTrigger_Pressed()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R2] = true;
 //	g_pLibretroManager->ModRom(-1);
 }
 
 void APlayerPawn::JoyPad_LTrigger_Pressed()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L2] = true;
 //	g_pLibretroManager->ModRom(1);
 }
@@ -467,13 +507,9 @@ void APlayerPawn::JoyPad_RShoulder_Released()
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R] = false;
 }
 
-void APlayerPawn::OnAKey()
-{
-	g_pLibretroManager->SetSampleRate();
-}
-
 void APlayerPawn::OnNum0Key()
 {
+	if (HelpSwallowedInput()) return;
 	//toggle every frame limiter (vsync, engine cap and the emulator pacing busy-wait) to see
 	//true throughput on the fps counter - the game runs fast while uncapped, like frameskip
 	static bool bUncapped = false;
@@ -492,26 +528,32 @@ void APlayerPawn::OnNum0Key()
 
 void APlayerPawn::OnNum1Key()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->SetFrameSkip(0);
 }
 void APlayerPawn::OnNum2Key()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->SetFrameSkip(1);
 }
 void APlayerPawn::OnNum3Key()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->SetFrameSkip(2);
 }
 void APlayerPawn::OnNum4Key()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->SetFrameSkip(3);
 }
 void APlayerPawn::OnNum5Key()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->SetFrameSkip(4);
 }
 void APlayerPawn::OnNum6Key()
 {
+	if (HelpSwallowedInput()) return;
 	bool bTextureSmoothing = g_pLibretroManager->m_pLibretroManagedActor->GetTextureSmoothingToUse();
 
 	bTextureSmoothing = !bTextureSmoothing;
@@ -532,6 +574,7 @@ void APlayerPawn::OnNum6Key()
 
 void APlayerPawn::OnNum7Key()
 {
+	if (HelpSwallowedInput()) return;
 	//The rig's light of record is the point light (the old build's setup); fall back to a
 	//directional for maps that only have that. m_pLight is an editor-set property that isn't
 	//wired up in every map.
@@ -579,6 +622,7 @@ void APlayerPawn::OnNum7Key()
 
 void APlayerPawn::OnNum8Key()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_pLibretroManagedActor->m_curLightingMode =
 		(eLightingMode) (
 			((int)g_pLibretroManager->m_pLibretroManagedActor->m_curLightingMode + 1) % (int)LIGHTING_MODE_COUNT
@@ -601,6 +645,7 @@ void APlayerPawn::OnNum8Key()
 
 void APlayerPawn::OnPKey()
 {
+	if (HelpSwallowedInput()) return;
 	LogMsg("Pressed P");
 
 	bool bIsPaused = !g_pLibretroManager->GetGamePaused();
@@ -619,12 +664,14 @@ void APlayerPawn::OnPKey()
 
 void APlayerPawn::OnAddKey()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_pLibretroManagedActor->ScaleLayersXY(1.05f);
 	ShowStatusMessage("Zooming in");
 }
 
 void APlayerPawn::OnSubtractKey()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_pLibretroManagedActor->ScaleLayersXY(0.95f);
 	ShowStatusMessage("Zooming out");
 }
@@ -633,17 +680,20 @@ void APlayerPawn::OnSubtractKey()
 
 void APlayerPawn::OnSKey()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->SaveStateToFile();
 }
 
 void APlayerPawn::OnLKey()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->LoadStateFromFile();
 }
 
 void APlayerPawn::OnNKey()
 {
 	if (!g_pLibretroManager) return;
+	if (HelpSwallowedInput()) return;
 
 	if (g_pLibretroManager->m_emulatorType != EMULATOR_NES)
 	{
@@ -657,18 +707,50 @@ void APlayerPawn::OnNKey()
 
 void APlayerPawn::OnCommaKey()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->ModRom(-1);
 }
 
 void APlayerPawn::OnPeriodKey()
 {
+	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->ModRom(1);
 }
 
 void APlayerPawn::OnResetGame()
 {
+	if (HelpSwallowedInput()) return;
 	LogMsg("Resetting game");
 	g_pLibretroManager->ResetRom();
+}
+
+void APlayerPawn::OnLeftBracketKey()
+{
+	if (!g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
+	if (HelpSwallowedInput()) return;
+	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+	pActor->SetUserDepthScale(pActor->m_userDepthScale / 1.15f);
+}
+
+void APlayerPawn::OnRightBracketKey()
+{
+	if (!g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
+	if (HelpSwallowedInput()) return;
+	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+	pActor->SetUserDepthScale(pActor->m_userDepthScale * 1.15f);
+}
+
+void APlayerPawn::OnSlashKey()
+{
+	if (!g_pLibretroManager) return;
+	if (HelpSwallowedInput()) return; //? closes it like any other key...
+	g_pLibretroManager->m_helpScreen.Show(); //...and opens it when it's not up
+}
+
+//AnyKey catch-all so keys with no binding of their own still dismiss the help screen
+void APlayerPawn::OnAnyKey()
+{
+	HelpSwallowedInput();
 }
 
 // Called to bind functionality to input
@@ -687,7 +769,6 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(FKey("Comma"), IE_Pressed, this, &APlayerPawn::OnCommaKey);
 	PlayerInputComponent->BindKey(FKey("Period"), IE_Pressed, this, &APlayerPawn::OnPeriodKey);
 	PlayerInputComponent->BindKey(FKey("R"), IE_Pressed, this, &APlayerPawn::OnResetGame);
-	PlayerInputComponent->BindKey(FKey("A"), IE_Pressed, this, &APlayerPawn::OnAKey);
 	PlayerInputComponent->BindKey(FKey("Zero"), IE_Pressed, this, &APlayerPawn::OnNum0Key);
 	PlayerInputComponent->BindKey(FKey("One"), IE_Pressed, this, &APlayerPawn::OnNum1Key);
 	PlayerInputComponent->BindKey(FKey("Two"), IE_Pressed, this, &APlayerPawn::OnNum2Key);
@@ -699,6 +780,12 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(FKey("Eight"), IE_Pressed, this, &APlayerPawn::OnNum8Key);
 	PlayerInputComponent->BindKey(FKey("P"), IE_Pressed, this, &APlayerPawn::OnPKey);
 	PlayerInputComponent->BindKey(FKey("N"), IE_Pressed, this, &APlayerPawn::OnNKey);
+	PlayerInputComponent->BindKey(FKey("LeftBracket"), IE_Pressed, this, &APlayerPawn::OnLeftBracketKey);
+	PlayerInputComponent->BindKey(FKey("LeftBracket"), IE_Repeat, this, &APlayerPawn::OnLeftBracketKey);
+	PlayerInputComponent->BindKey(FKey("RightBracket"), IE_Pressed, this, &APlayerPawn::OnRightBracketKey);
+	PlayerInputComponent->BindKey(FKey("RightBracket"), IE_Repeat, this, &APlayerPawn::OnRightBracketKey);
+	PlayerInputComponent->BindKey(FKey("Slash"), IE_Pressed, this, &APlayerPawn::OnSlashKey);
+	PlayerInputComponent->BindKey(FKey("AnyKey"), IE_Pressed, this, &APlayerPawn::OnAnyKey).bConsumeInput = false;
 #else
 	PlayerInputComponent->BindKey(EKeys::Equals, IE_Pressed, this, &APlayerPawn::OnAddKey);
 	PlayerInputComponent->BindKey(EKeys::Hyphen, IE_Pressed, this, &APlayerPawn::OnSubtractKey);
@@ -707,7 +794,6 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(EKeys::Comma, IE_Pressed, this, &APlayerPawn::OnCommaKey);
 	PlayerInputComponent->BindKey(EKeys::Period, IE_Pressed, this, &APlayerPawn::OnPeriodKey);
 	PlayerInputComponent->BindKey(EKeys::R, IE_Pressed, this, &APlayerPawn::OnResetGame);
-	PlayerInputComponent->BindKey(EKeys::A, IE_Pressed, this, &APlayerPawn::OnAKey);
 	PlayerInputComponent->BindKey(EKeys::Zero, IE_Pressed, this, &APlayerPawn::OnNum0Key);
 	PlayerInputComponent->BindKey(EKeys::One, IE_Pressed, this, &APlayerPawn::OnNum1Key);
 	PlayerInputComponent->BindKey(EKeys::Two, IE_Pressed, this, &APlayerPawn::OnNum2Key);
@@ -719,6 +805,15 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(EKeys::Eight, IE_Pressed, this, &APlayerPawn::OnNum8Key);
 	PlayerInputComponent->BindKey(EKeys::P, IE_Pressed, this, &APlayerPawn::OnPKey);
 	PlayerInputComponent->BindKey(EKeys::N, IE_Pressed, this, &APlayerPawn::OnNKey);
+	PlayerInputComponent->BindKey(EKeys::LeftBracket, IE_Pressed, this, &APlayerPawn::OnLeftBracketKey);
+	PlayerInputComponent->BindKey(EKeys::LeftBracket, IE_Repeat, this, &APlayerPawn::OnLeftBracketKey);
+	PlayerInputComponent->BindKey(EKeys::RightBracket, IE_Pressed, this, &APlayerPawn::OnRightBracketKey);
+	PlayerInputComponent->BindKey(EKeys::RightBracket, IE_Repeat, this, &APlayerPawn::OnRightBracketKey);
+	PlayerInputComponent->BindKey(EKeys::Slash, IE_Pressed, this, &APlayerPawn::OnSlashKey); //Slash also fires with Shift held, so ? works
+	//"press any key to close" for the help screen - keys without a binding of their own land
+	//here.  MUST NOT consume, or it would eat every keypress meant for the game/hotkeys.
+	//(The help's same-frame show/hide guards keep this from fighting the ? toggle.)
+	PlayerInputComponent->BindKey(EKeys::AnyKey, IE_Pressed, this, &APlayerPawn::OnAnyKey).bConsumeInput = false;
 #endif
 	//mouse orbits the flat camera around the layer diorama, see UpdateFlatCamera
 	InputComponent->BindAxisKey(EKeys::MouseX, this, &APlayerPawn::OnMouseX);

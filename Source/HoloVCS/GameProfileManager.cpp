@@ -494,10 +494,36 @@ void UpdateZelda(void* pProfileManager)
 	//comments below for why).
 	bool bScrolling = (gameMode == 4 || gameMode == 6 || gameMode == 7);
 
-	//real render: HUD -> layer 4 (front), full play area -> layer 1 (the deep ground plane)
+	//Item subscreen (Start): $e1 = 0 closed, 7 sliding open, 8 open at rest, 9 sliding closed.
+	//While active, $fc holds the PPU vertical scroll, so the HUD strip's top OUTPUT row is
+	//(240 - $fc) % 240 on every frame of the slide (175 at rest-open, 0 when closed).  All
+	//values dumped empirically (Aug 2026).  One split handles closed/sliding/open: the HUD
+	//strip -> layer 4 wherever it is, everything else (item screen above it, play area below
+	//it) -> layer 1, and the item screen's sprites (selection cursor etc) pop at layer 3 like
+	//play-area sprites do.
+	int hudTop = 0;
+	byte subscreenState = (gameMode == 5 && pL->m_nesHacker.m_pNESRAM) ? pL->m_nesHacker.m_pNESRAM[0xe1] : 0;
+	if (subscreenState != 0)
+	{
+		int scrollY = pL->m_nesHacker.m_pNESRAM[0xfc];
+		hudTop = FMath::Clamp((240 - scrollY) % 240, 0, 240 - 64);
+	}
+
+	//real render: HUD strip -> layer 4 (front), everything else -> layer 1 (the deep ground plane).
+	//GOTCHA: pass indices MUST be contiguous - the video refresh callback BREAKS at the first
+	//inactive pass, so a gap silently drops every pass after it (that bug shipped once: closed
+	//subscreen skipped PASS1 and the ground plane + sprites on PASS2 never blitted).
+	int pass = BLIT_PASS0;
 	pL->DisableAllBlitPasses();
-	pL->SetupBlitPass(BLIT_PASS0, 4, FIntRect(0, 0, 256, 64), COLOR_KEY_STYLE_NONE, FLinearColor(0, 0, 0, 0));
-	pL->SetupBlitPass(BLIT_PASS1, 1, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_NONE, FLinearColor(0, 0, 0, 0));
+	pL->SetupBlitPass(pass++, 4, FIntRect(0, hudTop, 256, hudTop + 64), COLOR_KEY_STYLE_NONE, FLinearColor(0, 0, 0, 0));
+	if (hudTop > 0)
+	{
+		pL->SetupBlitPass(pass++, 1, FIntRect(0, 0, 256, hudTop), COLOR_KEY_STYLE_NONE, FLinearColor(0, 0, 0, 0));
+	}
+	if (hudTop + 64 < 240)
+	{
+		pL->SetupBlitPass(pass++, 1, FIntRect(0, hudTop + 64, 256, 240), COLOR_KEY_STYLE_NONE, FLinearColor(0, 0, 0, 0));
+	}
 	pL->RenderFrame("10");
 	pL->SaveState(0); //the real one we're going to save for the next frame
 	pL->m_useAudio = false;  //don't process any more audio
@@ -527,36 +553,52 @@ void UpdateZelda(void* pProfileManager)
 	FLinearColor blackKey(0, 0, 0, 0);
 	FLinearColor groundKey(255, 255, 74, 0); //overworld ground ($37 in our rgb palette), sampled from the layer buffer
 
-	if (!bScrolling)
+	if (!bScrolling && subscreenState == 0) //subscreen tiles aren't in the keep-lists, so extrusion sits that out too
 	{
 		pL->CopyState(1, 2); //pristine copy - each masked pass mutates the nametables from clean
 
-		//wall trees -> layers 2 and 3
+		//wall trees -> layers 2, 3 AND 4: the extrusion tops out one layer above the sprites
+		//(layer 3), so trees read taller than the player/creatures on the device.  Layer 4 is
+		//also the HUD layer, but the HUD only occupies rows 0-63 and these blits are rows
+		//64-240 of the same texture - no overlap (and the NES blit path skips keyed pixels, so
+		//stacked passes never erase each other).
 		pL->m_nesHacker.DeleteNametableTilesNotInList(pL->m_pSaveStateBuffer[1], pL->m_maxSaveStateSize, keepWallTrees, sizeof(keepWallTrees), fillTile);
 		pL->LoadState(1);
 		pL->DisableAllBlitPasses();
 		pL->SetupBlitPass(BLIT_PASS0, 2, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_BLACK, blackKey);
 		pL->SetupBlitPass(BLIT_PASS1, 3, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_BLACK, blackKey);
+		pL->SetupBlitPass(BLIT_PASS2, 4, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_BLACK, blackKey);
 		pL->RenderFrame("10");
 
-		//edge diagonals, standalone rocks and trees -> layers 2 and 3, ground-colored parts keyed away
+		//edge diagonals, standalone rocks and trees -> layers 2, 3 and 4, ground-colored parts keyed away
 		pL->CopyState(2, 1);
 		pL->m_nesHacker.DeleteNametableTilesNotInList(pL->m_pSaveStateBuffer[1], pL->m_maxSaveStateSize, keepGroundKeyed, sizeof(keepGroundKeyed), fillTile);
 		pL->LoadState(1);
 		pL->DisableAllBlitPasses();
 		pL->SetupBlitPass(BLIT_PASS0, 2, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_2COLOR, blackKey, groundKey);
 		pL->SetupBlitPass(BLIT_PASS1, 3, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_2COLOR, blackKey, groundKey);
+		pL->SetupBlitPass(BLIT_PASS2, 4, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_2COLOR, blackKey, groundKey);
 		pL->RenderFrame("10");
 	}
 
 	//sprite pass: with BG off the scanlines fill with PALRAM[0], which we force to NES $00
 	//(107,109,107 grey in the rgb palette) so black sprite pixels survive the key.
 	pL->m_nesHacker.SetTileColorIndex(0, 0x00);
-	//Play-area sprites -> layer 3 (in front of the extruded obstacles), HUD-strip sprites -> layer 4.
+	//Play-area/item-screen sprites -> layer 3 (in front of the extruded obstacles; the
+	//subscreen's cursor pops the same way), HUD-strip sprites -> layer 4, tracking the split.
+	//Same contiguous-pass rule as the BG render above.
 	pL->LoadState(1);
 	pL->DisableAllBlitPasses();
-	pL->SetupBlitPass(BLIT_PASS0, 3, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_1COLOR, FLinearColor(107, 109, 107, 0));
-	pL->SetupBlitPass(BLIT_PASS1, 4, FIntRect(0, 0, 256, 64), COLOR_KEY_STYLE_1COLOR, FLinearColor(107, 109, 107, 0));
+	pass = BLIT_PASS0;
+	pL->SetupBlitPass(pass++, 4, FIntRect(0, hudTop, 256, hudTop + 64), COLOR_KEY_STYLE_1COLOR, FLinearColor(107, 109, 107, 0));
+	if (hudTop > 0)
+	{
+		pL->SetupBlitPass(pass++, 3, FIntRect(0, 0, 256, hudTop), COLOR_KEY_STYLE_1COLOR, FLinearColor(107, 109, 107, 0));
+	}
+	if (hudTop + 64 < 240)
+	{
+		pL->SetupBlitPass(pass++, 3, FIntRect(0, hudTop + 64, 256, 240), COLOR_KEY_STYLE_1COLOR, FLinearColor(107, 109, 107, 0));
+	}
 	pL->RenderFrame("01");
 
 	pL->LoadState(0);

@@ -11,7 +11,7 @@ public class HoloVCS : ModuleRules
 
         PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "AudioMixer" });
 
-        PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore", "EngineSettings" });
+        PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore", "EngineSettings", "RenderCore" });
 
         if (Target.Platform == UnrealTargetPlatform.Win64)
         {

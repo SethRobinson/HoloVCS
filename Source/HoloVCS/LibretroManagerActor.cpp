@@ -55,6 +55,17 @@ static void KeepGameWindowFocused()
 
 void FitLookingGlassCaptureToLayers(UWorld* pWorld);
 
+//Console twin of the [ and ] hotkeys so the automation harness can drive the depth spread
+//headlessly (exec holo.DepthScale 2)
+static FAutoConsoleCommand CCmdHoloDepthScale(
+	TEXT("holo.DepthScale"),
+	TEXT("Set the 3D depth spread multiplier, same as the [ and ] hotkeys. Usage: holo.DepthScale 1.5"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		if (args.Num() < 1 || !g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
+		g_pLibretroManager->m_pLibretroManagedActor->SetUserDepthScale(FCString::Atof(*args[0]));
+	}));
+
 EPixelFormat TEX_PIXEL_FORMAT = EPixelFormat::PF_B8G8R8A8;
 // Sets default values
 ALibretroManagerActor::ALibretroManagerActor()
@@ -249,7 +260,7 @@ void ALibretroManagerActor::InitLayers()
 	SetTextureSmoothingToUse(m_setTextureSmoothing);
 	if (!g_pLibretroManager) return;
 
-	float step = m_total3dDepth / (float)GetLayerCount();
+	float step = (m_total3dDepth * m_userDepthScale) / (float)GetLayerCount();
 	float startingZ =  (step * (GetLayerCount()/2));
 
 	//Prepare each layer we're going to dynamically write visuals to
@@ -325,6 +336,45 @@ void ALibretroManagerActor::InitLayers()
 
 	//and reframe the Looking Glass capture actor if one exists (hardware map only)
 	FitLookingGlassCaptureToLayers(GetWorld());
+}
+
+//Re-spread the EXISTING layer actors to the current depth scale.  Positions are set absolutely
+//from m_vStartingPos (captured at spawn, before the depth pass) because SetLayerPosZ is relative
+//and only correct on freshly spawned actors.  Unlike InitLayers there's no respawn/texture
+//recreation hitch, so this is safe to spam from a held-down hotkey.
+void ALibretroManagerActor::ApplyLayerDepth()
+{
+	float step = (m_total3dDepth * m_userDepthScale) / (float)GetLayerCount();
+	float depth = step * (GetLayerCount() / 2);
+
+	for (int i = 0; i < (int)m_layerInfo.size(); i++)
+	{
+		if (m_layerInfo[i].m_pActor)
+		{
+			FVector vPos = m_layerInfo[i].m_pActor->GetActorLocation();
+			vPos.X = m_layerInfo[i].m_vStartingPos.X + depth - m_depthOffsetForAllLayers;
+			m_layerInfo[i].m_pActor->SetActorLocation(vPos);
+		}
+		depth -= step;
+	}
+
+	//the spread changed: reframe the flat camera (or it crops a deeper stack) and the Looking
+	//Glass capture (which also re-parks the LayerBG wall behind the new deepest layer)
+	if (m_libretroManager.m_pPlayerPawn)
+	{
+		m_libretroManager.m_pPlayerPawn->FitFlatCameraToLayers();
+	}
+	FitLookingGlassCaptureToLayers(GetWorld());
+}
+
+void ALibretroManagerActor::SetUserDepthScale(float scale)
+{
+	m_userDepthScale = FMath::Clamp(scale, 0.2f, 5.0f);
+	ApplyLayerDepth();
+
+	char st[64];
+	snprintf(st, sizeof(st), "3D depth: %d%%", (int)roundf(m_userDepthScale * 100));
+	ShowStatusMessage(st);
 }
 
 //The LookingGlassCapture actor in the map was placed/sized for the old 5.6-era world scale, and each
@@ -480,6 +530,12 @@ void FitLookingGlassCaptureToLayers(UWorld* pWorld)
 				{
 					pCaptureComp->ShowOnlyActors.Add(pStatusActor);
 				}
+				//the help screen's invisible text carrier - the plugin harvests its string and
+				//draws the help per quilt tile itself (see HelpScreen.h)
+				if (AActor* pHelpActor = GetActorByTag(pWorld, "HelpScreen"))
+				{
+					pCaptureComp->ShowOnlyActors.Add(pHelpActor);
+				}
 				//The backdrop wall (moon picture etc, set per game profile) sits behind the layer
 				//stack and must show through the layers' colorkey holes.  It's deliberately NOT in
 				//the framing AABB above - it's much bigger than the game screen.
@@ -622,6 +678,22 @@ void ALibretroManagerActor::BeginPlay()
 
 	LogMsg("Started audio renderer thread");
 
+	//spawn the help screen's carrier actor before the first InitLayers so the Looking Glass
+	//show-only fit can pick it up
+	m_libretroManager.m_helpScreen.Init(this);
+
+	//The old bitmap splash quad is retired (HelpScreen draws the help dynamically now), but the
+	//actor still lives in both maps - editing/resaving the umaps is a one-way door, so kill it
+	//at runtime in every build instead
+	{
+		TArray<AActor*> splashActors;
+		AddActorsByTag(&splashActors, GetWorld(), "SplashScreen");
+		for (AActor* pSplash : splashActors)
+		{
+			pSplash->Destroy();
+		}
+	}
+
 	InitLayers();
 	
 	/*
@@ -649,42 +721,6 @@ void ALibretroManagerActor::BeginPlay()
 	{
 		return;
 	}
-
-	//The help/splash quad floats in front of the diorama, and with real scene shadows restored
-	//it cast a giant rectangle over every game in Shipping (dev builds destroy it below, which
-	//is also why dev-build testing never saw the problem)
-	{
-		TArray<AActor*> splashActors;
-		AddActorsByTag(&splashActors, GetWorld(), "SplashScreen");
-		for (AActor* pSplash : splashActors)
-		{
-			TArray<UPrimitiveComponent*> prims;
-			pSplash->GetComponents<UPrimitiveComponent>(prims);
-			for (UPrimitiveComponent* pPrim : prims)
-			{
-				pPrim->SetCastShadow(false);
-			}
-		}
-	}
-
-	//Kill the splash/help screen in dev builds (fast test loop) AND in the Looking Glass build:
-	//it's invisible on the device but floats over the 2D spectator view mid-gameplay, and
-	//nothing tells the user it's waiting for a click
-	bool bKillSplash = FModuleManager::Get().IsModuleLoaded("LookingGlassRuntime");
-#if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
-	bKillSplash = true;
-#endif
-	if (bKillSplash)
-	{
-		TArray<AActor*> actors;
-		AddActorsByTag(&actors, GetWorld(), "SplashScreen");
-
-		if (actors.Num() > 0)
-		{
-			actors[0]->Destroy();
-		}
-	}
-
 }
 
 void ALibretroManagerActor::SetSampleRate(int sampleRate)

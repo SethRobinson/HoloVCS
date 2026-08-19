@@ -159,11 +159,22 @@ but burns the 5.6 escape hatch like any other resave.
   requested feature, and keeping its scene shadows presentable was a parallel workstream that
   produced VSM flicker, blotch, and bias sagas. Pass -lkg2dview to re-enable the scene render
   for side-by-side debugging (the 2D-vs-panel diff method found many hologram bugs).
-- TESTING GOTCHA: the help/splash screen only EXISTS in Shipping FLAT builds now (dev builds
-  destroy the "SplashScreen"-tagged actor at BeginPlay, and the LKG build destroys it too -
-  it's invisible on the device but floated over the 2D spectator view waiting for a click).
-  Its primitives also get SetCastShadow(false). When verifying "Shipping-only" visuals, test
-  the STAGED build, not editor -game.
+- HELP SCREEN (Aug 2026, replaces the old bitmap splash): dynamically drawn from
+  HelpScreen::BuildHelpText (Source/HoloVCS/HelpScreen.cpp - the single source of truth for the
+  key list; update it whenever hotkeys change). The ? key (Slash) opens it; ANY key, button or
+  movement closes it (every pressed-input handler starts with a HelpSwallowedInput() guard so
+  the dismissing key can't also save state/switch rom/etc, plus a non-consuming EKeys::AnyKey
+  catch-all for unbound keys; same-frame show/hide guards in HelpScreen keep the two from
+  fighting). It PAUSES the emulator while up (closing restores the pre-open pause state, and
+  any external unpause auto-closes it), and the game is FULLY HIDDEN while it's up: AHoloHUD
+  draws an opaque cover and RenderSpriteQuilt skips the layer draws (game and help used to
+  obscure each other). Auto-shows on the first live frame in SHIPPING builds only, so dev runs
+  and the automation harness never boot paused (harness command `help [on|off]` toggles it
+  headlessly). Rendering: flat window via AHoloHUD (installed at runtime with ClientSetHUD, no
+  GameMode changes); hologram via per-tile canvas text in RenderSpriteQuilt that reads the
+  text from the "HelpScreen"-tagged carrier actor in the show-only list (identical per tile =
+  screen-locked). The old "SplashScreen"-tagged map actor is destroyed at BeginPlay in ALL
+  builds now (the umaps keep the inert actor; editing them is a one-way door).
 - SPRITE SHADOWS (rewritten Aug 2026 - one mechanism, NO thresholds): each receiving layer
   gets a per-frame 512px mask in its own quad-UV space whose alpha = (union of every nearer
   caster's silhouette, projected from the light onto the receiver's plane) x (the receiver's
@@ -341,6 +352,12 @@ but burns the 5.6 escape hatch like any other resave.
   back - middle layers are often empty where the silhouette lands, and a shadow floating at an
   unoccupied depth plane looks broken on the device.
 - Hotkey 0 toggles the fps cap (vsync + t.MaxFPS) to measure true throughput; 1-5 set frameskip.
+- Hotkeys [ and ] scale the 3D depth spread live (m_userDepthScale on ALibretroManagerActor,
+  multiplies m_total3dDepth, survives rom switches; ApplyLayerDepth re-spreads the existing
+  layer actors absolutely and re-runs both camera/capture fits - no InitLayers hitch). Console
+  twin for the harness: `holo.DepthScale <mult>` (clamped 0.2-5.0). NES Select is Tab now (was
+  Backslash), and the old A-key "auto adjust audio" hotkey is REMOVED (it also collided with
+  WASD left; per-frame audio stats code went with it).
 - Benign noise: "Failed to load ... LookingGlassCore.dll" at startup is upstream legacy (the DLL
   never shipped); Bridge does the real work.
 - The flat camera: `APlayerPawn` owns a `UCameraComponent` root (FOV 14).
@@ -399,6 +416,12 @@ Feature docs (read before working on these):
   doc. Obstacle keep-list is overworld-only so far; dungeons/rocks pending.
 
 ## Gotchas learned the hard way
+
+- Blit passes in game profiles must use CONTIGUOUS indices starting at BLIT_PASS0: the video
+  refresh callback (LibretroManager.cpp, retro_video_refresh_callback) BREAKS at the first
+  inactive pass, so anything set up after a gap silently never blits (bit the Zelda subscreen
+  split: with the subscreen closed, PASS1 was skipped and the PASS2 ground/sprite blits
+  vanished). Use a running `pass++` index when passes are conditional.
 
 - `g_pLibretroManager` is a raw global set in `LibretroManager::Init` and cleared in the destructor.
   The destructor must only clear it when it is the owner (`if (g_pLibretroManager == this)`), because

@@ -649,6 +649,7 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 	};
 	TArray<FSpriteLayer> Layers;
 	FString OverlayText;
+	FString HelpText;
 
 	for (const TObjectPtr<AActor>& ActorPtr : CaptureComponent->ShowOnlyActors)
 	{
@@ -661,6 +662,14 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 		{
 			if (UTextRenderComponent* TextComp = Cast<UTextRenderComponent>(C))
 			{
+				// The game's help screen travels as text on a "HelpScreen"-tagged actor (runtime
+				// contract with HoloVCS, like the status text below); non-empty = help is up and
+				// gets its own full panel draw, never the bottom status line
+				if (Actor->ActorHasTag(TEXT("HelpScreen")))
+				{
+					HelpText = TextComp->Text.ToString();
+					continue;
+				}
 				OverlayText = TextComp->Text.ToString();
 				continue;
 			}
@@ -1179,6 +1188,54 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 	const FString FPSText = (CVarLKGShowFPS.GetValueOnGameThread() != 0 && GSpriteQuiltLastFPS > 0)
 		? FString::Printf(TEXT("%d FPS"), GSpriteQuiltLastFPS) : FString();
 
+	// Help screen layout, computed once: text format is line 1 = title, "key\taction" = two-column
+	// row, no tab = centered, empty = half-row spacing (see the game's HelpScreen::BuildHelpText).
+	// Sized to fit the tile with the same crude width metric the status text uses.
+	struct FHelpLine
+	{
+		FString Key;
+		FString Action;
+		bool bTwoColumn = false;
+	};
+	TArray<FHelpLine> HelpLines;
+	float HelpScale = 1.0f, HelpCharH = 0.0f, HelpBlockH = 0.0f;
+	if (!HelpText.IsEmpty() && GEngine != nullptr)
+	{
+		TArray<FString> RawLines;
+		HelpText.ParseIntoArrayLines(RawLines, false);	// keep empties, they're the row spacing
+		int32 MaxLen = 0;
+		for (const FString& Raw : RawLines)
+		{
+			FHelpLine Line;
+			Line.bTwoColumn = Raw.Split(TEXT("\t"), &Line.Key, &Line.Action);
+			if (!Line.bTwoColumn)
+			{
+				Line.Action = Raw;
+			}
+			MaxLen = FMath::Max(MaxLen, Raw.Len());
+			HelpLines.Add(Line);
+		}
+		HelpCharH = FMath::Max(1.0f, GEngine->GetLargeFont()->GetMaxCharHeight());
+		HelpScale = FMath::Min(1.4f, (TileSizeX * 0.92f) / FMath::Max(1.0f, MaxLen * 10.0f));
+		auto BlockHeight = [&](float Scale)
+		{
+			float H = 0.0f;
+			for (int32 i = 0; i < HelpLines.Num(); i++)
+			{
+				const bool bEmpty = !HelpLines[i].bTwoColumn && HelpLines[i].Action.IsEmpty();
+				H += HelpCharH * Scale * ((i == 0) ? 1.9f : (bEmpty ? 0.5f : 1.25f));
+			}
+			return H;
+		};
+		HelpBlockH = BlockHeight(HelpScale);
+		const float MaxBlockH = TileSizeY * 0.82f;
+		if (HelpBlockH > MaxBlockH)
+		{
+			HelpScale *= MaxBlockH / HelpBlockH;
+			HelpBlockH = BlockHeight(HelpScale);
+		}
+	}
+
 	for (int32 View = 0; View < NumTiles; View++)
 	{
 		// Same tile placement convention as CopyToQuiltShader_RenderThread
@@ -1192,6 +1249,9 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 
 		int32 LayerIdx = -1;
 
+		// While the help screen is up the game is paused and fully hidden: tiles render just
+		// the help text on black (game and help used to obscure each other)
+		if (HelpLines.Num() == 0)
 		for (const FSpriteLayer& Layer : Layers)
 		{
 			LayerIdx++;
@@ -1244,6 +1304,54 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 					ToTileX(NdcX(Layer.Box.Max.Y)),
 					ToTileY(NdcZ(Layer.Box.Min.Z)),
 					TileRect, FLinearColor(0.0f, 0.0f, 0.0f, ShadowStrength));
+			}
+		}
+
+		// Help screen: the key list drawn identically in every tile, so the lens reconstructs
+		// it as one screen-locked overlay.  The layer quads are skipped above while it's up, so
+		// the tile background is the quilt clear color (black) - no dim panel needed
+		if (HelpLines.Num() > 0 && GEngine != nullptr)
+		{
+			const FLinearColor KeyColor(1.0f, 0.85f, 0.3f);
+			const float ColSplitX = TileX + TileSizeX * 0.42f;
+			const float ColGap = TileSizeX * 0.03f;
+			float Y = TileY + (TileSizeY - HelpBlockH) * 0.5f;
+			for (int32 i = 0; i < HelpLines.Num(); i++)
+			{
+				const FHelpLine& Line = HelpLines[i];
+				const bool bEmpty = !Line.bTwoColumn && Line.Action.IsEmpty();
+				if (bEmpty)
+				{
+					Y += HelpCharH * HelpScale * 0.5f;
+					continue;
+				}
+				const float Scale = (i == 0) ? HelpScale * 1.5f : HelpScale;
+				if (Line.bTwoColumn)
+				{
+					FCanvasTextItem KeyItem(FVector2D(ColSplitX - Line.Key.Len() * 10.0f * Scale, Y),
+						FText::FromString(Line.Key), GEngine->GetLargeFont(), KeyColor);
+					KeyItem.Scale = FVector2D(Scale, Scale);
+					KeyItem.EnableShadow(FLinearColor::Black);
+					Canvas.DrawItem(KeyItem);
+
+					FCanvasTextItem ActionItem(FVector2D(ColSplitX + ColGap, Y),
+						FText::FromString(Line.Action), GEngine->GetLargeFont(), FLinearColor::White);
+					ActionItem.Scale = FVector2D(Scale, Scale);
+					ActionItem.EnableShadow(FLinearColor::Black);
+					Canvas.DrawItem(ActionItem);
+				}
+				else
+				{
+					// title (line 0) / centered footer
+					const float W = Line.Action.Len() * 10.0f * Scale;
+					FCanvasTextItem CenterItem(FVector2D(TileX + (TileSizeX - W) * 0.5f, Y),
+						FText::FromString(Line.Action), GEngine->GetLargeFont(),
+						(i == 0) ? KeyColor : FLinearColor(0.8f, 0.8f, 0.8f));
+					CenterItem.Scale = FVector2D(Scale, Scale);
+					CenterItem.EnableShadow(FLinearColor::Black);
+					Canvas.DrawItem(CenterItem);
+				}
+				Y += HelpCharH * HelpScale * ((i == 0) ? 1.9f : 1.25f);
 			}
 		}
 

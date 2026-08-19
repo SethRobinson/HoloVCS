@@ -162,7 +162,6 @@ public:
 	void JoyPad_RightStick_Released();
 
 
-	void OnAKey();
 	void OnNum0Key();
 	void OnNum1Key();
 	void OnNum2Key();
@@ -182,5 +181,10 @@ public:
 	void OnPeriodKey();
 	void OnNKey();
 	void OnResetGame();
+
+	void OnLeftBracketKey();
+	void OnRightBracketKey();
+	void OnSlashKey();
+	void OnAnyKey();
 
 };
