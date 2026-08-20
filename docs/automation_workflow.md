@@ -37,7 +37,7 @@ Commands:
 | `dumplayers` | Writes each depth layer's CPU texture buffer to `Saved/Automation/layers/layer_N.png` (layer 0 = deepest/back wall side, highest index = nearest the viewer; NES games use 5 layers, VB 16). Ground truth for what each plane holds and where content sits in 3D; this is the tool that found the Zelda colorkey bug and the transition stripe after composite screenshots had been ambiguous. Transparent areas = png alpha. |
 | `pause` / `unpause` | Emulator pause (UE keeps ticking, shots still work). |
 | `help [on\|off]` | Show/hide the help screen (no arg toggles). Same as the ? hotkey: pauses the game while up; `unpause` also closes it. |
-| `savestate` / `loadstate` | The same `<rom>.sav0` files as the S/L hotkeys. |
+| `savestate` / `loadstate` | The same `saves/<system>/<rom>.sav0` files as the S/L hotkeys (loading migrates any legacy `<rom>.sav0` from next to the top-level exe into saves/). |
 | `rom <partial>` | Live ROM switch by partial filename match. |
 | `exec <console cmd>` | Anything the UE console accepts (`r.ShadowQuality 0`, `HighResShot 2`, cvars...). |
 | `quit` | Clean exit. |
@@ -51,8 +51,8 @@ Workflow rules learned:
   `SetGamePaused: 1 -> 0` line. While paused, `press` holds sit pending and the game looks
   input-dead. Editor -game runs never auto-show.
 - A running -game instance still blocks Build.bat; kill the process, build, relaunch, `loadstate`.
-- A running STAGED instance locks `dist\win64_test` and fails BuildAndRunWin64Release.bat with Error_FailedToDeleteStagingDirectory: `Get-Process HoloVCS*` and kill before staging. That bat has NO `nolaunch` flag (only the LKG one does) and always launches the staged exe at the end - and then BLOCKS until that game exits, so "the bat finished" is useless as a staging-done signal. Detect staging completion by watching for the HoloVCS process appearing (or `harness ready` in ai_log.txt) instead.
-- Both test bats preserve `*.sav0` save states across restages (dist\savstate_keep_* backup/restore around the UAT call); PackageWin64Release.bat scrubs *.sav0 from real releases.
+- A running STAGED instance locks `dist\win64_test` and fails BuildAndRunWin64Release.bat with Error_FailedToDeleteStagingDirectory: `Get-Process HoloVCS*` and kill before staging. Both test bats accept `nolaunch` as the first argument now; without it they launch the staged exe at the end - and then BLOCK until that game exits, so "the bat finished" is useless as a staging-done signal. Detect staging completion by watching for the HoloVCS process appearing (or `harness ready` in ai_log.txt) instead.
+- Both test bats preserve save states (`saves\` tree plus legacy top-level `*.sav0`) across restages (dist\savstate_keep_* backup/restore around the UAT call); PackageWin64Release.bat scrubs both from real releases.
 - `loadstate` after boot is the checkpoint trick: menus, file registration etc survive as a `.sav0` even though the frontend has no SRAM persistence. Zelda has one saved from the overworld start; make one per game/situation being worked on.
 
 ## Looking Glass builds (staged HoloVCSLKG)
@@ -69,9 +69,8 @@ Workflow rules learned:
 - The harness `shot` command captures the MAIN window, which renders black in LKG builds
   (world rendering off) - launch with `-lkg2dview` if a 2D spectator shot is needed, otherwise
   use lkg.SaveQuilt.
-- The `.sav0` checkpoints work the same (files sit next to HoloVCSLKG.exe in
-  `dist\win64_lkg_test\Windows\`; the Zelda overworld one is seeded there and both test bats
-  preserve them across restages).
+- The `.sav0` checkpoints work the same (files sit in `dist\win64_lkg_test\Windows\saves\<system>\`;
+  the Zelda overworld one is seeded there and both test bats preserve them across restages).
 - `tools\holo_auto.ps1 -CropQuilt <quilt.png> [-Tile N]` extracts ONE 420x560 view from a quilt
   screenshot (tile grid parsed from the `_qsCxRa` filename suffix; default = middle row/column,
   the straight-on view). Use this instead of reading the whole 3360x3360 quilt when a vision

@@ -1434,6 +1434,16 @@ void LibretroManager::SetFrameSkip(int frameSkip)
 	ShowStatusMessage(string("Frameskip: " + toString(m_frameSkip)));
 }
 
+string LibretroManager::GetSaveStateDir()
+{
+	return m_rootPath + "saves/" + m_romDir + "/";
+}
+
+string LibretroManager::GetSaveStatePath()
+{
+	return GetSaveStateDir() + GetFileNameWithoutExtension(m_curRomName) + ".sav0";
+}
+
 void LibretroManager::SaveStateToFile()
 {
 
@@ -1442,13 +1452,14 @@ void LibretroManager::SaveStateToFile()
 		ShowStatusMessage("No rom loaded");
 		return;
 	}
-	
+
 	SaveState(C_SAVE_STATE_USER_SLOT);
 
 	//well, we have the data but now we need to save it to disk
 
 	TArray<uint8> data(m_pSaveStateBuffer[C_SAVE_STATE_USER_SLOT], m_maxSaveStateSize);
-	string fileName = m_rootPath + GetFileNameWithoutExtension(m_curRomName) + ".sav0";
+	IFileManager::Get().MakeDirectory(ANSI_TO_TCHAR(GetSaveStateDir().c_str()), true);
+	string fileName = GetSaveStatePath();
 	LogMsg("Saving state to %s", fileName.c_str());
 	FFileHelper::SaveArrayToFile(data, ANSI_TO_TCHAR( fileName.c_str()));
 	ShowStatusMessage("Saved state.");
@@ -1466,13 +1477,31 @@ void LibretroManager::LoadStateFromFile()
 
 	//yes, we're copying data in to it for no reason
 	TArray<uint8> data(m_pSaveStateBuffer[C_SAVE_STATE_USER_SLOT], m_maxSaveStateSize);
-	
-	string fileName = m_rootPath + GetFileNameWithoutExtension(m_curRomName) + ".sav0";
-	
+
+	string fileName = GetSaveStatePath();
+
 	if (!FPaths::FileExists(FString(fileName.c_str())))
 	{
-		ShowStatusMessage("No state save exists yet for this rom");
-  	    return;
+		//older builds wrote the .sav0 next to the top-level exe; migrate it into saves/ so it keeps
+		//working and the top folder cleans itself up
+		string legacyFileName = m_rootPath + GetFileNameWithoutExtension(m_curRomName) + ".sav0";
+		if (FPaths::FileExists(FString(legacyFileName.c_str())))
+		{
+			IFileManager::Get().MakeDirectory(ANSI_TO_TCHAR(GetSaveStateDir().c_str()), true);
+			if (IFileManager::Get().Move(ANSI_TO_TCHAR(fileName.c_str()), ANSI_TO_TCHAR(legacyFileName.c_str())))
+			{
+				LogMsg("Migrated legacy save state %s to %s", legacyFileName.c_str(), fileName.c_str());
+			}
+			else
+			{
+				fileName = legacyFileName; //move failed (locked/read-only?), just load it where it is
+			}
+		}
+		else
+		{
+			ShowStatusMessage("No state save exists yet for this rom");
+			return;
+		}
 	}
 
 	LogMsg("Loading state from %s", fileName.c_str());

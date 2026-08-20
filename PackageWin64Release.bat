@@ -44,6 +44,7 @@ del %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\atari2600\*.a26
 del %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\nes\*.nes
 del %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\vb\*.vb
 del %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\*.sav0
+rmdir /S /Q %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\saves 2>nul
 echo Signing .exe's...
 
 call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%APP_NAME%.exe

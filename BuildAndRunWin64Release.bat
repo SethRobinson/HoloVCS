@@ -19,9 +19,14 @@ if not exist "%~dp0Binaries\Win64\fceumm_libretro.dll" echo Core dlls missing an
 :Note - not wiping the old staged build on purpose, incremental is much faster for a test loop.
 :Delete dist\win64_test yourself if you want a from-scratch stage.
 
-:Preserve save states (the S/L hotkeys write <rom>.sav0 next to the top-level exe) across restages -
-:UAT sometimes cleans the whole stage dir.  PackageWin64Release.bat still scrubs *.sav0 from real releases.
+:Preserve save states (the S/L hotkeys write saves\<system>\<rom>.sav0; old builds wrote <rom>.sav0
+:next to the top-level exe and the game migrates those on load) across restages - UAT sometimes
+:cleans the whole stage dir.  PackageWin64Release.bat still scrubs save states from real releases.
 SET SAV_KEEP=%~dp0dist\savstate_keep_flat
+if exist "%STAGE_DIR%\Windows\saves" (
+	mkdir "%SAV_KEEP%" 2>nul
+	xcopy "%STAGE_DIR%\Windows\saves" "%SAV_KEEP%\saves\" /E /Y /Q >nul
+)
 if exist "%STAGE_DIR%\Windows\*.sav0" (
 	mkdir "%SAV_KEEP%" 2>nul
 	copy /Y "%STAGE_DIR%\Windows\*.sav0" "%SAV_KEEP%" >nul
@@ -42,8 +47,9 @@ xcopy "%~dp0nes" "%STAGE_DIR%\Windows\nes\" /E /Y /Q
 xcopy "%~dp0vb" "%STAGE_DIR%\Windows\vb\" /E /Y /Q
 
 :Put preserved save states back
-if exist "%SAV_KEEP%\*.sav0" (
-	copy /Y "%SAV_KEEP%\*.sav0" "%STAGE_DIR%\Windows" >nul
+if exist "%SAV_KEEP%" (
+	if exist "%SAV_KEEP%\saves" xcopy "%SAV_KEEP%\saves" "%STAGE_DIR%\Windows\saves\" /E /Y /Q >nul
+	if exist "%SAV_KEEP%\*.sav0" copy /Y "%SAV_KEEP%\*.sav0" "%STAGE_DIR%\Windows" >nul
 	rmdir /S /Q "%SAV_KEEP%" 2>nul
 	echo Restored save states.
 )

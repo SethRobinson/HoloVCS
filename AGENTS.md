@@ -511,7 +511,8 @@ screenshots, then KILL the process. Never leave a game instance running while do
 (Seth's machine, Seth's GPU). A running -game instance also blocks Build.bat. The
 staged/shipping build writes a Proton-style log.txt next to the top-level exe; the editor build
 logs to Saved/Logs/HoloVCS_Flat.log. `savestate`/`loadstate` harness commands write/load
-`<rom>.sav0` checkpoints - use them to skip menus after a relaunch (Zelda has one at the
+`saves/<system>/<rom>.sav0` checkpoints (loading migrates legacy top-level `<rom>.sav0` files into
+saves/) - use them to skip menus after a relaunch (Zelda has one at the
 overworld start).
 
 ## Computer Control
@@ -568,8 +569,9 @@ overworld start).
   (APP_NAME/APP_DIR/UE_DIR).
 - `BuildAndRunWin64Release.bat` is the local test loop: incremental Shipping cook/stage to
   `dist\win64_test` with roms included (never distribute that folder), then launches it. Both test
-  bats preserve `*.sav0` save states (S/L hotkeys) across restages via a dist\savstate_keep_* backup;
-  PackageWin64Release.bat still scrubs *.sav0 from real releases.
+  bats preserve save states (S/L hotkeys write `saves\<system>\<rom>.sav0` since Aug 2026; legacy
+  top-level `*.sav0` files are migrated into saves/ when loaded) across restages via a
+  dist\savstate_keep_* backup; PackageWin64Release.bat scrubs both from real releases.
 - `BuildAndRunWin64LKG.bat` is the same loop for the Looking Glass hardware build (HoloVCS.uproject,
   target HoloVCSLKG, boots /Game/Maps/NewMap): stages to `dist\win64_lkg_test` (top exe
   `HoloVCSLKG.exe`), then launches. Pass `nolaunch` to skip the launch. Never run the two stage
