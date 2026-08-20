@@ -15,6 +15,11 @@ uint32 vadr;
 if (X1 >= 2) {
 	uint8 *S = PALRAM;
 	uint32 pixdata;
+	uint8 *holo_tile_output = holo_bg_tile_ids + scanline * 256 + (P - Plinef);
+	int first_tile_pixels = 8 - XOffset;
+
+	memset(holo_tile_output, holo_tile_latch[0], first_tile_pixels);
+	memset(holo_tile_output + first_tile_pixels, holo_tile_latch[1], XOffset);
 
 	pixdata = ppulut1[(pshift[0] >> (8 - XOffset)) & 0xFF] | ppulut2[(pshift[1] >> (8 - XOffset)) & 0xFF];
 
@@ -47,6 +52,9 @@ if (X1 >= 2) {
 	tile = C[RefreshAddr & 0x3ff];	/* Fetch name table byte. */
 	vadr = (HoloFilterBackgroundTile(tile) << 4) + vofs;
 #endif
+
+holo_tile_latch[0] = holo_tile_latch[1];
+	holo_tile_latch[1] = tile;
 
 #ifdef PPUT_HOOK
 	PPU_hook(0x2000 | (RefreshAddr & 0xfff));

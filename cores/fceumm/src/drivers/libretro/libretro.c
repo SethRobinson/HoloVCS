@@ -210,6 +210,7 @@ extern int option_ramstate;
 
 void FCEUI_SetRenderPlanes(bool sprites, bool bg);  //SETH Added
 void FCEUI_SetHoloBackgroundTileFilter(const uint8 *allowed_mask, uint8 replacement_tile);
+const uint8 *FCEUI_GetHoloBackgroundTileIds(void);
 
 /* emulator-specific callback functions */
 
@@ -903,6 +904,13 @@ void retro_set_video_refresh(retro_video_refresh_t cb)
 RETRO_API void retro_set_holo_bg_tile_filter(const uint8_t *allowed_mask, uint8_t replacement_tile)
 {
    FCEUI_SetHoloBackgroundTileFilter(allowed_mask, replacement_tile);
+}
+
+/* Nonstandard HoloVCS extension.  Returns the 256x240 tile ID map generated
+ * alongside the most recent authoritative background frame. */
+RETRO_API const uint8_t *retro_get_holo_bg_tile_ids(void)
+{
+   return FCEUI_GetHoloBackgroundTileIds();
 }
 
 void retro_set_audio_sample(retro_audio_sample_t cb)

@@ -86,9 +86,12 @@ public:
 	void (*retro_set_audio_sample_batch)(retro_audio_sample_batch_t);
 	void (*retro_set_input_poll)(retro_input_poll_t);
 	void (*retro_set_input_state)(retro_input_state_t);
-	//Nonstandard optional FCEUmm extension used by Zelda's display-only obstacle passes.
+	//Older nonstandard FCEUmm extension retained for stationary compatibility replays.
 	//The core copies the 32-byte tile allow mask immediately; nullptr disables filtering.
 	void (*retro_set_holo_bg_tile_filter)(const uint8* allowedMask, uint8 replacementTile) = nullptr;
+	//Nonstandard optional FCEUmm extension.  The returned 256x240 byte map identifies the
+	//background tile that produced each pixel of the most recently rendered frame.
+	const uint8* (*retro_get_holo_bg_tile_ids)(void) = nullptr;
 	bool (*retro_load_game)(const struct retro_game_info*);
 	//bool (*retro_load_game_special)(unsigned, const struct retro_game_info*, size_t);
 	void (*retro_get_system_av_info)(struct retro_system_av_info*);
@@ -113,6 +116,8 @@ public:
 	FLinearColor m_blitColorKey = FLinearColor(0, 0, 0, 0);
 	FLinearColor m_blitColorKey2 = FLinearColor(0, 0, 0, 0);
 	int m_activeLayerIndex = 0;
+	bool m_bUseNesTileMask = false;
+	uint8 m_nesTileMask[32] = {};
 
 };
 
@@ -123,8 +128,7 @@ enum eBlitPass
 	BLIT_PASS2,
 	BLIT_PASS3,
 
-	
-	C_MAX_BLITPASS_COUNT
+	C_MAX_BLITPASS_COUNT = 12
 };
 
 /*
@@ -155,6 +159,7 @@ public:
 	void RenderFrame(const char* pRenderFlags);
 	bool RenderFrameWithNesBackgroundTileFilter(const char* pRenderFlags, const byte* pKeepList, int keepListSize, byte replacementTile);
 	bool HasNesBackgroundTileFilter() const { return m_core.retro_set_holo_bg_tile_filter != nullptr; }
+	bool HasNesBackgroundTileIds() const { return m_core.retro_get_holo_bg_tile_ids != nullptr; }
 	void SetFrameSkip(int frameSkip);
 	void UpdateAtari();
 	void Update();
@@ -165,6 +170,8 @@ public:
 	void DisableBlitPass(int blitPassIndex);
 	bool IsCoreLoaded() { return m_core.m_bActive; }
 	void SetupBlitPass(int blitPassIndex, int layer, FIntRect srcRect, eColorKeyStyle colorKeyStyle, FLinearColor colorKey, FLinearColor colorKey2 = FLinearColor(0, 0, 0, 0));
+	void SetupNesTileFilteredBlitPass(int blitPassIndex, int layer, FIntRect srcRect, eColorKeyStyle colorKeyStyle,
+		FLinearColor colorKey, FLinearColor colorKey2, const byte* pKeepList, int keepListSize);
 	void SaveStateToFile();
 	void LoadStateFromFile();
 	void ResetRom();

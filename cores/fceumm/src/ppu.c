@@ -109,6 +109,7 @@ uint8 gNoBGFillColor = 0x0;
 static bool holo_bg_tile_filter_enabled = false;
 static uint8 holo_bg_tile_allowed_mask[32];
 static uint8 holo_bg_tile_replacement = 0;
+static uint8 holo_bg_tile_ids[256 * 240];
 
 void FCEUI_SetHoloBackgroundTileFilter(const uint8 *allowed_mask, uint8 replacement_tile)
 {
@@ -131,6 +132,11 @@ static INLINE uint8 HoloFilterBackgroundTile(uint8 tile)
 	return (holo_bg_tile_allowed_mask[tile >> 3] & (1U << (tile & 7)))
 		? tile
 		: holo_bg_tile_replacement;
+}
+
+const uint8 *FCEUI_GetHoloBackgroundTileIds(void)
+{
+	return holo_bg_tile_ids;
 }
 
 int MMC5Hack = 0, PEC586Hack = 0;
@@ -489,6 +495,7 @@ static int spork = 0;
 static void FASTAPASS(1) RefreshLine(int lastpixel) {
 	static uint32 pshift[2];
 	static uint32 atlatch;
+	static uint8 holo_tile_latch[2];
 	uint32 smorkus = RefreshAddr;
 
 	#define RefreshAddr smorkus
@@ -1227,6 +1234,8 @@ void FCEUPPU_Power(void) {
 
 
 int FCEUPPU_Loop(int skip) {
+	memset(holo_bg_tile_ids, 0, sizeof(holo_bg_tile_ids));
+
 	/* Needed for Knight Rider, possibly others. */
 	if (ppudead) {
 		memset(XBuf, 0x80, 256 * 240);

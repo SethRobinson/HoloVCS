@@ -143,6 +143,7 @@ void LibretroManager::DisableBlitPass(int blitPassIndex)
 void LibretroManager::SetupBlitPass(int blitPassIndex, int layer, FIntRect srcRect, eColorKeyStyle colorKeyStyle, FLinearColor colorKey, FLinearColor colorKey2)
 {
 	m_blitPass[blitPassIndex].m_bActive = true;
+	m_blitPass[blitPassIndex].m_bUseNesTileMask = false;
 	m_blitPass[blitPassIndex].m_activeLayerIndex = layer;
 	m_blitPass[blitPassIndex].m_blitColorKeyStyle = colorKeyStyle;
 	m_blitPass[blitPassIndex].m_blitSrcRect = srcRect;
@@ -150,6 +151,22 @@ void LibretroManager::SetupBlitPass(int blitPassIndex, int layer, FIntRect srcRe
 	m_blitPass[blitPassIndex].m_blitColorKey2 = colorKey2;
 	if (layer < m_pLibretroManagedActor->m_layerInfo.size())
 		m_pLibretroManagedActor->GetLayer(layer)->m_bUsedThisFrame = true; //alerts the renderex system to it being used already
+}
+
+void LibretroManager::SetupNesTileFilteredBlitPass(int blitPassIndex, int layer, FIntRect srcRect,
+	eColorKeyStyle colorKeyStyle, FLinearColor colorKey, FLinearColor colorKey2,
+	const byte* pKeepList, int keepListSize)
+{
+	SetupBlitPass(blitPassIndex, layer, srcRect, colorKeyStyle, colorKey, colorKey2);
+	BlitPass& blitPass = m_blitPass[blitPassIndex];
+	blitPass.m_bUseNesTileMask = true;
+	memset(blitPass.m_nesTileMask, 0, sizeof(blitPass.m_nesTileMask));
+
+	for (int i = 0; i < keepListSize; i++)
+	{
+		const uint8 tile = pKeepList[i];
+		blitPass.m_nesTileMask[tile >> 3] |= (uint8)(1U << (tile & 7));
+	}
 }
 
 #define GET_VARIABLE_NAME(Variable) (#Variable)
@@ -203,6 +220,7 @@ void LibretroManager::FreeEmulatorIfNeeded()
 
 	m_dllHandle = NULL;
 	m_core.retro_set_holo_bg_tile_filter = nullptr;
+	m_core.retro_get_holo_bg_tile_ids = nullptr;
 
 #endif
 }
@@ -282,6 +300,7 @@ bool LibretroManager::LoadCore(string fileName)
 	//Optional HoloVCS/FCEUmm extension.  Other cores do not export it, so resolve it without
 	//MapFunction's missing-symbol warning and let the Zelda profile fail safe when absent.
 	m_core.retro_set_holo_bg_tile_filter = (decltype(m_core.retro_set_holo_bg_tile_filter))GetProcAddress(m_dllHandle, "retro_set_holo_bg_tile_filter");
+	m_core.retro_get_holo_bg_tile_ids = (decltype(m_core.retro_get_holo_bg_tile_ids))GetProcAddress(m_dllHandle, "retro_get_holo_bg_tile_ids");
 	m_core.retro_load_game = (decltype(m_core.retro_load_game))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_load_game));
 	m_core.retro_get_system_av_info = (decltype(m_core.retro_get_system_av_info))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_get_system_av_info));
 	m_core.retro_run = (decltype(m_core.retro_run))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_run));
@@ -1115,11 +1134,16 @@ void retro_video_refresh_callback_ex(const void* data, unsigned width, unsigned 
 void retro_video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch)
 {
 	//LogMsg("Updating frame: %d, %d pitch %d", width, height, (int)pitch);
+	const uint8* pNesTileIds = g_pLibretroManager->m_core.retro_get_holo_bg_tile_ids
+		? g_pLibretroManager->m_core.retro_get_holo_bg_tile_ids()
+		: nullptr;
+
 	for (int pass = 0; pass < C_MAX_BLITPASS_COUNT; pass++)
 	{
 		BlitPass* pBlitPass = &g_pLibretroManager->m_blitPass[pass];
 		if (!pBlitPass->m_bActive) break; //stop here - passes after a gap are IGNORED, so
 		                                  //profiles must set up pass indices contiguously
+		if (pBlitPass->m_bUseNesTileMask && !pNesTileIds) continue;
 
 		uint8* pSrc = (uint8*)data;
 		LayerInfo* pDestLayer = g_pLibretroManager->m_pLibretroManagedActor->GetLayer(pBlitPass->m_activeLayerIndex);
@@ -1162,6 +1186,17 @@ void retro_video_refresh_callback(const void* data, unsigned width, unsigned hei
 				//really caring now
 				for (int x = pBlitPass->m_blitSrcRect.Min.X; x < pBlitPass->m_blitSrcRect.Max.X; x++)
 				{
+					if (pBlitPass->m_bUseNesTileMask)
+					{
+						const uint8 tile = pNesTileIds[y * 256 + x];
+						if (!(pBlitPass->m_nesTileMask[tile >> 3] & (1U << (tile & 7))))
+						{
+							pDst += 4;
+							pSrc += 4;
+							continue;
+						}
+					}
+
 					pDst[0] = pSrc[0]; //red
 					pDst[1] = pSrc[1]; //green
 					pDst[2] = pSrc[2]; //blue
@@ -1223,6 +1258,16 @@ void retro_video_refresh_callback(const void* data, unsigned width, unsigned hei
 
 				for (int x = pBlitPass->m_blitSrcRect.Min.X; x < pBlitPass->m_blitSrcRect.Max.X; x++)
 				{
+					if (pBlitPass->m_bUseNesTileMask)
+					{
+						const uint8 tile = pNesTileIds[y * 256 + x];
+						if (!(pBlitPass->m_nesTileMask[tile >> 3] & (1U << (tile & 7))))
+						{
+							pDst += 4;
+							pSrc += 2;
+							continue;
+						}
+					}
 
 					uint16 color = *((uint16*)&pSrc[0]);
 

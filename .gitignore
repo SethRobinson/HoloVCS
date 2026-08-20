@@ -104,6 +104,7 @@ prebuilt_cores/
 
 # Emulator core build outputs (BuildCores.bat)
 cores/_built/
+cores/RTLibretroTest/
 cores/**/x64/
 cores/**/Release/
 cores/**/Debug/

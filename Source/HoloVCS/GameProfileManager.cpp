@@ -491,8 +491,8 @@ void UpdateZelda(void* pProfileManager)
 	}
 
 	//Screen-scroll transition detection is only needed for the old-core fail-safe below.  The
-	//patched FCEUmm core filters tiles at PPU fetch time, so Zelda's mid-frame nametable writes
-	//are filtered too and the obstacle layers can follow the native scroll in 3D.
+	//patched FCEUmm core records each output pixel's live PPU tile ID on the authoritative pass,
+	//so Zelda's mid-frame nametable writes and native scroll are shared exactly by every layer.
 	bool bScrolling = (gameMode == 4 || gameMode == 6 || gameMode == 7);
 
 	//Item subscreen (Start): $e1 = 0 closed, 7 sliding open, 8 open at rest, 9 sliding closed.
@@ -510,6 +510,15 @@ void UpdateZelda(void* pProfileManager)
 		hudTop = FMath::Clamp((240 - scrollY) % 240, 0, 240 - 64);
 	}
 
+	static byte keepWallTrees[] = { 0xd8, 0xd9, 0xda, 0xdb };
+	static byte keepGroundKeyed[] = { 0xc4, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb,
+		0xcc, 0xcd, 0xce, 0xcf, 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7, 0xdc, 0xdd, 0xde, 0xdf };
+	byte fillTile = 0x24; //blank tile, renders as the backdrop color (PALRAM[0], black)
+	FLinearColor blackKey(0, 0, 0, 0);
+	FLinearColor groundKey(255, 255, 74, 0); //overworld ground ($37 in our rgb palette), sampled from the layer buffer
+	const bool bHasSameFrameTileIds = pL->HasNesBackgroundTileIds();
+	const bool bHasLiveTileFilter = pL->HasNesBackgroundTileFilter();
+
 	//real render: HUD strip -> layer 4 (front), everything else -> layer 1 (the deep ground plane).
 	//GOTCHA: pass indices MUST be contiguous - the video refresh callback BREAKS at the first
 	//inactive pass, so a gap silently drops every pass after it (that bug shipped once: closed
@@ -525,38 +534,37 @@ void UpdateZelda(void* pProfileManager)
 	{
 		pL->SetupBlitPass(pass++, 1, FIntRect(0, hudTop + 64, 256, 240), COLOR_KEY_STYLE_NONE, FLinearColor(0, 0, 0, 0));
 	}
+	if (subscreenState == 0 && bHasSameFrameTileIds)
+	{
+		//Build every obstacle copy from the exact authoritative background frame.  A tile ID
+		//map recorded alongside the PPU pixels makes the raised layers share the same scroll
+		//phase, nametable writes and fine-X/Y position, with no save-state replay involved.
+		for (int layer = 2; layer <= 4; layer++)
+		{
+			pL->SetupNesTileFilteredBlitPass(pass++, layer, FIntRect(0, 64, 256, 240),
+				COLOR_KEY_STYLE_BLACK, blackKey, FLinearColor(0, 0, 0, 0), keepWallTrees, sizeof(keepWallTrees));
+		}
+		for (int layer = 2; layer <= 4; layer++)
+		{
+			pL->SetupNesTileFilteredBlitPass(pass++, layer, FIntRect(0, 64, 256, 240),
+				COLOR_KEY_STYLE_2COLOR, blackKey, groundKey, keepGroundKeyed, sizeof(keepGroundKeyed));
+		}
+	}
 	pL->RenderFrame("10");
 	pL->SaveState(0); //the real one we're going to save for the next frame
 	pL->m_useAudio = false;  //don't process any more audio
 
-	//obstacle pass: keep only the solid/raised tiles, everything else becomes the fill tile which renders
-	//as the backdrop color.  Zelda's backdrop (PALRAM[0]) is BLACK on the overworld and in dungeons, so we
-	//key the masked BG pass on black.  NOTE: forcing PALRAM[0] via SetTileColorIndex does NOT survive a
-	//BG-on render here (Zelda rewrites the palette from its RAM shadow every frame), but it DOES hold for
-	//the sprites-only pass fill, so the grey trick below is sprite-pass only.  Proven via dumplayers.
-
-	//Obstacle extrusion, TWO masked re-renders (tile IDs from the N-key dumps):
+	//Obstacle extrusion uses two tile sets (tile IDs from the N-key dumps):
 	//- wall trees (d8-db) keyed on black only: their art uses the ground color as a highlight
 	//  (24% of tree pixels, measured), so keying the ground color here would moth-eat them.
 	//- ground-keyed set, keyed on black AND the ground color so the ground-painted parts stay
 	//  flat and only the object shape extrudes: forest-edge diagonals (cc-d7, dc-df), standalone
 	//  rocks (c8-cb), standalone trees (c4-c7).
-	//The normal saved-state tile edits cannot handle screen scrolling because Zelda rewrites
-	//nametable rows during the re-render.  The live core filter performs the same substitution
-	//when each tile is fetched, after those writes, without mutating emulator state.  If an old
-	//core DLL lacks the extension, stationary frames keep the legacy path and scrolling frames
-	//retain the safe 2D fallback rather than showing unfiltered stripes.
-
-	static byte keepWallTrees[] = { 0xd8, 0xd9, 0xda, 0xdb };
-	static byte keepGroundKeyed[] = { 0xc4, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb,
-		0xcc, 0xcd, 0xce, 0xcf, 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7, 0xdc, 0xdd, 0xde, 0xdf };
-	byte fillTile = 0x24; //blank tile, renders as the backdrop color (PALRAM[0], black)
-	FLinearColor blackKey(0, 0, 0, 0);
-	FLinearColor groundKey(255, 255, 74, 0); //overworld ground ($37 in our rgb palette), sampled from the layer buffer
-
-	const bool bHasLiveTileFilter = pL->HasNesBackgroundTileFilter();
-	const bool bCanExtrude = subscreenState == 0 && (bHasLiveTileFilter || !bScrolling);
-	if (bCanExtrude) //subscreen tiles aren't in the keep-lists, so extrusion still sits that out
+	//The current core copies these pixels during the authoritative render above.  This replay
+	//block is stationary-only compatibility for older DLLs: the old live-filter replay is not
+	//safe during scrolling because FCEUmm does not serialize every live PPU pipeline latch.
+	const bool bUseCompatibilityReplay = !bHasSameFrameTileIds && !bScrolling && subscreenState == 0;
+	if (bUseCompatibilityReplay)
 	{
 		if (!bHasLiveTileFilter)
 		{
@@ -614,13 +622,13 @@ void UpdateZelda(void* pProfileManager)
 			pL->RenderFrame("10");
 		}
 	}
-	else if (bScrolling && subscreenState == 0 && !bHasLiveTileFilter)
+	else if (bScrolling && subscreenState == 0 && !bHasSameFrameTileIds)
 	{
-		static bool bLoggedMissingLiveTileFilter = false;
-		if (!bLoggedMissingLiveTileFilter)
+		static bool bLoggedMissingSameFrameTileIds = false;
+		if (!bLoggedMissingSameFrameTileIds)
 		{
-			LogMsg("Zelda 3D scrolling unavailable: fceumm core lacks retro_set_holo_bg_tile_filter; using 2D transition fallback");
-			bLoggedMissingLiveTileFilter = true;
+			LogMsg("Zelda 3D scrolling unavailable: fceumm core lacks retro_get_holo_bg_tile_ids; using 2D transition fallback");
+			bLoggedMissingSameFrameTileIds = true;
 		}
 	}
 
@@ -741,5 +749,3 @@ void UpdateDefaultVB(void* pProfileManager)
 	pL->SaveState(0); //the real one we're going to save for the next frame
 
 }
-
-
