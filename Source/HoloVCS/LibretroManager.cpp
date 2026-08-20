@@ -202,6 +202,7 @@ void LibretroManager::FreeEmulatorIfNeeded()
 	}
 
 	m_dllHandle = NULL;
+	m_core.retro_set_holo_bg_tile_filter = nullptr;
 
 #endif
 }
@@ -278,6 +279,9 @@ bool LibretroManager::LoadCore(string fileName)
 	m_core.retro_set_audio_sample_batch = (decltype(m_core.retro_set_audio_sample_batch))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_set_audio_sample_batch));
 	m_core.retro_set_input_poll = (decltype(m_core.retro_set_input_poll))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_set_input_poll));
 	m_core.retro_set_input_state = (decltype(m_core.retro_set_input_state))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_set_input_state));
+	//Optional HoloVCS/FCEUmm extension.  Other cores do not export it, so resolve it without
+	//MapFunction's missing-symbol warning and let the Zelda profile fail safe when absent.
+	m_core.retro_set_holo_bg_tile_filter = (decltype(m_core.retro_set_holo_bg_tile_filter))GetProcAddress(m_dllHandle, "retro_set_holo_bg_tile_filter");
 	m_core.retro_load_game = (decltype(m_core.retro_load_game))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_load_game));
 	m_core.retro_get_system_av_info = (decltype(m_core.retro_get_system_av_info))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_get_system_av_info));
 	m_core.retro_run = (decltype(m_core.retro_run))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_run));
@@ -1335,8 +1339,35 @@ void LibretroManager::ResetBlitInformation()
 
 void LibretroManager::RenderFrame(const char* pRenderFlags)
 {
+	//A filter is scoped to one explicit filtered render.  Clearing it here also makes ROM
+	//switches and early-returning profile paths safe if a previous visual pass used one.
+	if (m_core.retro_set_holo_bg_tile_filter)
+	{
+		m_core.retro_set_holo_bg_tile_filter(nullptr, 0);
+	}
 	strcpy(m_coreRenderFlags, pRenderFlags);
 	m_core.retro_run(); 
+}
+
+bool LibretroManager::RenderFrameWithNesBackgroundTileFilter(const char* pRenderFlags, const byte* pKeepList, int keepListSize, byte replacementTile)
+{
+	if (!m_core.retro_set_holo_bg_tile_filter || !pKeepList || keepListSize <= 0)
+	{
+		return false;
+	}
+
+	uint8 allowedMask[32] = {};
+	for (int i = 0; i < keepListSize; i++)
+	{
+		const uint8 tile = pKeepList[i];
+		allowedMask[tile >> 3] |= (uint8)(1U << (tile & 7));
+	}
+
+	strcpy(m_coreRenderFlags, pRenderFlags);
+	m_core.retro_set_holo_bg_tile_filter(allowedMask, replacementTile);
+	m_core.retro_run();
+	m_core.retro_set_holo_bg_tile_filter(nullptr, 0);
+	return true;
 }
 
 void LibretroManager::SetFrameSkip(int frameSkip)

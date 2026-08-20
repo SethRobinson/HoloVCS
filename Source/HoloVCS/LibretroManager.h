@@ -86,6 +86,9 @@ public:
 	void (*retro_set_audio_sample_batch)(retro_audio_sample_batch_t);
 	void (*retro_set_input_poll)(retro_input_poll_t);
 	void (*retro_set_input_state)(retro_input_state_t);
+	//Nonstandard optional FCEUmm extension used by Zelda's display-only obstacle passes.
+	//The core copies the 32-byte tile allow mask immediately; nullptr disables filtering.
+	void (*retro_set_holo_bg_tile_filter)(const uint8* allowedMask, uint8 replacementTile) = nullptr;
 	bool (*retro_load_game)(const struct retro_game_info*);
 	//bool (*retro_load_game_special)(unsigned, const struct retro_game_info*, size_t);
 	void (*retro_get_system_av_info)(struct retro_system_av_info*);
@@ -150,6 +153,8 @@ public:
 	bool LoadState(int index);
 	void ResetBlitInformation();
 	void RenderFrame(const char* pRenderFlags);
+	bool RenderFrameWithNesBackgroundTileFilter(const char* pRenderFlags, const byte* pKeepList, int keepListSize, byte replacementTile);
+	bool HasNesBackgroundTileFilter() const { return m_core.retro_set_holo_bg_tile_filter != nullptr; }
 	void SetFrameSkip(int frameSkip);
 	void UpdateAtari();
 	void Update();

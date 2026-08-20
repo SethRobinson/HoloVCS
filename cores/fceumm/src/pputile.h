@@ -1,5 +1,6 @@
 uint8 *C;
 uint8 cc;
+uint8 tile;
 uint32 vadr;
 
 #ifndef PPUT_MMC5SP
@@ -38,11 +39,13 @@ if (X1 >= 2) {
 }
 
 #ifdef PPUT_MMC5SP
-	vadr = (MMC5HackExNTARAMPtr[xs | (ys << 5)] << 4) + (vofs & 7);
+	tile = MMC5HackExNTARAMPtr[xs | (ys << 5)];
+	vadr = (HoloFilterBackgroundTile(tile) << 4) + (vofs & 7);
 #else
 	zz = RefreshAddr & 0x1F;
 	C = vnapage[(RefreshAddr >> 10) & 3];
-	vadr = (C[RefreshAddr & 0x3ff] << 4) + vofs;	/* Fetch name table byte. */
+	tile = C[RefreshAddr & 0x3ff];	/* Fetch name table byte. */
+	vadr = (HoloFilterBackgroundTile(tile) << 4) + vofs;
 #endif
 
 #ifdef PPUT_HOOK

@@ -209,6 +209,7 @@ extern int show_crosshair;
 extern int option_ramstate;
 
 void FCEUI_SetRenderPlanes(bool sprites, bool bg);  //SETH Added
+void FCEUI_SetHoloBackgroundTileFilter(const uint8 *allowed_mask, uint8 replacement_tile);
 
 /* emulator-specific callback functions */
 
@@ -895,6 +896,13 @@ unsigned retro_api_version(void)
 void retro_set_video_refresh(retro_video_refresh_t cb)
 {
    video_cb = cb;
+}
+
+/* Nonstandard HoloVCS extension.  A null mask disables filtering; otherwise
+ * the core copies the 32-byte/256-tile allow mask immediately. */
+RETRO_API void retro_set_holo_bg_tile_filter(const uint8_t *allowed_mask, uint8_t replacement_tile)
+{
+   FCEUI_SetHoloBackgroundTileFilter(allowed_mask, replacement_tile);
 }
 
 void retro_set_audio_sample(retro_audio_sample_t cb)
@@ -3151,6 +3159,7 @@ bool retro_load_game(const struct retro_game_info *info)
 
    //SETH Load game
    FCEUI_SetRenderPlanes(true, true);
+   FCEUI_SetHoloBackgroundTileFilter(NULL, 0);
 
    return true;
 }
@@ -3165,6 +3174,7 @@ bool retro_load_game_special(
 
 void retro_unload_game(void)
 {
+   FCEUI_SetHoloBackgroundTileFilter(NULL, 0);
    FCEUI_CloseGame();
 #if defined(_3DS)
    if (fceu_video_out)

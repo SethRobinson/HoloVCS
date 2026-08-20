@@ -413,8 +413,8 @@ Feature docs (read before working on these):
   state dump tool (N key), and the NES profile-authoring method: `docs/automation_workflow.md`.
   Also covers the UE 5.8 "Unreal MCP" editor plugin (enabled in the FLAT uproject only).
 - Legend of Zelda profile (first profile authored with the automation workflow, Aug 2026):
-  tile IDs, layer scheme, and the SetTileColorIndex-vs-Zelda palette gotcha are in that same
-  doc. Obstacle keep-list is overworld-only so far; dungeons/rocks pending.
+  tile IDs, layer scheme, palette gotcha, and the live PPU tile filter that keeps scrolling
+  transitions 3D are in that same doc. Obstacle keep-list is overworld-only so far; dungeons/rocks pending.
 
 ## Gotchas learned the hard way
 

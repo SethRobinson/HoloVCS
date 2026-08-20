@@ -490,8 +490,9 @@ void UpdateZelda(void* pProfileManager)
 		return;
 	}
 
-	//Screen-scroll transition detection - extrusion sits these frames out (see the obstacle pass
-	//comments below for why).
+	//Screen-scroll transition detection is only needed for the old-core fail-safe below.  The
+	//patched FCEUmm core filters tiles at PPU fetch time, so Zelda's mid-frame nametable writes
+	//are filtered too and the obstacle layers can follow the native scroll in 3D.
 	bool bScrolling = (gameMode == 4 || gameMode == 6 || gameMode == 7);
 
 	//Item subscreen (Start): $e1 = 0 closed, 7 sliding open, 8 open at rest, 9 sliding closed.
@@ -540,11 +541,11 @@ void UpdateZelda(void* pProfileManager)
 	//- ground-keyed set, keyed on black AND the ground color so the ground-painted parts stay
 	//  flat and only the object shape extrudes: forest-edge diagonals (cc-d7, dc-df), standalone
 	//  rocks (c8-cb), standalone trees (c4-c7).
-	//Extrusion sits out the screen-scroll modes entirely: the game rewrites nametable rows
-	//mid-frame during scrolls, bypassing the tile filter and smearing unfiltered stripes across
-	//the extruded layers.  A 3D-through-the-scroll attempt (ground-keying the wall-tree pass
-	//during scrolls) was tried and looked bad on the device, so scrolls render as a plain 2D
-	//slide and the extrusion pops back on arrival.
+	//The normal saved-state tile edits cannot handle screen scrolling because Zelda rewrites
+	//nametable rows during the re-render.  The live core filter performs the same substitution
+	//when each tile is fetched, after those writes, without mutating emulator state.  If an old
+	//core DLL lacks the extension, stationary frames keep the legacy path and scrolling frames
+	//retain the safe 2D fallback rather than showing unfiltered stripes.
 
 	static byte keepWallTrees[] = { 0xd8, 0xd9, 0xda, 0xdb };
 	static byte keepGroundKeyed[] = { 0xc4, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb,
@@ -553,32 +554,74 @@ void UpdateZelda(void* pProfileManager)
 	FLinearColor blackKey(0, 0, 0, 0);
 	FLinearColor groundKey(255, 255, 74, 0); //overworld ground ($37 in our rgb palette), sampled from the layer buffer
 
-	if (!bScrolling && subscreenState == 0) //subscreen tiles aren't in the keep-lists, so extrusion sits that out too
+	const bool bHasLiveTileFilter = pL->HasNesBackgroundTileFilter();
+	const bool bCanExtrude = subscreenState == 0 && (bHasLiveTileFilter || !bScrolling);
+	if (bCanExtrude) //subscreen tiles aren't in the keep-lists, so extrusion still sits that out
 	{
-		pL->CopyState(1, 2); //pristine copy - each masked pass mutates the nametables from clean
+		if (!bHasLiveTileFilter)
+		{
+			pL->CopyState(1, 2); //legacy fallback: each masked pass mutates the nametables from clean
+		}
 
 		//wall trees -> layers 2, 3 AND 4: the extrusion tops out one layer above the sprites
 		//(layer 3), so trees read taller than the player/creatures on the device.  Layer 4 is
 		//also the HUD layer, but the HUD only occupies rows 0-63 and these blits are rows
 		//64-240 of the same texture - no overlap (and the NES blit path skips keyed pixels, so
 		//stacked passes never erase each other).
-		pL->m_nesHacker.DeleteNametableTilesNotInList(pL->m_pSaveStateBuffer[1], pL->m_maxSaveStateSize, keepWallTrees, sizeof(keepWallTrees), fillTile);
-		pL->LoadState(1);
+		if (bHasLiveTileFilter)
+		{
+			pL->LoadState(1);
+		}
+		else
+		{
+			pL->m_nesHacker.DeleteNametableTilesNotInList(pL->m_pSaveStateBuffer[1], pL->m_maxSaveStateSize, keepWallTrees, sizeof(keepWallTrees), fillTile);
+			pL->LoadState(1);
+		}
 		pL->DisableAllBlitPasses();
 		pL->SetupBlitPass(BLIT_PASS0, 2, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_BLACK, blackKey);
 		pL->SetupBlitPass(BLIT_PASS1, 3, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_BLACK, blackKey);
 		pL->SetupBlitPass(BLIT_PASS2, 4, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_BLACK, blackKey);
-		pL->RenderFrame("10");
+		if (bHasLiveTileFilter)
+		{
+			pL->RenderFrameWithNesBackgroundTileFilter("10", keepWallTrees, sizeof(keepWallTrees), fillTile);
+		}
+		else
+		{
+			pL->RenderFrame("10");
+		}
 
 		//edge diagonals, standalone rocks and trees -> layers 2, 3 and 4, ground-colored parts keyed away
-		pL->CopyState(2, 1);
-		pL->m_nesHacker.DeleteNametableTilesNotInList(pL->m_pSaveStateBuffer[1], pL->m_maxSaveStateSize, keepGroundKeyed, sizeof(keepGroundKeyed), fillTile);
-		pL->LoadState(1);
+		if (bHasLiveTileFilter)
+		{
+			pL->LoadState(1);
+		}
+		else
+		{
+			pL->CopyState(2, 1);
+			pL->m_nesHacker.DeleteNametableTilesNotInList(pL->m_pSaveStateBuffer[1], pL->m_maxSaveStateSize, keepGroundKeyed, sizeof(keepGroundKeyed), fillTile);
+			pL->LoadState(1);
+		}
 		pL->DisableAllBlitPasses();
 		pL->SetupBlitPass(BLIT_PASS0, 2, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_2COLOR, blackKey, groundKey);
 		pL->SetupBlitPass(BLIT_PASS1, 3, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_2COLOR, blackKey, groundKey);
 		pL->SetupBlitPass(BLIT_PASS2, 4, FIntRect(0, 64, 256, 240), COLOR_KEY_STYLE_2COLOR, blackKey, groundKey);
-		pL->RenderFrame("10");
+		if (bHasLiveTileFilter)
+		{
+			pL->RenderFrameWithNesBackgroundTileFilter("10", keepGroundKeyed, sizeof(keepGroundKeyed), fillTile);
+		}
+		else
+		{
+			pL->RenderFrame("10");
+		}
+	}
+	else if (bScrolling && subscreenState == 0 && !bHasLiveTileFilter)
+	{
+		static bool bLoggedMissingLiveTileFilter = false;
+		if (!bLoggedMissingLiveTileFilter)
+		{
+			LogMsg("Zelda 3D scrolling unavailable: fceumm core lacks retro_set_holo_bg_tile_filter; using 2D transition fallback");
+			bLoggedMissingLiveTileFilter = true;
+		}
 	}
 
 	//sprite pass: with BG off the scanlines fill with PALRAM[0], which we force to NES $00

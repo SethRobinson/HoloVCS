@@ -102,6 +102,37 @@ uint8 gNoBGFillColor = 0x0;
 //uint8 gNoBGFillColor = 0x01; //grey
 //uint8 gNoBGFillColor = 0x07; //pink
 
+/* HoloVCS display-only background tile filter.  The host uses this for
+ * visual re-render passes after the authoritative game frame has already
+ * been saved.  Filtering at the PPU fetch catches nametable rows written
+ * during the emulated frame without changing the nametable or save state. */
+static bool holo_bg_tile_filter_enabled = false;
+static uint8 holo_bg_tile_allowed_mask[32];
+static uint8 holo_bg_tile_replacement = 0;
+
+void FCEUI_SetHoloBackgroundTileFilter(const uint8 *allowed_mask, uint8 replacement_tile)
+{
+	if (!allowed_mask)
+	{
+		holo_bg_tile_filter_enabled = false;
+		return;
+	}
+
+	memcpy(holo_bg_tile_allowed_mask, allowed_mask, sizeof(holo_bg_tile_allowed_mask));
+	holo_bg_tile_replacement = replacement_tile;
+	holo_bg_tile_filter_enabled = true;
+}
+
+static INLINE uint8 HoloFilterBackgroundTile(uint8 tile)
+{
+	if (!holo_bg_tile_filter_enabled)
+		return tile;
+
+	return (holo_bg_tile_allowed_mask[tile >> 3] & (1U << (tile & 7)))
+		? tile
+		: holo_bg_tile_replacement;
+}
+
 int MMC5Hack = 0, PEC586Hack = 0;
 uint32 MMC5HackVROMMask = 0;
 uint8 *MMC5HackExNTARAMPtr = 0;
