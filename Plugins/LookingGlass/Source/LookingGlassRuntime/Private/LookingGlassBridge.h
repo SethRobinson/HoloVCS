@@ -64,7 +64,15 @@ public:
 	 *  mid-stall stack capture diagnostic */
 	bool IsDrawStuck(double StuckSeconds, uint32& OutBridgeThreadId) const;
 
+	/** Appends a line to lkg_diag.txt next to the top-level exe (the only plugin log that survives
+	 *  Shipping builds, where UE_LOG is compiled out). Also UE_LOGs it. */
+	static void Diag(const FString& Message);
+
 	bool bInitialized = false;
+
+	// Where bridge_inproc.dll was loaded from and the Bridge version it reported (diagnostics)
+	FString InstallDir;
+	FString VersionString;
 
 	TArray<FLGDeviceCalibration> Displays;
 

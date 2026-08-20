@@ -9,6 +9,8 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/DateTime.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "Templates/Atomic.h"
 #include "Async/Async.h"
 #include "Containers/Queue.h"
@@ -30,6 +32,7 @@ THIRD_PARTY_INCLUDES_START
 #pragma warning(disable : 4191)
 //#include "bridge.h"
 #include "bridge_calibration_templates.h"
+#include <tlhelp32.h> // running-process scan in FindBridgeInstallCandidates
 #pragma warning(pop)
 THIRD_PARTY_INCLUDES_END
 #include "Windows/HideWindowsPlatformTypes.h"
@@ -74,14 +77,182 @@ static void ReportError(const FString& Message)
 #endif // WITH_EDITOR
 }
 
+static void LKGBridgeDiag(const FString& Message);
+
+/** Directory of every running LookingGlassBridge.exe (normally zero or one). */
+static TArray<FString> FindRunningBridgeExeDirs()
+{
+	TArray<FString> Dirs;
+	HANDLE Snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	if (Snapshot == INVALID_HANDLE_VALUE)
+	{
+		return Dirs;
+	}
+	PROCESSENTRY32W Entry;
+	Entry.dwSize = sizeof(Entry);
+	if (Process32FirstW(Snapshot, &Entry))
+	{
+		do
+		{
+			if (FCString::Stricmp(Entry.szExeFile, TEXT("LookingGlassBridge.exe")) != 0)
+			{
+				continue;
+			}
+			HANDLE Process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, Entry.th32ProcessID);
+			if (Process == nullptr)
+			{
+				continue;
+			}
+			WCHAR PathBuffer[MAX_PATH * 2];
+			DWORD PathLen = UE_ARRAY_COUNT(PathBuffer);
+			if (QueryFullProcessImageNameW(Process, 0, PathBuffer, &PathLen))
+			{
+				Dirs.AddUnique(FPaths::GetPath(FString(PathBuffer)));
+			}
+			CloseHandle(Process);
+		} while (Process32NextW(Snapshot, &Entry));
+	}
+	CloseHandle(Snapshot);
+	return Dirs;
+}
+
+/** "Looking Glass Bridge 2.6.3" -> 2006003, anything unparseable -> 0 */
+static int32 ParseBridgeFolderVersion(const FString& FolderName)
+{
+	FString VersionPart;
+	if (!FolderName.Split(TEXT("Bridge "), nullptr, &VersionPart))
+	{
+		return 0;
+	}
+	TArray<FString> Parts;
+	VersionPart.ParseIntoArray(Parts, TEXT("."));
+	int32 Version = 0;
+	for (int32 i = 0; i < 3; i++)
+	{
+		Version = Version * 1000 + (Parts.IsValidIndex(i) ? FCString::Atoi(*Parts[i]) : 0);
+	}
+	return Version;
+}
+
+/** Every "<Program Files>\Looking Glass\Looking Glass Bridge *" folder, highest version first. */
+static TArray<FString> FindInstalledBridgeDirs()
+{
+	TArray<TPair<int32, FString>> Found;
+	for (const TCHAR* EnvVar : { TEXT("ProgramFiles"), TEXT("ProgramFiles(x86)"), TEXT("ProgramW6432") })
+	{
+		const FString Root = FPlatformMisc::GetEnvironmentVariable(EnvVar);
+		if (Root.IsEmpty())
+		{
+			continue;
+		}
+		const FString Parent = Root / TEXT("Looking Glass");
+		TArray<FString> SubDirs;
+		IFileManager::Get().FindFiles(SubDirs, *(Parent / TEXT("Looking Glass Bridge*")), false, true);
+		for (const FString& SubDir : SubDirs)
+		{
+			Found.AddUnique(TPair<int32, FString>(ParseBridgeFolderVersion(SubDir), Parent / SubDir));
+		}
+	}
+	Found.Sort([](const TPair<int32, FString>& A, const TPair<int32, FString>& B) { return A.Key > B.Key; });
+	TArray<FString> Dirs;
+	for (const auto& Pair : Found)
+	{
+		Dirs.AddUnique(Pair.Value);
+	}
+	return Dirs;
+}
+
 bool FLookingGlassBridge::Initialize_BridgeThread()
 {
-	// Load the Bridge
+	LKGBridgeDiag(TEXT("---- Bridge boot ----"));
+
+	// Load the Bridge. The SDK's own Controller::Initialize can only find bridge_inproc.dll through
+	// the PER-USER %APPDATA%\Looking Glass\Bridge\settings.json "install_locations" list, which the
+	// installer only writes for the account that ran it (a laptop where Bridge was installed from
+	// another account had Bridge running fine, yet that lookup failed and the plugin silently fell
+	// back to the debug quilt window). So try, in order: a command-line override, the SDK lookup,
+	// the folder of a RUNNING LookingGlassBridge.exe, and a Program Files scan.
 	BridgeController = new ControllerWithCalibrationTemplates();
-	if (!BridgeController->Initialize(TEXT("UnrealEnginePlugin")))
+
+	TArray<TPair<FString, FString>> Candidates; // (source, dir)
+	FString OverrideDir;
+	if (FParse::Value(FCommandLine::Get(), TEXT("lkgbridgedir="), OverrideDir))
+	{
+		Candidates.Add(TPair<FString, FString>(TEXT("-lkgbridgedir"), OverrideDir.TrimQuotes()));
+	}
+	{
+		const FString SettingsPath = FString(BridgeController->SettingsPath().c_str());
+		const bool bSettingsExists = IFileManager::Get().FileExists(*SettingsPath);
+		if (FParse::Param(FCommandLine::Get(), TEXT("lkgnosettings")))
+		{
+			LKGBridgeDiag(FString::Printf(TEXT("settings.json lookup skipped (-lkgnosettings): %s"), *SettingsPath));
+		}
+		else
+		{
+			// (the SDK hands back the raw JSON text, backslashes still escaped)
+			const FString SettingsDir = FString(BridgeController->BridgeInstallLocation(::BridgeVersion).c_str()).Replace(TEXT("\\\\"), TEXT("\\"));
+			LKGBridgeDiag(FString::Printf(TEXT("settings.json %s: %s -> install_locations%s"),
+				bSettingsExists ? TEXT("found") : TEXT("MISSING"), *SettingsPath,
+				SettingsDir.IsEmpty() ? TEXT(" gave no usable path") : *(TEXT(": ") + SettingsDir)));
+			if (!SettingsDir.IsEmpty())
+			{
+				Candidates.Add(TPair<FString, FString>(TEXT("settings.json"), SettingsDir));
+			}
+		}
+	}
+	for (const FString& Dir : FindRunningBridgeExeDirs())
+	{
+		Candidates.Add(TPair<FString, FString>(TEXT("running LookingGlassBridge.exe"), Dir));
+	}
+	for (const FString& Dir : FindInstalledBridgeDirs())
+	{
+		Candidates.Add(TPair<FString, FString>(TEXT("Program Files scan"), Dir));
+	}
+
+	bool bLoaded = false;
+	TSet<FString> Tried;
+	for (const auto& Candidate : Candidates)
+	{
+		FString Dir = FPaths::ConvertRelativePathToFull(Candidate.Value);
+		FPaths::NormalizeDirectoryName(Dir);
+		if (Tried.Contains(Dir.ToLower()))
+		{
+			continue;
+		}
+		Tried.Add(Dir.ToLower());
+
+		if (!IFileManager::Get().FileExists(*(Dir / TEXT("bridge_inproc.dll"))))
+		{
+			LKGBridgeDiag(FString::Printf(TEXT("candidate (%s) %s: no bridge_inproc.dll there, skipped"), *Candidate.Key, *Dir));
+			continue;
+		}
+
+		// initialize_bridge also fails when the Bridge service isn't up yet (it is often starting
+		// alongside the game at login) - give each real install a couple of chances.
+		for (int32 Attempt = 0; Attempt < 3 && !bLoaded; Attempt++)
+		{
+			if (Attempt > 0)
+			{
+				FPlatformProcess::Sleep(1.0f);
+			}
+			bLoaded = BridgeController->InitializeWithPath(TEXT("UnrealEnginePlugin"), std::wstring(*Dir));
+		}
+		LKGBridgeDiag(FString::Printf(TEXT("candidate (%s) %s: initialize_bridge %s"), *Candidate.Key, *Dir, bLoaded ? TEXT("OK") : TEXT("FAILED")));
+		if (bLoaded)
+		{
+			InstallDir = Dir;
+			break;
+		}
+	}
+
+	if (!bLoaded)
 	{
 		ReportError(TEXT("Bridge initialization failed"));
+		LKGBridgeDiag(Candidates.Num() == 0
+			? TEXT("Bridge initialization failed: no Looking Glass Bridge installation found at all (is Bridge installed and running?)")
+			: TEXT("Bridge initialization failed: no candidate loaded (is the Looking Glass Bridge tray app running?)"));
 		delete BridgeController;
+		BridgeController = nullptr;
 		return false;
 	}
 
@@ -89,14 +260,18 @@ bool FLookingGlassBridge::Initialize_BridgeThread()
 	unsigned long Major = 0, Minor = 0, Build = 0;
 	int32 NumPostfixChars = 0;
 	BridgeController->GetBridgeVersion(&Major, &Minor, &Build, &NumPostfixChars, nullptr);
+	VersionString = FString::Printf(TEXT("%d.%d.%d"), Major, Minor, Build);
+	LKGBridgeDiag(FString::Printf(TEXT("Bridge %s loaded from %s"), *VersionString, *InstallDir));
 
 	int32 Version = Major * 1000000 + Minor * 1000 + Build;
 	int32 Desired = BRIDGE_VERSION_MAJOR * 1000000 + BRIDGE_VERSION_MINOR * 1000 + BRIDGE_VERSION_BUILD;
 	if (Version < Desired)
 	{
-		ReportError(FString::Printf(
+		const FString Msg = FString::Printf(
 			TEXT("The installed Looking Glass Bridge has version %d.%d.%d, required version is %d.%d.%d, please update!"),
-			Major, Minor, Build, BRIDGE_VERSION_MAJOR, BRIDGE_VERSION_MINOR, BRIDGE_VERSION_BUILD));
+			Major, Minor, Build, BRIDGE_VERSION_MAJOR, BRIDGE_VERSION_MINOR, BRIDGE_VERSION_BUILD);
+		ReportError(Msg);
+		LKGBridgeDiag(Msg);
 		return false;
 	}
 
@@ -158,6 +333,7 @@ bool FLookingGlassBridge::Initialize_BridgeThread()
 	if (Displays.Num() == 0)
 	{
 		ReportError(TEXT("No Looking Glass displays found"));
+		LKGBridgeDiag(TEXT("Bridge reports NO Looking Glass displays (check the USB cable and that Bridge itself shows the display)"));
 	}
 
 	return true;
@@ -187,16 +363,26 @@ void FLookingGlassBridge::ReadDisplays_BridgeThread()
 
 	for (unsigned long DisplayId : DisplayIds)
 	{
+		// Note: the string getters return the char count and do NOT null-terminate (the template
+		// loop above already handles that; this one used to hand FString a raw uninitialized buffer)
 		const int32 BufferSize = 256;
-		TCHAR Buffer[BufferSize];
+		TCHAR Buffer[BufferSize + 1];
 		FLGDeviceCalibration& Display = Displays.AddDefaulted_GetRef();
 
 		int32 TempInt = BufferSize;
-		BridgeController->GetDeviceSerialForDisplay(DisplayId, &TempInt, Buffer);
+		FMemory::Memzero(Buffer);
+		if (BridgeController->GetDeviceSerialForDisplay(DisplayId, &TempInt, Buffer))
+		{
+			Buffer[FMath::Clamp(TempInt, 0, BufferSize)] = 0;
+		}
 		Display.Serial = Buffer;
 
 		TempInt = BufferSize;
-		BridgeController->GetDeviceNameForDisplay(DisplayId, &TempInt, Buffer);
+		FMemory::Memzero(Buffer);
+		if (BridgeController->GetDeviceNameForDisplay(DisplayId, &TempInt, Buffer))
+		{
+			Buffer[FMath::Clamp(TempInt, 0, BufferSize)] = 0;
+		}
 		Display.Name = Buffer;
 
 		int InvView = 0, CellPatternMode = 0, NumberOfCells = 0;
@@ -223,21 +409,33 @@ void FLookingGlassBridge::ReadDisplays_BridgeThread()
 		Display.XPos = (int32)WinX;
 		Display.YPos = (int32)WinY;
 
-		UE_LOG(LogLookingGlassBridge, Display, TEXT("Display %s (%s): Center=%g, Pitch=%g, Slope=%g, DPI=%g, FlipX=%g, Width=%d, Height=%d, Aspect=%g, Pos=%d,%d"),
-			*Display.Name, *Display.Serial, Display.Center, Display.Pitch, Display.Slope, Display.DPI, Display.FlipX,
-			Display.Width, Display.Height, Display.Aspect, Display.XPos, Display.YPos);
+		int DeviceType = -1;
+		BridgeController->GetDeviceTypeForDisplay(DisplayId, &DeviceType);
+
+		LKGBridgeDiag(FString::Printf(TEXT("Display %d: '%s' serial '%s' type %d: %dx%d at %d,%d, Center=%g, Pitch=%g, Slope=%g, DPI=%g, FlipX=%g, Aspect=%g, ViewCone=%g"),
+			Displays.Num() - 1, *Display.Name, *Display.Serial, DeviceType, Display.Width, Display.Height, Display.XPos, Display.YPos,
+			Display.Center, Display.Pitch, Display.Slope, Display.DPI, Display.FlipX, Display.Aspect, Display.ViewCone));
+		if (Display.Width <= 0 || Display.Height <= 0)
+		{
+			LKGBridgeDiag(TEXT("  WARNING: calibration has no width/height - Bridge could not read this display's calibration"));
+		}
 	}
 }
 
 static_assert(sizeof(int32) == sizeof(WINDOW_HANDLE));
 
-static void LKGBridgeDiag(const FString& Message)
+void FLookingGlassBridge::Diag(const FString& Message)
 {
 	// Shipping builds have no UE log - append to a diag file next to the top-level exe
 	const FString Line = FString::Printf(TEXT("%s (%s)\n"), *Message, *FDateTime::Now().ToString());
 	FFileHelper::SaveStringToFile(Line, *(FPaths::RootDir() / TEXT("lkg_diag.txt")),
 		FFileHelper::EEncodingOptions::AutoDetect, &IFileManager::Get(), FILEWRITE_Append);
-	UE_LOG(LogLookingGlassBridge, Warning, TEXT("%s"), *Message);
+	UE_LOG(LogLookingGlassBridge, Display, TEXT("%s"), *Message);
+}
+
+static void LKGBridgeDiag(const FString& Message)
+{
+	FLookingGlassBridge::Diag(Message);
 }
 
 /**

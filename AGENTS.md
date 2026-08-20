@@ -362,6 +362,26 @@ but burns the 5.6 escape hatch like any other resave.
   twin for the harness: `holo.DepthScale <mult>` (clamped 0.2-5.0). NES Select is Tab now (was
   Backslash), and the old A-key "auto adjust audio" hotkey is REMOVED (it also collided with
   WASD left; per-frame audio stats code went with it).
+- BRIDGE DISCOVERY (Aug 2026, laptop field bug): the in-process Bridge SDK (`ThirdParty/.../bridge.h`)
+  finds `bridge_inproc.dll` ONLY via the PER-USER `%APPDATA%\Looking Glass\Bridge\settings.json`
+  `install_locations` list, which the installer writes only for the account that ran it. On a
+  laptop where Bridge was installed from another account, Bridge ran and showed the display fine
+  but our plugin got nothing and silently fell back to the 800x800 debug quilt window (the old
+  HoloPlayCore build was immune: it talks to the Bridge service over a socket). Fix in
+  `LookingGlassBridge.cpp` Initialize_BridgeThread: candidates tried in order are `-lkgbridgedir=<dir>`,
+  settings.json (skip with `-lkgnosettings` to test the fallbacks), the folder of a RUNNING
+  LookingGlassBridge.exe (toolhelp snapshot), then a `<Program Files>\Looking Glass\Looking Glass Bridge *`
+  scan (highest version first); each real install gets 3 initialize_bridge attempts 1s apart (the
+  service may still be starting at login). SHIPPING DIAGNOSTICS: UE_LOG is compiled out of Shipping,
+  so `FLookingGlassBridge::Diag()` appends to `lkg_diag.txt` next to the top-level exe (same file as
+  the stall log): every boot writes a "---- Bridge boot ----" block with the settings.json verdict,
+  each candidate tried, Bridge version, every display (name/serial/type/size/pos/calibration), the
+  placement decision (self-render window vs "NO DEVICE ... debug quilt window") and the Automatic
+  tiling choice with its reason. Ask users for that file first. Raw-quilt-in-a-desktop-window ALWAYS
+  means `Bridge.Displays` was empty at viewport creation. GetAutomaticTilingQuality now also matches
+  the device Name and falls back by panel orientation (landscape = legacy 8.9" preset) instead of
+  always assuming Portrait; Bridge 2.6.3 reports the original 8.9" as name `8.9" Looking Glass`,
+  serial `LKG-2K-xxxxx`.
 - Benign noise: "Failed to load ... LookingGlassCore.dll" at startup is upstream legacy (the DLL
   never shipped); Bridge does the real work.
 - The flat camera: `APlayerPawn` owns a `UCameraComponent` root (FOV 14).

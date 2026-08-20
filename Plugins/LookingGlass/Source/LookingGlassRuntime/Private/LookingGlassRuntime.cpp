@@ -254,6 +254,8 @@ void FLookingGlassRuntimeModule::StartPlayer(ELookingGlassModeType LookingGlassM
 			// No devices found, replace "Automatic" mode with "AlwaysDebugWindow"
 			PlacementMode = ELookingGlassPlacement::AlwaysDebugWindow;
 			bIsRenderingOnDevice = false;
+			FLookingGlassBridge::Diag(FString::Printf(TEXT("NO DEVICE for screen index %d (%d found): falling back to the debug quilt window on the desktop"),
+				ScreenIndex, Bridge.Displays.Num()));
 		}
 
 		if (PlacementMode == ELookingGlassPlacement::AlwaysDebugWindow)
@@ -277,8 +279,13 @@ void FLookingGlassRuntimeModule::StartPlayer(ELookingGlassModeType LookingGlassM
 				ClientSize = FVector2D(CurrentCalibration.Width, CurrentCalibration.Height);
 				ScreenPosition = FVector2D(CurrentCalibration.XPos, CurrentCalibration.YPos);
 				WindowType = EWindowMode::WindowedFullscreen;
-				UE_LOG(LookingGlassLogPlayer, Display, TEXT("Self-render window on device at %d,%d size %dx%d"),
-					CurrentCalibration.XPos, CurrentCalibration.YPos, CurrentCalibration.Width, CurrentCalibration.Height);
+				FLookingGlassBridge::Diag(FString::Printf(TEXT("Self-render window on device '%s' (serial '%s') at %d,%d size %dx%d"),
+					*CurrentCalibration.Name, *CurrentCalibration.Serial,
+					CurrentCalibration.XPos, CurrentCalibration.YPos, CurrentCalibration.Width, CurrentCalibration.Height));
+			}
+			else
+			{
+				FLookingGlassBridge::Diag(FString::Printf(TEXT("Bridge interop window on device '%s' (lkg.SelfRender 0)"), *CurrentCalibration.Name));
 			}
 		}
 		else

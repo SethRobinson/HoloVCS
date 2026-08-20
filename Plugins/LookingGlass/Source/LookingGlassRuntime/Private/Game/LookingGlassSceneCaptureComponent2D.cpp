@@ -569,11 +569,32 @@ void ULookingGlassSceneCaptureComponent2D::ResetGlobalTilingProperties()
 	UpdateTilingPropertiesForAllComponents();
 }
 
+static ELookingGlassQualitySettings ClassifyLookingGlassDevice(const FLGDeviceCalibration& Calibration, const TCHAR*& OutReason);
+
 ELookingGlassQualitySettings ULookingGlassSceneCaptureComponent2D::GetAutomaticTilingQuality()
 {
 	const FLGDeviceCalibration& Calibration = ILookingGlassRuntime::Get().GetCurrentCalibration();
+	const TCHAR* Reason = TEXT("");
+	const ELookingGlassQualitySettings Quality = ClassifyLookingGlassDevice(Calibration, Reason);
 
+	// Report the decision once per device (it lands in lkg_diag.txt, which survives Shipping)
+	static FString LastReported;
+	const FString Key = FString::Printf(TEXT("%s|%s|%d"), *Calibration.Serial, *Calibration.Name, (int32)Quality);
+	if (Key != LastReported)
+	{
+		LastReported = Key;
+		const UEnum* Enum = StaticEnum<ELookingGlassQualitySettings>();
+		FLookingGlassBridge::Diag(FString::Printf(TEXT("Automatic tiling for '%s' (serial '%s', %dx%d): %s (%s)"),
+			*Calibration.Name, *Calibration.Serial, Calibration.Width, Calibration.Height,
+			Enum ? *Enum->GetNameStringByValue((int64)Quality) : TEXT("?"), Reason));
+	}
+	return Quality;
+}
+
+static ELookingGlassQualitySettings ClassifyLookingGlassDevice(const FLGDeviceCalibration& Calibration, const TCHAR*& OutReason)
+{
 	// Recognize the device by its Serial
+	OutReason = TEXT("matched by serial");
 
 	if (Calibration.Serial.Contains(TEXT("Looking Glass - Portrait")) ||
 		Calibration.Serial.Contains(TEXT("PORT")) ||
@@ -643,7 +664,28 @@ ELookingGlassQualitySettings ULookingGlassSceneCaptureComponent2D::GetAutomaticT
 		return ELookingGlassQualitySettings::Q_EightPointNineLegacy;
 	}
 
-	// Fallback to Portrait
+	// The serial didn't match any known family. The original 8.9" (first-gen, USB+HDMI) predates
+	// the LKG-x serial scheme, so also look at the human-readable name Bridge reports for it.
+	OutReason = TEXT("matched by name");
+	if (Calibration.Name.Contains(TEXT("8.9")) || Calibration.Name.Contains(TEXT("standard"), ESearchCase::IgnoreCase))
+	{
+		return ELookingGlassQualitySettings::Q_EightPointNineLegacy;
+	}
+	if (Calibration.Name.Contains(TEXT("Portrait")))
+	{
+		return ELookingGlassQualitySettings::Q_Portrait;
+	}
+
+	// Last resort: go by the panel's own orientation instead of blindly assuming a Portrait. A
+	// landscape 2560x1600 panel is the legacy 8.9"; a Portrait preset on it would squash the
+	// framing and render the wrong view count.
+	if (Calibration.Width > 0 && Calibration.Height > 0 && Calibration.Width > Calibration.Height)
+	{
+		OutReason = TEXT("unknown device, landscape panel -> legacy 8.9 preset");
+		return ELookingGlassQualitySettings::Q_EightPointNineLegacy;
+	}
+
+	OutReason = TEXT("unknown device, Portrait fallback");
 	return ELookingGlassQualitySettings::Q_Portrait;
 }
 
