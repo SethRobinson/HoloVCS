@@ -785,6 +785,15 @@ void ALibretroManagerActor::Tick(float DeltaTime)
 		{
 			LogMsg("HITCH: frame took %.2f seconds (previous tick to this one)", tickNow - s_lastTickTime);
 		}
+		else if (s_lastTickTime != 0 && tickNow - s_lastTickTime > 0.035 && g_pLibretroManager)
+		{
+			//audio-glitch hunting: anything over ~2 frames is a hole in the sound. Breakdown of the
+			//PREVIOUS tick: emu = core updates, wait = pacing sleep, rest = engine (render/present/vsync/other)
+			const double gap = tickNow - s_lastTickTime;
+			LogMsg("STALL at %.3f: %.1fms between ticks (emu %.1fms, pace wait %.1fms, engine/other %.1fms)", tickNow, gap * 1000.0,
+				g_pLibretroManager->m_lastEmuUpdateSeconds * 1000.0, g_pLibretroManager->m_lastPaceWaitSeconds * 1000.0,
+				(gap - g_pLibretroManager->m_lastEmuUpdateSeconds - g_pLibretroManager->m_lastPaceWaitSeconds) * 1000.0);
+		}
 		s_lastTickTime = tickNow;
 	}
 
@@ -804,7 +813,12 @@ void ALibretroManagerActor::Tick(float DeltaTime)
 		if (m_bShowLKGFPS)
 		{
 			//the sprite-quilt renderer draws its own fps counter top-left of each tile; this is just the log record
-			LogMsg("%d FPS", m_framesRendered);
+			const int underruns = m_pRTAudioBufferComponent && m_pRTAudioBufferComponent->GetBufferGenerator() ? m_pRTAudioBufferComponent->GetBufferGenerator()->TakeUnderrunCount() : 0;
+			const int queued = m_pRTAudioBufferComponent && m_pRTAudioBufferComponent->GetBufferGenerator() ? m_pRTAudioBufferComponent->GetBufferGenerator()->GetSamplesQueued() : 0;
+			LogMsg("%d FPS (audio: %d queued, %d underruns, %d dropped, %d catch-up frames)", m_framesRendered, queued, underruns,
+				g_pLibretroManager->m_audioFramesDropped, g_pLibretroManager->m_catchUpFrames);
+			g_pLibretroManager->m_audioFramesDropped = 0;
+			g_pLibretroManager->m_catchUpFrames = 0;
 		}
 		m_framesRendered = 0;
 		m_timeOfNextFPSUpdate = GetWorld()->GetRealTimeSeconds() + 1.0f;

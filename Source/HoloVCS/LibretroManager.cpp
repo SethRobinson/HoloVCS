@@ -622,6 +622,16 @@ void retro_audio_sample_callback(int16_t left, int16_t right)
 	return;
 }
 
+//Dynamic rate control (the RetroArch approach). The emulator is paced by the CPU clock and the
+//sound card drains by its own DAC clock, and the two never agree exactly, so a plain queue drifts
+//until it either overflows (drop a frame of audio = click) or runs dry (repeat a sample = click),
+//every few seconds. Instead, each chunk is resampled by a tiny ratio driven by the queue fill so
+//the fill hovers around the target: a little long -> play marginally faster, a little short ->
+//marginally slower. The deviation stays under AUDIO_RATE_MAX_DEVIATION, far below audible pitch.
+static const int AUDIO_TARGET_QUEUED_SAMPLES = 2400; //50ms at 48k, mono. Covers one 1024-sample mixer callback plus a frame of jitter.
+static const float AUDIO_RATE_MAX_DEVIATION = 0.005f; //0.5%
+static const int AUDIO_HARD_DROP_SAMPLES = AUDIO_TARGET_QUEUED_SAMPLES * 4; //safety valve only (pause/hitch recovery)
+
 size_t retro_audio_sample_batch_callback(const int16_t* data, size_t frames)
 {
 	
@@ -629,32 +639,51 @@ size_t retro_audio_sample_batch_callback(const int16_t* data, size_t frames)
 														//some extra visual renders
 	auto* pAudioBufferComp = g_pLibretroManager->m_pLibretroManagedActor->m_pRTAudioBufferComponent;
 
-	if (pAudioBufferComp->GetBufferGenerator())
+	if (pAudioBufferComp->GetBufferGenerator() && frames > 0)
 	{
-		int curSamplesInBuffer = pAudioBufferComp->GetBufferGenerator()->m_samplesInBuffer;
+		RTBufferGenerator* pGen = pAudioBufferComp->GetBufferGenerator();
+		const int curSamplesInBuffer = pGen->GetSamplesQueued();
 
-		if (curSamplesInBuffer < 4096)
+		if (curSamplesInBuffer >= AUDIO_HARD_DROP_SAMPLES)
 		{
-			RTSampleChunk chunk;
-
-			int sampleSize = frames;
-
-			chunk.pSampleData = new float[sampleSize];
-			chunk.validSamples = sampleSize;
-
-			//copy it into the buffer
-			for (unsigned int i = 0; i < frames; i++)
-			{
-				//LogMsg(" %d - %.2f", (int)data[i * 2], (float)fFrame);
-				chunk.pSampleData[i] = ((float)data[i * 2]) / (32768.0f * 2);
-			}
-
-			pAudioBufferComp->GetBufferGenerator()->AddChunkSchedule(chunk);
+			//way ahead (the mixer stalled or we were paused with audio still flowing); rate control
+			//can't absorb this much, skip the frame outright
+			g_pLibretroManager->m_audioFramesDropped++;
+			return frames;
 		}
-		else
+
+		//proportional control: +deviation when empty, -deviation when at 2x target
+		float fillError = (float)(AUDIO_TARGET_QUEUED_SAMPLES - curSamplesInBuffer) / (float)AUDIO_TARGET_QUEUED_SAMPLES;
+		fillError = FMath::Clamp(fillError, -1.0f, 1.0f);
+		const double ratio = 1.0 + fillError * AUDIO_RATE_MAX_DEVIATION; //output samples per input sample
+		const double step = 1.0 / ratio;
+
+		//linear resample, mono (left channel). s_prevSample/s_phase carry across calls so chunk
+		//boundaries stay continuous.
+		static float s_prevSample = 0.0f;
+		static double s_phase = 0.0; //position in extended input space where index 0 is s_prevSample and index k+1 is data[k]
+
+		const float scale = 1.0f / (32768.0f * 2);
+		const int maxOut = (int)((double)frames * (1.0 + AUDIO_RATE_MAX_DEVIATION)) + 2;
+
+		RTSampleChunk chunk;
+		chunk.pSampleData = new float[maxOut];
+
+		int outCount = 0;
+		while (s_phase < (double)frames && outCount < maxOut)
 		{
-			//LogMsg("(too much data)");
+			const int idx = (int)s_phase;
+			const float frac = (float)(s_phase - (double)idx);
+			const float a = (idx == 0) ? s_prevSample : (float)data[(idx - 1) * 2] * scale;
+			const float b = (float)data[idx * 2] * scale; //idx <= frames-1 here
+			chunk.pSampleData[outCount++] = a + (b - a) * frac;
+			s_phase += step;
 		}
+		s_phase -= (double)frames;
+		s_prevSample = (float)data[(frames - 1) * 2] * scale;
+
+		chunk.validSamples = outCount;
+		pGen->AddChunkSchedule(chunk);
 	}
 
 		//LogMsg("Got batch audio callback with %d frames", frames);
@@ -1518,31 +1547,42 @@ void LibretroManager::Update()
 {
 	m_autoHarness.Update(); //before the early-outs so pause/unpause and rom switching work anytime
 
-	if (!m_core.m_bActive) return;
+	if (!m_core.m_bActive) { m_timeOfLastFrame = 0; return; }
 
-	if (m_bGamePaused) return;
+	if (m_bGamePaused) { m_timeOfLastFrame = 0; return; }
 
 	m_helpScreen.TickAutoShow(); //after the early-outs so the diorama has frames behind the panel
 
-	m_useAudio = true;
-	m_profManager.Update();
-
-	//harness-injected button holds tick down once per visible frame (not per rewound render pass)
-	for (int i = 0; i < C_MAX_JOYPAD_BUTTONS; i++)
-	{
-		if (m_autoButtonHoldFrames[i] > 0) m_autoButtonHoldFrames[i]--;
-	}
-
-	//slow down things?  (this pacing wait is what caps the whole app at m_targetFPS - the 0 hotkey
-	//sets m_bUncapFPS to bypass it so the fps counter can show true throughput)
-	//Sleep for the bulk of the wait and only spin the last ~1.5ms: the old pure busy-wait burned
-	//a full CPU core every frame for the same timing precision.
+	//Emulation is wall-clock driven, not render-driven. The audio stream only advances when the
+	//core runs, so if we ran it exactly once per rendered frame, every dropped/late frame (a
+	//missed vblank, a Bridge stall, a GC spike) punched a 17ms hole in the audio. Instead we keep
+	//a phase-locked frame deadline and run however many emulator frames are owed (capped) so a
+	//late tick runs the core twice and the audio stays continuous; the diorama just skips a frame.
+	//This wait is also what caps the whole app at m_targetFPS - the 0 hotkey sets m_bUncapFPS to
+	//bypass it so the fps counter can show true throughput. Sleep for the bulk of the wait and
+	//only spin the last ~1.5ms: a pure busy-wait burned a full CPU core every frame.
+	//NOTE: the deadline advances by whole intervals (m_timeOfLastFrame += n*interval), NOT to
+	//"now": the old "now" version accumulated sleep overshoot every frame, which beat against
+	//vsync and dropped a vblank every few seconds (the 57-58 fps seconds in log.txt) - that was
+	//the source of the periodic audio clicks.
+	int framesToRun = 1;
+	m_lastPaceWaitSeconds = 0;
 	if (m_frameSkip == 0 && m_targetFPS != 0 && !m_bUncapFPS)
 	{
-		double desiredInterval = 1.0 / m_targetFPS;
+		const double waitStart = FPlatformTime::Seconds();
+		const double desiredInterval = 1.0 / m_targetFPS;
+		const int maxCatchUpFrames = 3;
+		double now = FPlatformTime::Seconds();
+
+		if (m_timeOfLastFrame == 0 || now - m_timeOfLastFrame > desiredInterval * (maxCatchUpFrames + 1))
+		{
+			//first frame, resumed from pause, or a real stall: resync rather than fast-forward
+			m_timeOfLastFrame = now - desiredInterval;
+		}
+
 		while (1)
 		{
-			double remaining = desiredInterval - (FPlatformTime::Seconds() - m_timeOfLastFrame);
+			double remaining = (m_timeOfLastFrame + desiredInterval) - FPlatformTime::Seconds();
 			if (remaining <= 0) break;
 			if (remaining > 0.002)
 			{
@@ -1550,7 +1590,26 @@ void LibretroManager::Update()
 			}
 			//else: spin the final stretch for frame-accurate pacing
 		}
-		m_timeOfLastFrame = FPlatformTime::Seconds();
 
+		now = FPlatformTime::Seconds();
+		m_lastPaceWaitSeconds = now - waitStart;
+		framesToRun = (int)((now - m_timeOfLastFrame) / desiredInterval);
+		framesToRun = FMath::Clamp(framesToRun, 1, maxCatchUpFrames);
+		m_timeOfLastFrame += framesToRun * desiredInterval;
+		m_catchUpFrames += framesToRun - 1;
+	}
+
+	const double emuStart = FPlatformTime::Seconds();
+	for (int i = 0; i < framesToRun; i++)
+	{
+		m_useAudio = true;
+		m_profManager.Update();
+	}
+	m_lastEmuUpdateSeconds = FPlatformTime::Seconds() - emuStart;
+
+	//harness-injected button holds tick down once per visible frame (not per rewound render pass)
+	for (int i = 0; i < C_MAX_JOYPAD_BUTTONS; i++)
+	{
+		if (m_autoButtonHoldFrames[i] > 0) m_autoButtonHoldFrames[i]--;
 	}
 }

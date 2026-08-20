@@ -202,6 +202,10 @@ public:
 	bool m_bUncapFPS = false; //true = skip the pacing busy-wait entirely (0 hotkey, for fps measurement)
 	double m_mainTimer = 0;
 	double m_timeOfLastFrame = 0;
+	double m_lastEmuUpdateSeconds = 0; //diagnostics: wall time the last Update spent running the core(s)
+	double m_lastPaceWaitSeconds = 0; //diagnostics: wall time the last Update spent in the pacing wait
+	int m_catchUpFrames = 0; //diagnostics: extra emulator frames run to keep up with wall-clock (reset by the per-second log)
+	int m_audioFramesDropped = 0; //diagnostics: audio chunks discarded by the hard-drop safety valve (reset by the per-second log)
 	JoyPadButtonStates m_joyPad;
 	bool m_bGamePaused = false;
 	bool m_bNesDumpRequested = false; //set by the N hotkey; UpdateNES writes Saved/nes_state_dump.txt next frame

@@ -4,6 +4,7 @@
 #include "Components/SynthComponent.h"
 #include "Shared/UnrealMisc.h"
 #include <list>
+#include <atomic>
 using std::list;
 
 
@@ -59,7 +60,13 @@ public:
 
     void SetVolume(float InVolume);
     void AddChunkSchedule(RTSampleChunk chunk);
-    int m_samplesInBuffer = 0;
+
+    //samples queued but not yet handed to the mixer, counted from the moment they are scheduled
+    //(so the game thread sees chunks that are still in flight) until OnGenerateAudio consumes them.
+    int GetSamplesQueued() const { return m_samplesQueued.load(std::memory_order_relaxed); }
+    //diagnostics: mixer callbacks that ran out of queued audio (read and reset by the per-second log)
+    int TakeUnderrunCount() { return m_underruns.exchange(0, std::memory_order_relaxed); }
+    int m_samplesInBuffer = 0; //legacy: same thing but only refreshed after each audio callback
 
 private:
 
@@ -70,6 +77,8 @@ private:
     float Volume = 1.0f;
     float m_sampleRate = 0;
     float m_lastSampleWritten = 0;
+    std::atomic<int> m_samplesQueued{0};
+    std::atomic<int> m_underruns{0};
     list< RTSampleChunk> m_chunkList;
 };
 

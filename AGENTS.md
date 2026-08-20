@@ -362,6 +362,35 @@ but burns the 5.6 escape hatch like any other resave.
   twin for the harness: `holo.DepthScale <mult>` (clamped 0.2-5.0). NES Select is Tab now (was
   Backslash), and the old A-key "auto adjust audio" hotkey is REMOVED (it also collided with
   WASD left; per-frame audio stats code went with it).
+- AUDIO (Aug 2026): the libretro batch callback (LibretroManager.cpp) feeds mono float chunks to
+  RTBufferGenerator with DYNAMIC RATE CONTROL: each chunk is linearly resampled by up to +/-0.5%
+  so the queue hovers at AUDIO_TARGET_QUEUED_SAMPLES (2400 = 50ms at 48k); GetSamplesQueued() is
+  an atomic that already counts scheduled-but-unconsumed chunks. Do NOT bring back a hard
+  "skip the frame if the buffer is over N" gate: the CPU pacing clock and the DAC clock drift,
+  so a plain gate drops a whole frame (or underruns) every few seconds = audible clicks, and a
+  bigger buffer only changes how often. The x4 hard drop that remains is a stall safety valve.
+  DefaultEngine.ini runs the mixer at 1024-frame callbacks with 1 buffer enqueued (low latency);
+  raise AudioNumBuffersToEnqueue to 2 first if glitches ever come back on a slow machine.
+  THE ACTUAL CLICK SOURCE (found Aug 2026, a ~90ms game-thread stall every 5.0s): UE's
+  DefaultViewportMouseLockMode=LockOnCapture re-clips the cursor every frame while the cursor sits
+  inside the game window (60 WM_MOUSEMOVE/s with nobody touching the mouse), and Windows answers
+  that with a ~80-120ms stall in a USER32 syscall every 5 seconds. Since the core (hence audio) only
+  runs on the game thread, every stall was a hole in the sound. It only reproduces with the cursor
+  INSIDE the game window (which is where it is after you click the window to play), which is why
+  harness runs with the cursor parked elsewhere looked clean. Fix: DefaultInput.ini
+  DefaultViewportMouseLockMode=DoNotLock (the game never uses the mouse). Proven A/B in -game:
+  LockOnCapture 8 stalls/30s, DoNotLock 0. Do not set it back to LockOnCapture.
+  Hardening that went in alongside (keep it): the pacer deadline is phase-locked (+= n*interval;
+  the old "= now" accumulated sleep overshoot and beat against vsync), Update runs however many
+  emulator frames are owed by the wall clock (cap 3, resyncs after a longer stall/pause) so a
+  late tick doesn't starve audio, and the audio feed uses rate control (above). Diagnostics that
+  stay: the per-second FPS log line reports "audio: N queued, N underruns, N dropped, N catch-up
+  frames" (healthy play = 0/0/0; the help-screen pause legitimately logs ~48 underruns/s since
+  no audio is produced) and any tick gap over 35ms logs "STALL at <t>: ... (emu / pace wait /
+  engine-other)". The stat dumphitches trick (-ExecCmds="t.HitchFrameTimeThreshold 40, stat
+  dumphitches" on an editor -game run) showed the stall as FrameTime "Self": in 5.8 neither
+  PumpMessages nor PollGameDeviceState has a stat scope, so "Self" there means the message pump
+  or gamepad polling.
 - BRIDGE DISCOVERY (Aug 2026, laptop field bug): the in-process Bridge SDK (`ThirdParty/.../bridge.h`)
   finds `bridge_inproc.dll` ONLY via the PER-USER `%APPDATA%\Looking Glass\Bridge\settings.json`
   `install_locations` list, which the installer writes only for the account that ran it. On a

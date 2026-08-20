@@ -37,6 +37,7 @@ int32 RTBufferGenerator::OnGenerateAudio(float* OutAudio, int32 NumSamples)
             //insert audio from this chunk
             // LogMsg("Processing chunk...");
             //copy up to the # of the sames requested, if we can
+            const int samplesWrittenBeforeChunk = samplesWritten;
 
             for (int i=m_chunkList.front().curPos; i < m_chunkList.front().validSamples; i++)
             {
@@ -48,6 +49,7 @@ int32 RTBufferGenerator::OnGenerateAudio(float* OutAudio, int32 NumSamples)
                     break;
                 }
             }
+            m_samplesQueued.fetch_sub(samplesWritten - samplesWrittenBeforeChunk, std::memory_order_relaxed);
             if (m_chunkList.front().curPos == m_chunkList.front().validSamples)
             {
                 //done with this chunk, get rid of it
@@ -63,6 +65,7 @@ int32 RTBufferGenerator::OnGenerateAudio(float* OutAudio, int32 NumSamples)
     {
         //filling the rest with blanks, if we don't it will gve
         //"Procedural USoundWave is reinitializing even though it is actively generating audio. Sound must be stopped before playing again."
+        m_underruns.fetch_add(1, std::memory_order_relaxed);
 #if UE_BUILD_DEBUG
        // LogMsg("Buffer underrun - wrote %d samples although %d was requested", samplesWritten, NumSamples);
 #endif
@@ -70,7 +73,7 @@ int32 RTBufferGenerator::OnGenerateAudio(float* OutAudio, int32 NumSamples)
         {
             int lastSampleWritten = samplesWritten-1;
 
-            if (lastSampleWritten > 0)
+            if (lastSampleWritten >= 0)
             {
                 OutAudio[samplesWritten++] = OutAudio[lastSampleWritten]; //repeat last thing
             }
@@ -118,6 +121,7 @@ void RTBufferGenerator::AddChunk(RTSampleChunk chunk)
 //match the actual framerate, it just depends on if the audio buffer needs filling or not(?)
 void RTBufferGenerator::AddChunkSchedule(RTSampleChunk chunk)
 {
+    m_samplesQueued.fetch_add(chunk.validSamples, std::memory_order_relaxed);
     SynthCommand([this, chunk]()
         {
             AddChunk(chunk);
