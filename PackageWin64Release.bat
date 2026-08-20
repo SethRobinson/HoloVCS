@@ -15,7 +15,15 @@ mkdir %APP_BUILD_DIR%
 cd ..
 
 :Note - this packages the flat (non Looking Glass) version.  UE5 stages into a "Windows" dir, not "WindowsNoEditor" like UE4 did.
-call %UE_DIR%\Engine\Build\BatchFiles\RunUAT -ScriptsForProject=%UPROJECT% BuildCookRun -project=%UPROJECT% -noP4 -clientconfig=Shipping -nocompileeditor -installed -unrealexe=%UE_DIR%\Engine\Binaries\Win64\UnrealEditor-Cmd.exe -utf8output -platform=Win64 -targetplatform=Win64 -build -cook -map=NewMap_Flat -unversionedcookedcontent -pak -distribution -SkipCookingEditorContent -compressed -stage -package -stagingdirectory=%APP_PATH%/dist/%APP_BUILD_DIR%/
+:-prereqs bundles vc_redist so the bootstrap exe can offer to install the MSVC runtime instead of
+:showing a dead-end "component required" error on machines without it; -applocaldirectory stages the
+:CRT dlls next to the Shipping exe so the game (and the libretro cores) run even without it installed.
+call %UE_DIR%\Engine\Build\BatchFiles\RunUAT -ScriptsForProject=%UPROJECT% BuildCookRun -project=%UPROJECT% -noP4 -clientconfig=Shipping -nocompileeditor -installed -unrealexe=%UE_DIR%\Engine\Binaries\Win64\UnrealEditor-Cmd.exe -utf8output -platform=Win64 -targetplatform=Win64 -build -cook -map=NewMap_Flat -unversionedcookedcontent -pak -distribution -prereqs -applocaldirectory="%UE_DIR%\Engine\Binaries\ThirdParty\AppLocalDependencies" -SkipCookingEditorContent -compressed -stage -package -stagingdirectory=%APP_PATH%/dist/%APP_BUILD_DIR%/
+
+:Fail loudly if the runtime shipping pieces did not stage - their absence is exactly the bad
+:first-run experience this guards against.
+if not exist "%APP_PATH%\dist\%APP_BUILD_DIR%\Windows\Engine\Extras\Redist\en-us\vc_redist.x64.exe" echo ERROR: vc_redist.x64.exe missing from stage && pause && exit /b 1
+if not exist "%APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%STAGED_PROJ%\Binaries\Win64\msvcp140.dll" echo ERROR: app-local CRT dlls missing from stage && pause && exit /b 1
 
 echo deleting pdb files to make things smaller
 del /s "dist\%APP_BUILD_DIR%\*.pdb"

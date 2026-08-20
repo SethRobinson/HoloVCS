@@ -2,6 +2,7 @@
 :Builds the flat (non Looking Glass) version as a Shipping release, stages it to dist\win64_test,
 :copies the core dlls and roms in, then runs it.  For local testing - no signing, no zip, roms
 :are NOT scrubbed, so never distribute this folder.  Use PackageWin64Release.bat for real releases.
+:Pass "nolaunch" as the first argument to skip launching at the end.
 
 setlocal
 SET UE_DIR=F:\UnrealEngine\UE_5.8
@@ -26,7 +27,10 @@ if exist "%STAGE_DIR%\Windows\*.sav0" (
 	copy /Y "%STAGE_DIR%\Windows\*.sav0" "%SAV_KEEP%" >nul
 )
 
-call "%UE_DIR%\Engine\Build\BatchFiles\RunUAT" -ScriptsForProject="%UPROJECT%" BuildCookRun -project="%UPROJECT%" -noP4 -clientconfig=Shipping -nocompileeditor -installed -unrealexe="%UE_DIR%\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" -utf8output -platform=Win64 -targetplatform=Win64 -build -cook -map=NewMap_Flat -unversionedcookedcontent -pak -SkipCookingEditorContent -compressed -stage -package -stagingdirectory="%STAGE_DIR%"
+:-prereqs bundles vc_redist so the bootstrap exe can offer to install the MSVC runtime instead of
+:showing a dead-end "component required" error on machines without it; -applocaldirectory stages the
+:CRT dlls next to the Shipping exe so the game (and the libretro cores) run even without it installed.
+call "%UE_DIR%\Engine\Build\BatchFiles\RunUAT" -ScriptsForProject="%UPROJECT%" BuildCookRun -project="%UPROJECT%" -noP4 -clientconfig=Shipping -nocompileeditor -installed -unrealexe="%UE_DIR%\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" -utf8output -platform=Win64 -targetplatform=Win64 -build -cook -map=NewMap_Flat -unversionedcookedcontent -pak -prereqs -applocaldirectory="%UE_DIR%\Engine\Binaries\ThirdParty\AppLocalDependencies" -SkipCookingEditorContent -compressed -stage -package -stagingdirectory="%STAGE_DIR%"
 if errorlevel 1 echo BuildCookRun FAILED && exit /b 1
 
 echo Copying core dlls and roms into the staged build...
@@ -44,7 +48,10 @@ if exist "%SAV_KEEP%\*.sav0" (
 	echo Restored save states.
 )
 
+if /I "%~1"=="nolaunch" goto :done
+
 echo Launching...
 start "" "%STAGE_DIR%\Windows\%APP_NAME%.exe" -windowed -resx=1280 -resy=720
 
+:done
 endlocal

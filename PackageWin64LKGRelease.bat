@@ -68,7 +68,10 @@ if exist "%ZIP_PATH%" (
 )
 
 echo Cooking and staging the Looking Glass Shipping build...
-call "%UE_DIR%\Engine\Build\BatchFiles\RunUAT.bat" -ScriptsForProject="%UPROJECT%" BuildCookRun -project="%UPROJECT%" -target=%TARGET_NAME% -noP4 -clientconfig=Shipping -nocompileeditor -installed -unrealexe="%UE_DIR%\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" -utf8output -platform=Win64 -targetplatform=Win64 -build -cook -map=/Game/Maps/NewMap -unversionedcookedcontent -pak -distribution -prereqs -SkipCookingEditorContent -compressed -stage -package -stagingdirectory="%STAGE_DIR%"
+rem -prereqs bundles vc_redist so the bootstrap exe can offer to install the MSVC runtime instead of
+rem showing a dead-end "component required" error on machines without it; -applocaldirectory stages
+rem the CRT dlls next to the Shipping exe so the game (and libretro cores) run even without it installed.
+call "%UE_DIR%\Engine\Build\BatchFiles\RunUAT.bat" -ScriptsForProject="%UPROJECT%" BuildCookRun -project="%UPROJECT%" -target=%TARGET_NAME% -noP4 -clientconfig=Shipping -nocompileeditor -installed -unrealexe="%UE_DIR%\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" -utf8output -platform=Win64 -targetplatform=Win64 -build -cook -map=/Game/Maps/NewMap -unversionedcookedcontent -pak -distribution -prereqs -applocaldirectory="%UE_DIR%\Engine\Binaries\ThirdParty\AppLocalDependencies" -SkipCookingEditorContent -compressed -stage -package -stagingdirectory="%STAGE_DIR%"
 if errorlevel 1 goto :fail
 
 if not exist "%WINDOWS_DIR%\%TARGET_NAME%.exe" (
@@ -81,6 +84,10 @@ if not exist "%WINDOWS_DIR%\%STAGED_PROJ%\Binaries\Win64\%TARGET_NAME%-Win64-Shi
 )
 if not exist "%WINDOWS_DIR%\Engine\Extras\Redist\en-us\vc_redist.x64.exe" (
 	echo Visual C++ runtime installer is missing
+	goto :fail
+)
+if not exist "%WINDOWS_DIR%\%STAGED_PROJ%\Binaries\Win64\msvcp140.dll" (
+	echo App-local Visual C++ runtime dlls are missing
 	goto :fail
 )
 

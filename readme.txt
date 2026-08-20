@@ -56,6 +56,8 @@ Troubleshooting
 ---------------
 
 - Run HoloVCSLKG.exe from the top-level HoloVCS folder.
+- If Windows reports a missing Microsoft Visual C++ runtime, run the bundled installer at
+  Engine\Extras\Redist\en-us\vc_redist.x64.exe (HoloVCSLKG.exe normally offers this automatically).
 - Keep Looking Glass Bridge installed and running so HoloVCS can read the display calibration.
 - Configure the Looking Glass as an extended display at its native resolution and 100% Windows scaling.
 - If no ROM is found, verify its extension and folder.

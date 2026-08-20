@@ -31,7 +31,10 @@ if exist "%STAGE_DIR%\Windows\*.sav0" (
 	copy /Y "%STAGE_DIR%\Windows\*.sav0" "%SAV_KEEP%" >nul
 )
 
-call "%UE_DIR%\Engine\Build\BatchFiles\RunUAT" -ScriptsForProject="%UPROJECT%" BuildCookRun -project="%UPROJECT%" -target=HoloVCSLKG -noP4 -clientconfig=Shipping -nocompileeditor -installed -unrealexe="%UE_DIR%\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" -utf8output -platform=Win64 -targetplatform=Win64 -build -cook -map=/Game/Maps/NewMap -unversionedcookedcontent -pak -SkipCookingEditorContent -compressed -stage -package -stagingdirectory="%STAGE_DIR%"
+:-prereqs bundles vc_redist so the bootstrap exe can offer to install the MSVC runtime instead of
+:showing a dead-end "component required" error on machines without it; -applocaldirectory stages the
+:CRT dlls next to the Shipping exe so the game (and the libretro cores) run even without it installed.
+call "%UE_DIR%\Engine\Build\BatchFiles\RunUAT" -ScriptsForProject="%UPROJECT%" BuildCookRun -project="%UPROJECT%" -target=HoloVCSLKG -noP4 -clientconfig=Shipping -nocompileeditor -installed -unrealexe="%UE_DIR%\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" -utf8output -platform=Win64 -targetplatform=Win64 -build -cook -map=/Game/Maps/NewMap -unversionedcookedcontent -pak -prereqs -applocaldirectory="%UE_DIR%\Engine\Binaries\ThirdParty\AppLocalDependencies" -SkipCookingEditorContent -compressed -stage -package -stagingdirectory="%STAGE_DIR%"
 if errorlevel 1 echo BuildCookRun FAILED && exit /b 1
 
 echo Copying core dlls and roms into the staged build...

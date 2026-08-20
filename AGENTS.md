@@ -588,6 +588,18 @@ overworld start).
   launched for verification first, then launch fresh as the final action). Also print the plain
   path for reference. `RunLKG.bat` in the project root launches the staged LKG build manually.
 - `UploadReleaseToRTsoft.bat` SCPs the zip to rtsoft.com.
+- MSVC RUNTIME SHIPPING (Aug 2026, after a laptop hit a dead-end "MS Visual C++ redistributable is
+  missing" popup): all four stage scripts (both Package*Release bats and both BuildAndRun* test
+  bats) pass `-prereqs` AND `-applocaldirectory=<engine>\Engine\Binaries\ThirdParty\AppLocalDependencies`
+  to BuildCookRun. `-prereqs` stages `Engine\Extras\Redist\en-us\vc_redist.x64.exe`; UE's generated
+  bootstrap exe (the top-level exe) ALWAYS checks the installed VC++ runtime at launch and, when the
+  check fails, offers to run that bundled installer then launches the game - without `-prereqs` the
+  same check shows an unfixable error popup instead, which is exactly the bad experience. The
+  app-local flag additionally copies the Microsoft CRT/UCRT dlls next to the Shipping exe (both
+  staged Binaries\Win64 dirs) so the game and the libretro cores also run when launched directly
+  with no runtime installed. Both release scripts fail if vc_redist or the app-local msvcp140.dll
+  did not stage. The Microsoft dlls and installers are already Microsoft-signed; do not re-sign them.
+  Both test bats accept `nolaunch` as the first argument now.
 - The README's NES demo video is hosted at `https://www.rtsoft.com/files/HoloNes.mp4`; its source
   master is `U:\Personal Pics\MoviesFinished\HoloNes.mp4`, and the checked-in clickable thumbnail
   is `Media/holones_video_thumb.jpg`. Upload replacements through
