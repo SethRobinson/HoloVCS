@@ -1,81 +1,76 @@
-HoloVCS - Atari 2600 and NES emulation that can play specific pre-setup games in a weird psuedo 3D on the Looking Glass Portrait
+HoloVCS v1.4 - Looking Glass Windows release
+================================================
 
-To run this, you need:
+HoloVCS runs Atari 2600, NES, and Virtual Boy games as layered 3D dioramas on Looking Glass holographic displays.
 
-- A Looking Glass holographic display device connected to a Windows computer via hdmi
-- The Holoplay driver installed
-- A beefy ass graphics card
-- A game rom (.a26/.nes/.vb file) which needs to be put in the /atari2600/vb/ness dir, depending on the system it's for.
+Requirements
+------------
 
-If you don't have a holographic device the screen will look like blurry garbage.  If you want a build that works in 2D for some reason, I guess I could do one though...
+- Windows 10 or 11
+- A connected Looking Glass display in desktop/extended-display mode
+- Looking Glass Bridge 2.5.1 or newer:
+  https://lookingglassfactory.com/software-downloads
+- Your own legally obtained game ROMs. No ROMs are included in this package.
 
-Supported games (doesn't mean they are perfect but... work 'enough'):
+Put ROMs in these folders:
 
-  Pitfall! (Atari 2600)
-  Super Mario Bros (NES)
-  Castlevania (NES)
+- Atari 2600 `.a26` files: atari2600
+- NES `.nes` files: nes
+- Virtual Boy `.vb` files: vb
 
- -= Virtual Boy =-
+The exact filenames do not matter. HoloVCS recognizes hand-tuned profiles by ROM checksum. Unsupported Atari 2600 and NES games use default layering. Virtual Boy games use the core's native split-layer data.
 
-  Because the 3D data is not hand coded (it comes from the game itself) they all do 'something', but some work better than others.
+Hand-tuned profiles in v1.4
+---------------------------
 
-  Games that look half decent:
+- Pitfall! (Atari 2600)
+- Super Mario Bros. (NES)
+- Castlevania, Rev A (NES)
+- Tetris (NES)
+- The Legend of Zelda, PRG 1 (NES)
+- Wario Land and Jack Bros. have additional Virtual Boy-specific setup
 
-  Jack Bros
-  Panic Bomer
-  Teleroboxer (flickers between rounds)
-  Vertical Force
-  Wario Land
-  
+Controls
+--------
 
-The actual filenames don't matter, it detects supported games by checksum.  Note: There are two versions of Castlevania NES roms out there, if it's not detected and playing in 3D you might have the wrong one.
+Press ? at any time to show the in-game control screen. The release opens this screen on startup and pauses until you dismiss it.
 
-It will run unsupported games in a normal 2D mode.
+WASD / Arrow keys   Move / D-pad
+Space               A button
+Ctrl / Left click   B button
+Enter               Start
+Tab                 Select
+, / .               Previous / next game
+R                   Reset game
+P                   Pause
+S / L               Save / load state
+[ / ]               Less / more 3D depth
+= / -               Zoom in / out
+0                   Toggle FPS cap
+1 through 5         Frameskip
+6 / 7 / 8           Smoothing / shadows / lighting
 
-I've only tested with the Looking Glass Portrait and the OG 8.9.
+Gamepads are supported. Virtual Boy controls also use the additional gamepad buttons, shoulders, triggers, and sticks.
 
-** SETUP **
+Troubleshooting
+---------------
 
-When it starts, it will show a menu with the hotkeys:
+- Run HoloVCSLKG.exe from the top-level HoloVCS folder.
+- Keep Looking Glass Bridge installed and running so HoloVCS can read the display calibration.
+- Configure the Looking Glass as an extended display at its native resolution and 100% Windows scaling.
+- If no ROM is found, verify its extension and folder.
+- Check log.txt next to HoloVCSLKG.exe for startup and emulator details.
+- Press 1 or 2 if a game cannot maintain its native speed. Press 0 only when measuring uncapped performance.
 
-Arrow keys: Move
-Ctrl, Space, Enter: A and B and Start buttons (gamepad supported too)
-Return: Reset game
-Num 0 through 5:  Set frameskip (higher makes the game run faster by not showing every frame)
-A: Adjust audio to match game speed (experimental but can help with audio problems)
--/+:  Zoom in/out.  Hoping this will help with other Looking Glass sizes.
-S: Save state
-L: Load state
-> and <:  Cycle through detected games (any roms you've placed in the atari2600 and nes directories)
+Source code and licenses
+------------------------
 
-About speed: I can get 60 fps with NES games but only around 45 on 2600 games.  (5ghz with Nvidia 3090)  If a game is too slow, press 1 or 2 for frame skipping modes.  If audio is weird, press A to cause
-audio to sync with the recent framerate.  (gets rid of pops and scratches usually, but pitch/speed will be wrong)
+The corresponding HoloVCS source, the modified source for all three GPL-2.0 emulator cores, and the UE 5.8 Looking Glass plugin port are available at:
 
-If you have problems, check the log.txt file for clues.  (created in the root dir where HoloVCS.exe is)
+https://github.com/SethRobinson/HoloVCS
 
-Q. Does it support other games besides these?
+License copies are included in the licenses folder. The emulator cores are separate DLLs loaded at runtime and are not linked into the Unreal executable.
 
-A. It will play unsupported games without 3d plane effects, so not really
-
-Q. I noticed you’re using emulators via a libretro dll interface, does this mean I can pop in more emulator types?
-
-A. Yes!  Will, no.  I mean, each requires customizations to work properly and do 3d stuff.
-
-Q. The snake in Pitfall! is mostly invisible!
-
-A. This is a known bug, sorry. I mean, it’s a ghost snake now
-
-Q. Why do some levels look weird or broken?
-
-A. Sorry, I only made it so the first levels works, didn't worry about later stuff.  It is possible to detect current level/environments via PPU memory and adjust rendering to match the situation though.
-
-Q. Why is it called HoloVCS?
-
-A. It originally only supported Atari VCS emulation.  Too lazy to change it
-
-If you want to help add support for more games and cores, please check out the project's github.
-
--Seth A. Robinson (seth@rtsoft.com)
-
-www.rtsoft.com
-www.codedojo.com
+Written by Seth A. Robinson
+https://www.rtsoft.com
+https://www.codedojo.com

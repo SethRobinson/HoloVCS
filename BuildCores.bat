@@ -8,6 +8,10 @@ if "%MSBUILD%"=="" echo Couldn't find MSBuild, is Visual Studio installed? && ex
 echo Using %MSBUILD%
 
 set OUTDIR=%~dp0cores\_built\
+set "BINARYDIR=%~dp0Binaries\Win64"
+
+if not exist "%BINARYDIR%" mkdir "%BINARYDIR%"
+if errorlevel 1 echo Couldn't create %BINARYDIR% && exit /b 1
 
 "%MSBUILD%" "%~dp0cores\fceumm\msvc\fceumm_libretro.vcxproj" /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OutDir=%OUTDIR% /m /v:m /nologo
 if errorlevel 1 echo fceumm build FAILED && exit /b 1
@@ -18,8 +22,11 @@ if errorlevel 1 echo beetle-vb build FAILED && exit /b 1
 "%MSBUILD%" "%~dp0cores\stella\src\libretro\Stella.vcxproj" /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:OutDir=%OUTDIR% /m /v:m /nologo
 if errorlevel 1 echo stella build FAILED && exit /b 1
 
-copy /Y "%OUTDIR%fceumm_libretro.dll" "%~dp0Binaries\Win64\"
-copy /Y "%OUTDIR%beetle-vb-libretro.dll" "%~dp0Binaries\Win64\"
-copy /Y "%OUTDIR%stella_libretro.dll" "%~dp0Binaries\Win64\"
+copy /Y "%OUTDIR%fceumm_libretro.dll" "%BINARYDIR%\fceumm_libretro.dll"
+if errorlevel 1 echo Couldn't copy fceumm_libretro.dll && exit /b 1
+copy /Y "%OUTDIR%beetle-vb-libretro.dll" "%BINARYDIR%\beetle-vb-libretro.dll"
+if errorlevel 1 echo Couldn't copy beetle-vb-libretro.dll && exit /b 1
+copy /Y "%OUTDIR%stella_libretro.dll" "%BINARYDIR%\stella_libretro.dll"
+if errorlevel 1 echo Couldn't copy stella_libretro.dll && exit /b 1
 
 echo All three cores built and copied to Binaries\Win64

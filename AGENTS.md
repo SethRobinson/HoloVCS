@@ -86,8 +86,9 @@ but burns the 5.6 escape hatch like any other resave.
   with the capture actor, plugin takes over the game viewport (draws black without a device; that is
   expected - use the flat uproject for screen dev). The surprising good news: the scene-capture fork
   (`LookingGlassSceneCaptureRendering.cpp`) compiled against 5.8 without changes.
-- VERIFIED WORKING on the Portrait (Aug 2026): the hologram renders full-size on the device. Two
-  more fixes were needed beyond compiling:
+- Hardware-tested on the Looking Glass Portrait, Looking Glass Go, and original 8.9-inch Looking
+  Glass. The Aug 2026 port validation and performance tuning were performed on the Portrait, where
+  the hologram renders full-size on the device. Two more fixes were needed beyond compiling:
   - The map's capture actor was placed/sized for the old 5.6-era world scale. The game module now
     auto-fits it to the layer AABB on every layer rebuild (FitLookingGlassCaptureToLayers in
     LibretroManagerActor.cpp - moves the actor to the AABB center, calls SetSize via reflection,
@@ -111,7 +112,9 @@ but burns the 5.6 escape hatch like any other resave.
 - Startup ROM: `-rom=partialname` (e.g. `-rom=itfall`) overrides the hardcoded startup ROM - much
   faster than cycling with ","/"." for testing. NOTE: the ROM-cycle keys stopped responding via
   SendKeys after the VB core loaded; unresolved, use -rom= instead (or the harness
-  `key Comma`/`key Period` commands, which need no window focus at all).
+  `key Comma`/`key Period` commands, which need no window focus at all). The hardcoded filename
+  fragment and default index are only preferences: when absent or out of range, startup falls back
+  to the first discovered ROM so renamed files can still be recognized by checksum after loading.
 - FPS counter: hardware builds show FPS on the in-world status text (5x size) once per second and
   log "N FPS" to the log; the plugin also logs per-phase frame times ("LKG frame phases") once a
   second from the viewport client.
@@ -388,6 +391,10 @@ but burns the 5.6 escape hatch like any other resave.
     (see HoloVCS.Build.cs include path), so there is exactly one copy.
 - `BuildCores.bat` builds all three (msbuild, Release x64, v143 toolset) into `cores/_built/` and
   copies the DLLs to `Binaries/Win64`. Verified building with VS2026's MSVC 14.44 and running on UE 5.8.
+- The generated `Binaries/Win64/*libretro.dll` files are intentionally ignored and must not be
+  tracked or force-added. Build them from the vendored sources with `BuildCores.bat`; release
+  packaging rebuilds them before staging. The core source and build recipes, not compiled DLLs,
+  are the repository artifacts.
 - `LibretroManager::LoadCore` loads them with LoadLibraryA - bare name first (packaged builds, exe
   sits next to the DLLs), then `<ProjectDir>/Binaries/Win64/` (editor runs).
 - **NEVER statically link the cores into the game module again.** GPL-2.0 and the Unreal Engine
@@ -530,7 +537,9 @@ overworld start).
   SecurityToken live in `Config/UserEngine.ini`, which is gitignored. NEVER put them in
   Config/DefaultEngine.ini or any tracked file; this repo has a public GitHub remote. The keystore
   file itself lives outside the repo (`D:\projects\protonGITFull\AppleStuff\android\`) and must stay
-  out of git everywhere.
+  out of git everywhere. Unreal stages user config by default, so `Config/DefaultGame.ini` must keep
+  `+DisallowedConfigFiles=HoloVCS/Config/UserEngine.ini` under `[Staging]`; release packaging also
+  verifies that `UserEngine.ini` is absent from the cooked pak.
 
 ## Git
 
@@ -541,6 +550,18 @@ overworld start).
 
 ## Packaging / release
 
+- Keep these version references synchronized whenever bumping a release:
+  `Config/DefaultGame.ini` (`ProjectVersion`, four-part form),
+  `Source/HoloVCS/LibretroManager.cpp` (`G_VERSION_STRING`), and every version reference in the
+  packaged `readme.txt` (including its title and any versioned section headings). Search the tracked
+  tree for the old version afterward so a stale user-facing value is not missed.
+- `README.md` has a `Latest versions` section. For every version bump, add the new version and its
+  release date at the top of that section, followed by a short user-facing summary of what changed.
+  Keep older entries below it as release history. Use the actual release date in `Month D, YYYY`
+  form, not the build date of an earlier test package.
+- After synchronizing the version and README entry, rebuild the appropriate Shipping release and
+  release zip so the staged executable, packaged readme, and archive all contain the new version.
+  Uploading or pushing still requires Seth's explicit permission.
 - `PackageWin64Release.bat` packages the FLAT version for UE 5.8 (stages into `dist\win64_release\Windows`,
   scrubs ROMs before zipping, signs binaries, produces HoloVCS_Win64.zip). It needs
   `..\base_setup.bat` (defines PROJECT_DIR, RT_PROJECTS, PROTON_DIR) and `app_info_setup.bat`
@@ -554,6 +575,12 @@ overworld start).
   `HoloVCSLKG.exe`), then launches. Pass `nolaunch` to skip the launch. Never run the two stage
   bats concurrently - they share Saved\Cooked (alternating flavors just recook, which is safe but
   slower).
+- `PackageWin64LKGRelease.bat` creates the signed Looking Glass distribution in
+  `dist\win64_lkg_release\Windows` and the legacy public-download filename `HoloVCS_Win64.zip`.
+  It rebuilds all cores, forces the LKG editor modules to rebuild before cooking, copies only ROM
+  directory placeholder text files, includes project/plugin/core licenses, and fails if a ROM or
+  save state reaches the release stage. It also repairs UE 5.8's out-of-bounds certificate-table
+  entry in the generated bootstrap exe before Authenticode signing. It does not upload anything.
 - Standing preference (Seth): after finishing code changes, ALWAYS build the relevant Shipping
   test build (BuildAndRunWin64Release.bat / BuildAndRunWin64LKG.bat). file:/// links to exes are
   NOT clickable in the VSCode chat panel (security) - don't bother with them. Instead, END THE
@@ -561,6 +588,11 @@ overworld start).
   launched for verification first, then launch fresh as the final action). Also print the plain
   path for reference. `RunLKG.bat` in the project root launches the staged LKG build manually.
 - `UploadReleaseToRTsoft.bat` SCPs the zip to rtsoft.com.
+- The README's NES demo video is hosted at `https://www.rtsoft.com/files/HoloNes.mp4`; its source
+  master is `U:\Personal Pics\MoviesFinished\HoloNes.mp4`, and the checked-in clickable thumbnail
+  is `Media/holones_video_thumb.jpg`. Upload replacements through
+  `%RT_PROJECTS%\UploadFileToRTsoftSSH.bat <file> files`; suppress helper output because publishing
+  helpers may contain or echo credentials.
 - The Android port was dropped entirely (scripts, config, and the static-core hack that existed for
   it). If it ever comes back, the cores must ship as separate .so files there too, same GPL reason.
 

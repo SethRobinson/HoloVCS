@@ -58,7 +58,7 @@ THIRD_PARTY_INCLUDES_END
 
 const unsigned short ASYNC_BUTTON_DOWN_MSB = 0x8000;
 
-string G_VERSION_STRING = "HoloVCS V1.3";
+string G_VERSION_STRING = "HoloVCS V1.4";
 
 LibretroManager* g_pLibretroManager = NULL; //I don't want to fool with caring how to get Unreal globals correctly
 void retro_video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch);
@@ -855,6 +855,15 @@ void LibretroManager::InitEmulator()
 #endif
 	}
 
+	// The default ROM index and startup filename fragment are only preferences. A release may
+	// contain fewer ROMs, or the user may rename a ROM and rely on checksum-based recognition.
+	// Always establish a valid fallback before attempting the optional filename match.
+	if (!m_romNameFileList.IsValidIndex(m_activeRomIndex) ||
+		!m_emulatorIDList.IsValidIndex(m_activeRomIndex))
+	{
+		m_activeRomIndex = 0;
+	}
+
 	//-rom=partialname on the command line overrides the hardcoded startup rom
 	FString romOverride;
 	if (FParse::Value(FCommandLine::Get(), TEXT("rom="), romOverride) && !romOverride.IsEmpty())
@@ -864,7 +873,11 @@ void LibretroManager::InitEmulator()
 
 	if (g_loadStateOnFirstLoad && !g_partialRomNameToLoadOnStartup.empty())
 	{
-		SetRomToLoadByPartialFileName(g_partialRomNameToLoadOnStartup);
+		if (!SetRomToLoadByPartialFileName(g_partialRomNameToLoadOnStartup))
+		{
+			LogMsg("Startup ROM preference was not found; loading %s instead",
+				toString(m_romNameFileList[m_activeRomIndex]).c_str());
+		}
 
 		g_loadStateOnFirstLoad = false;
 		g_partialRomNameToLoadOnStartup = "";
