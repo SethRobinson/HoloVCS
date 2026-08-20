@@ -46,6 +46,8 @@ del %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\vb\*.vb
 del %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\*.sav0
 rmdir /S /Q %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\saves 2>nul
 echo Signing .exe's...
+:sign.bat pauses after every run unless NO_PAUSE is set - without this each signed file needs an ENTER press
+SET NO_PAUSE=1
 
 call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%APP_NAME%.exe
 call %RT_PROJECTS%\Signing\sign.bat %APP_PATH%\dist\%APP_BUILD_DIR%\Windows\%STAGED_PROJ%\Binaries\Win64\%APP_NAME%-Win64-Shipping.exe "%APP_NAME%"

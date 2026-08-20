@@ -184,9 +184,12 @@ endlocal
 exit /b 0
 
 :sign
-rem sign.bat expects description, URL, and a non-empty fourth argument to avoid its interactive pause.
+rem sign.bat pauses after every run unless the NO_PAUSE env var is non-empty (its arguments have no
+rem say in that, despite what an older comment here claimed - the "pause" looked like a hang because
+rem the output is suppressed). setlocal keeps the variable from leaking out of this script.
 rem Suppress its output because the third-party helper echoes its hardware-token PIN.
-call "%SIGN_SCRIPT%" %~1 "%PRODUCT_NAME%" "https://www.rtsoft.com" nopause >nul 2>&1
+set "NO_PAUSE=1"
+call "%SIGN_SCRIPT%" %~1 "%PRODUCT_NAME%" "https://www.rtsoft.com" >nul 2>&1
 if errorlevel 1 (
 	echo Signing failed for %~1
 	exit /b 1

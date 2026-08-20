@@ -590,6 +590,11 @@ overworld start).
   launched for verification first, then launch fresh as the final action). Also print the plain
   path for reference. `RunLKG.bat` in the project root launches the staged LKG build manually.
 - `UploadReleaseToRTsoft.bat` SCPs the zip to rtsoft.com.
+- The shared signing helper (`%RT_PROJECTS%\Signing\sign.bat`) ends with a `pause` unless the
+  `NO_PAUSE` env var is non-empty; its ARGUMENTS cannot suppress that (a "nopause" 4th arg used to
+  be passed and did nothing - each signed file silently waited for an ENTER because the helper's
+  output is redirected to nul). Both release scripts set NO_PAUSE=1 before signing. The helper also
+  echoes its hardware-token PIN, which is why its output stays suppressed.
 - MSVC RUNTIME SHIPPING (Aug 2026, after a laptop hit a dead-end "MS Visual C++ redistributable is
   missing" popup): all four stage scripts (both Package*Release bats and both BuildAndRun* test
   bats) pass `-prereqs` AND `-applocaldirectory=<engine>\Engine\Binaries\ThirdParty\AppLocalDependencies`
