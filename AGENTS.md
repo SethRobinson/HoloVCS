@@ -619,6 +619,7 @@ overworld start).
 - Never add OpenAI/Codex/Claude etc as a co-author on git commits.
 - NEVER `git push` unless explicitly told to push. "Commit" means commit locally only; committing is not permission to push.
 - Commits and PRs are authored by Seth only; no AI attribution lines anywhere (no Co-Authored-By, no "Generated with" footers).
+- All work happens on `main`. NEVER create, switch to, or rename a branch without asking Seth first, and never leave the repo checked out on anything but `main`. 
 
 ## Packaging / release
 
