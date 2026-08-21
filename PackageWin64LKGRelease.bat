@@ -4,6 +4,7 @@ pushd "%~dp0"
 
 rem Builds the distributable Looking Glass package. This script never uploads anything.
 rem The public download keeps the historical HoloVCS_Win64.zip filename.
+rem Pauses when it finishes or fails - set the NOPAUSE env var to skip that (see PauseHelper.bat).
 
 call "%~dp0app_info_setup.bat"
 if errorlevel 1 goto :fail
@@ -41,8 +42,12 @@ if not exist "%SIGNTOOL%" (
 )
 
 echo Rebuilding all emulator cores from the checked-in source...
+set "HOLO_BAT_NESTED=1"
 call "%~dp0BuildCores.bat"
-if errorlevel 1 goto :fail
+rem Clearing HOLO_BAT_NESTED clobbers ERRORLEVEL, so stash the core build result first.
+set "CORES_ERROR=%ERRORLEVEL%"
+set "HOLO_BAT_NESTED="
+if not "%CORES_ERROR%"=="0" goto :fail
 
 rem The flat and LKG uprojects share one HoloVCSEditor makefile. Remove only that makefile so
 rem plugin changes cannot be skipped after a flat editor build.
@@ -179,6 +184,7 @@ if not exist "%ZIP_PATH%" (
 )
 
 echo Release package ready: %ZIP_PATH%
+call "%~dp0PauseHelper.bat"
 popd
 endlocal
 exit /b 0
@@ -207,7 +213,9 @@ popd
 goto :fail
 
 :fail
-echo Looking Glass release packaging FAILED.
+echo.
+echo *** Looking Glass release packaging FAILED ***
+call "%~dp0PauseHelper.bat"
 popd
 endlocal
 exit /b 1

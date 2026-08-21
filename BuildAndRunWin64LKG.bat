@@ -5,6 +5,7 @@
 :The packaged exe boots the hardware map (NewMap) automatically - the game module redirects
 :GameDefaultMap when the LookingGlass plugin is loaded.
 :Pass "nolaunch" as the first argument to skip launching at the end.
+:Pauses when it finishes or fails - set the NOPAUSE env var to skip that (see PauseHelper.bat).
 
 setlocal
 SET UE_DIR=F:\UnrealEngine\UE_5.8
@@ -17,8 +18,15 @@ SET UPROJECT=%~dp0HoloVCS.uproject
 SET STAGE_DIR=%~dp0dist\win64_lkg_test
 
 :Make sure the emulator core dlls exist, they get staged along with everything else
-if not exist "%~dp0Binaries\Win64\fceumm_libretro.dll" call "%~dp0BuildCores.bat"
-if not exist "%~dp0Binaries\Win64\fceumm_libretro.dll" echo Core dlls missing and BuildCores failed && exit /b 1
+if not exist "%~dp0Binaries\Win64\fceumm_libretro.dll" (
+	set "HOLO_BAT_NESTED=1"
+	call "%~dp0BuildCores.bat"
+	set "HOLO_BAT_NESTED="
+)
+if not exist "%~dp0Binaries\Win64\fceumm_libretro.dll" (
+	echo Core dlls missing and BuildCores failed
+	goto :fail
+)
 
 :Note - not wiping the old staged build on purpose, incremental is much faster for a test loop.
 :Delete dist\win64_lkg_test yourself if you want a from-scratch stage.
@@ -40,7 +48,10 @@ if exist "%STAGE_DIR%\Windows\*.sav0" (
 :showing a dead-end "component required" error on machines without it; -applocaldirectory stages the
 :CRT dlls next to the Shipping exe so the game (and the libretro cores) run even without it installed.
 call "%UE_DIR%\Engine\Build\BatchFiles\RunUAT" -ScriptsForProject="%UPROJECT%" BuildCookRun -project="%UPROJECT%" -target=HoloVCSLKG -noP4 -clientconfig=Shipping -nocompileeditor -installed -unrealexe="%UE_DIR%\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" -utf8output -platform=Win64 -targetplatform=Win64 -build -cook -map=/Game/Maps/NewMap -unversionedcookedcontent -pak -prereqs -applocaldirectory="%UE_DIR%\Engine\Binaries\ThirdParty\AppLocalDependencies" -SkipCookingEditorContent -compressed -stage -package -stagingdirectory="%STAGE_DIR%"
-if errorlevel 1 echo BuildCookRun FAILED && exit /b 1
+if errorlevel 1 (
+	echo BuildCookRun FAILED
+	goto :fail
+)
 
 echo Copying core dlls and roms into the staged build...
 copy /Y "%~dp0Binaries\Win64\stella_libretro.dll" "%STAGE_DIR%\Windows\%STAGED_PROJ%\Binaries\Win64"
@@ -64,4 +75,15 @@ echo Launching...
 start "" "%STAGE_DIR%\Windows\%APP_NAME%.exe"
 
 :done
+echo.
+echo Looking Glass test build staged in %STAGE_DIR%\Windows
+call "%~dp0PauseHelper.bat"
 endlocal
+exit /b 0
+
+:fail
+echo.
+echo *** Looking Glass test build FAILED ***
+call "%~dp0PauseHelper.bat"
+endlocal
+exit /b 1

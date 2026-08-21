@@ -622,6 +622,29 @@ overworld start).
 
 ## Packaging / release
 
+- BAT PAUSE CONVENTION (Aug 2026): every .bat in the project root pauses when it FINISHES and when
+  it FAILS, so a double-clicked window stays open long enough to read the output. Define `NOPAUSE`
+  to skip every pause: `cmd /c "set NOPAUSE=1 && PackageWin64LKGRelease.bat"`, or `$env:NOPAUSE=1`
+  first in PowerShell. ALWAYS set it when an AI or any other script runs these, otherwise the run
+  hangs on a "Press any key" prompt with no visible reason.
+- The shared implementation is `PauseHelper.bat`; scripts `call "%~dp0PauseHelper.bat"` instead of
+  using `pause` directly. Each script ends with a success message plus `exit /b 0`, and has a
+  `:fail` block that prints a FAILED banner, pauses, and exits 1; error checks `goto :fail` rather
+  than `echo something && exit /b 1`. `RunLKG.bat` is the one exception to the success pause: it has
+  nothing to report when it works, so it pauses only when the staged build is missing.
+- When one of these scripts calls another (both test bats and the LKG release script call
+  `BuildCores.bat`), the caller sets `HOLO_BAT_NESTED=1` around the call so the child does not pause
+  on top of the parent's own pause, and stashes ERRORLEVEL into a variable BEFORE clearing that flag,
+  because `set` clobbers ERRORLEVEL.
+- `NOPAUSE` (ours) is not `NO_PAUSE` (the signing helper's, see below). Keep them straight: the LKG
+  release script sets NO_PAUSE=1 for signing while its own NOPAUSE pause is still wanted.
+- Gotcha with the old `:comment` line style used in these bats: the first word after the colon is a
+  real label, so never start such a comment with "Fail" or "Done" or `goto :fail` jumps into the
+  comment instead of the error handler. Use `rem` for those lines.
+- Scripts call helpers as `call "%~dp0app_info_setup.bat"` so they work from any working directory
+  (a plain `call app_info_setup.bat` fails in shells that set NoDefaultCurrentDirectoryInExePath,
+  which is how AI-driven terminals often run).
+
 - Keep these version references synchronized whenever bumping a release:
   `Config/DefaultGame.ini` (`ProjectVersion`, four-part form),
   `Source/HoloVCS/LibretroManager.cpp` (`G_VERSION_STRING`), and every version reference in the
@@ -660,6 +683,8 @@ overworld start).
   HANDOFF BY LAUNCHING the staged build so it's already running for Seth (kill any instance you
   launched for verification first, then launch fresh as the final action). Also print the plain
   path for reference. `RunLKG.bat` in the project root launches the staged LKG build manually.
+  Run every one of these bats with NOPAUSE set (`$env:NOPAUSE=1` in PowerShell, `set NOPAUSE=1` in cmd) so
+  the end-of-script pause does not hang the automated run.
 - `UploadReleaseToRTsoft.bat` SCPs the zip to rtsoft.com.
 - The shared signing helper (`%RT_PROJECTS%\Signing\sign.bat`) ends with a `pause` unless the
   `NO_PAUSE` env var is non-empty; its ARGUMENTS cannot suppress that (a "nopause" 4th arg used to
