@@ -4,6 +4,8 @@ Atari 2600, NES, and Virtual Boy games rendered as stacked 3D layers on Looking 
 
 ![HoloVCS](Media/holovcs.gif)
 
+<a href="#download-and-play"><img src="https://img.shields.io/badge/Download_for_Windows-v1.4-2ea44f?style=for-the-badge&logo=windows&logoColor=white" alt="Download HoloVCS for Windows" height="48"></a>
+
 ## What is it?
 
 HoloVCS turns classic games into small 3D dioramas. Instead of displaying a single 2D emulator image, it separates backgrounds, platforms, characters, effects, and foreground objects into textured layers placed at different depths. On a Looking Glass display, the result can be viewed from different horizontal angles without glasses or a headset.
@@ -14,7 +16,7 @@ The Looking Glass build has been tested on three devices:
 - Looking Glass Go
 - Original 8.9-inch Looking Glass
 
-Looking Glass Bridge supplies the calibration for the connected display, and HoloVCS automatically selects the matching quilt layout and framing.
+Also note that the 3D effects mostly only work with a couple hand-tweaked games at the time of this writing. (With the exception being Virtual Boy, which is inherently 3D)
 
 ## Features
 
@@ -49,11 +51,28 @@ The custom sprite-quilt renderer reduced the measured render-thread cost of gene
 
 ## Download and play
 
-Download the ready-to-run Looking Glass Windows build: [HoloVCS_Win64.zip](https://www.rtsoft.com/files/HoloVCS_Win64.zip).
+Download the ready-to-run Looking Glass Windows build: [HoloVCS_Win64.zip](https://www.rtsoft.com/files/HoloVCS_Win64.zip).  (The executable/dlls are codesigned by me, Seth A. Robinson)
 
-The release does not contain copyrighted game ROMs. Put your own `.a26`, `.nes`, and `.vb` files in the `atari2600`, `nes`, and `vb` directories respectively. Press `?` in the game to see the current controls.
+The release does not contain copyrighted game ROMs. Put your own `.a26`, `.nes`, and `.vb` files in the `atari2600`, `nes`, and `vb` directories respectively.
+
+HoloVCS recognizes games by ROM checksum instead of filename, so you can name the files anything, but the revision has to match. These are the exact versions with hand-tuned 3D layer profiles:
+
+| Directory | Game | ROM version |
+| --- | --- | --- |
+| `atari2600` | Pitfall! | `Pitfall! (1982) (Activision) [!].a26` |
+| `nes` | Super Mario Bros. | `Super Mario Bros. (World).nes` |
+| `nes` | Castlevania | `Castlevania (USA) (Rev A).nes` |
+| `nes` | Tetris | `Tetris (USA).nes` |
+| `nes` | The Legend of Zelda | `Legend of Zelda, The (PRG 1).nes` |
+| `vb` | Virtual Boy Wario Land | `Virtual Boy Wario Land (Japan, USA).vb` |
+| `vb` | Jack Bros. | `Jack Bros.vb` |
+
+Any Virtual Boy game works, not just the two listed: the customized Beetle VB core hands HoloVCS real depth layers, so no per-game profile is needed. Other Atari 2600 and NES games load and play fine, they just get default layering instead of a hand-tuned depth effect.
+
+Press `?` in the game to see the current controls, and `,` or `.` to switch between the ROMs you installed.
 
 HoloVCS requires a connected Looking Glass display and [Looking Glass Bridge](https://lookingglassfactory.com/software-downloads).
+
 
 ## Looking Glass integration
 
@@ -98,11 +117,7 @@ HoloVCS code and media use the BSD-style attribution license in [LICENSE.md](LIC
 
 ROMs are not included.
 
-## Current game support
-
-HoloVCS has hand-tuned profiles for Pitfall!, Super Mario Bros., Castlevania, Tetris, and The Legend of Zelda. Wario Land and Jack Bros. have Virtual Boy-specific setup, and other Virtual Boy games still use the core's native split-layer data. Unrecognized Atari 2600 and NES games run with default layering rather than a hand-tuned effect.
-
-## AI Disclosure
+## AI Disclosure (applies to code written in August 2026+)
 
 This project was developed with assistance from AI tools. I mean, you can still blame me (Seth) for bugs, but just wanted to mention it.
 
