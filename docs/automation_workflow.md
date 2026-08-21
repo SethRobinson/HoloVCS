@@ -37,7 +37,7 @@ Commands:
 | `dumplayers` | Writes each depth layer's CPU texture buffer to `Saved/Automation/layers/layer_N.png` (layer 0 = deepest/back wall side, highest index = nearest the viewer; NES games use 5 layers, VB 16). Ground truth for what each plane holds and where content sits in 3D; this is the tool that found the Zelda colorkey bug and the transition stripe after composite screenshots had been ambiguous. Transparent areas = png alpha. |
 | `pause` / `unpause` | Emulator pause (UE keeps ticking, shots still work). |
 | `help [on\|off]` | Show/hide the help screen (no arg toggles). Same as the ? hotkey: pauses the game while up; `unpause` also closes it. |
-| `savestate` / `loadstate` | The same `saves/<system>/<rom>.sav0` files as the S/L hotkeys (loading migrates any legacy `<rom>.sav0` from next to the top-level exe into saves/). |
+| `savestate` / `loadstate` | The same `saves/<system>/<rom>.sav0` files as the F/G hotkeys (L also loads) (loading migrates any legacy `<rom>.sav0` from next to the top-level exe into saves/). |
 | `rom <partial>` | Live ROM switch by partial filename match. |
 | `exec <console cmd>` | Anything the UE console accepts (`r.ShadowQuality 0`, `HighResShot 2`, cvars...). |
 | `quit` | Clean exit. |

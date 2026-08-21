@@ -18,6 +18,10 @@ AHelpScreenActor::AHelpScreenActor()
 	m_pTextComponent = CreateDefaultSubobject<UTextRenderComponent>(TEXT("HelpText"));
 	m_pTextComponent->SetupAttachment(pRoot);
 	m_pTextComponent->SetHiddenInGame(true);
+	//UTextRenderComponent defaults its Text to "Text" - the sprite-quilt renderer treats ANY
+	//non-empty text on this actor as "help is up" (layers skipped, text drawn as the help
+	//title), which blacked out every layer in runs where the help was never shown/hidden
+	m_pTextComponent->SetText(FText::GetEmpty());
 
 	Tags.Add(FName("HelpScreen"));
 }
@@ -117,7 +121,7 @@ FString HelpScreen::BuildHelpText() const
 	s += TEXT(", / .\tPrevious / next game\n");
 	s += TEXT("R\tReset game\n");
 	s += TEXT("P\tPause\n");
-	s += TEXT("S / L\tSave / load state\n");
+	s += TEXT("F / G\tSave / load state\n");
 	s += TEXT("\n");
 	s += TEXT("[ / ]\tLess / more 3D depth\n");
 	s += TEXT("= / -\tZoom in / out\n");

@@ -676,13 +676,9 @@ void APlayerPawn::OnSubtractKey()
 	ShowStatusMessage("Zooming out");
 }
 
-//Save state with loading/saving, mostly for debugging purposes
-
-void APlayerPawn::OnSKey()
-{
-	if (HelpSwallowedInput()) return;
-	g_pLibretroManager->SaveStateToFile();
-}
+//Load state alias (L).  Save state is F only (the JoyPad_LShoulder action, with G / the
+//right shoulder loading) - S used to save too, but S is also WASD "down", so every walk
+//downward overwrote the save.
 
 void APlayerPawn::OnLKey()
 {
@@ -764,7 +760,6 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 
 	PlayerInputComponent->BindKey(FKey("Equals"), IE_Pressed, this, &APlayerPawn::OnAddKey);
 	PlayerInputComponent->BindKey(FKey("Hyphen"), IE_Pressed, this, &APlayerPawn::OnSubtractKey);
-	PlayerInputComponent->BindKey(FKey("S"), IE_Pressed, this, &APlayerPawn::OnSKey);
 	PlayerInputComponent->BindKey(FKey("L"), IE_Pressed, this, &APlayerPawn::OnLKey);
 	PlayerInputComponent->BindKey(FKey("Comma"), IE_Pressed, this, &APlayerPawn::OnCommaKey);
 	PlayerInputComponent->BindKey(FKey("Period"), IE_Pressed, this, &APlayerPawn::OnPeriodKey);
@@ -789,7 +784,6 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 #else
 	PlayerInputComponent->BindKey(EKeys::Equals, IE_Pressed, this, &APlayerPawn::OnAddKey);
 	PlayerInputComponent->BindKey(EKeys::Hyphen, IE_Pressed, this, &APlayerPawn::OnSubtractKey);
-	PlayerInputComponent->BindKey(EKeys::S, IE_Pressed, this, &APlayerPawn::OnSKey);
 	PlayerInputComponent->BindKey(EKeys::L, IE_Pressed, this, &APlayerPawn::OnLKey);
 	PlayerInputComponent->BindKey(EKeys::Comma, IE_Pressed, this, &APlayerPawn::OnCommaKey);
 	PlayerInputComponent->BindKey(EKeys::Period, IE_Pressed, this, &APlayerPawn::OnPeriodKey);

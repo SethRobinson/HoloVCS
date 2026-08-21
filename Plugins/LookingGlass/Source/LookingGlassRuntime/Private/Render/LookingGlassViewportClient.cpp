@@ -578,7 +578,7 @@ static FAutoConsoleCommand CCmdLKGSaveQuilt(
 	}));
 
 static TAutoConsoleVariable<float> CVarLKGSpriteShadow(
-	TEXT("lkg.SpriteShadow"), 0.8f,
+	TEXT("lkg.SpriteShadow"), 0.65f,
 	TEXT("Opacity of the black drop shadow each sprite layer casts on the layers behind it (0 = off)"));
 static TAutoConsoleVariable<int32> CVarLKGSpriteShadowSoft(
 	TEXT("lkg.SpriteShadowSoft"), 2,

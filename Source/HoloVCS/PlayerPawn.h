@@ -174,7 +174,6 @@ public:
 
 	void OnPKey();
 	void OnAddKey();
-	void OnSKey();
 	void OnLKey();
 
 	void OnCommaKey();

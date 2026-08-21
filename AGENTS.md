@@ -204,7 +204,7 @@ but burns the 5.6 escape hatch like any other resave.
   The projection scale (Lr-Lx)/(Lc-Lx) stays near 1 for the far-forward light - shadows hug
   their casters instead of towering. A directional fallback synthesizes a far-away light
   position so the same code path serves maps without a point light. lkg.SpriteShadow
-  (default 0.8, raised from 0.6 so the stamp reads black instead of "a second brown barrel")
+  (default 0.65: 0.6 read as a brown twin of the Pitfall barrel, 0.8 was "pretty black")
   and lkg.SpriteShadowSoft (default 2) are the shadow cvars. SOFTNESS: the 512px caster union
   is halved N times through a bilinear 2:1 copy chain (exact 2x2 box filters, AlphaBlend onto
   a cleared RT is a straight alpha copy) and the small result is sampled bilinearly back into
@@ -362,12 +362,18 @@ but burns the 5.6 escape hatch like any other resave.
   whole main monitor whenever the hologram window was clicked.
 - TEST SPRITE-PATH CHANGES ON THE DEVICE, NOT THE 2D WINDOW: Seth: the flat 2D build's
   lighting/shadows look completely different from the hologram and are useless for judging
-  it. Loop: `BuildAndRunWin64LKG.bat nolaunch`, run `dist\win64_lkg_test\Windows\HoloVCSLKG.exe
+  it. Quick loop: `UnrealEditor.exe HoloVCS.uproject -game -rom=x` (editor binary, ProjectSavedDir
+  = <project>\Saved) then `holo_auto.ps1 -Cmd "exec lkg.SaveQuilt"`. Faithful loop: `BuildAndRunWin64LKG.bat nolaunch`, run `dist\win64_lkg_test\Windows\HoloVCSLKG.exe
   -rom=x`, `holo_auto.ps1 -SavedDir C:\Users\Seth\AppData\Local\HoloVCS\Saved -Cmd "help off","exec
-  lkg.SaveQuilt"`, then `-CropQuilt` and zoom a crop. GOTCHA (unresolved, Aug 2026): running the
-  LKG flavor through the EDITOR binary (`UnrealEditor.exe HoloVCS.uproject -game`) renders every
-  sprite-path layer BLACK in the saved quilt (only the status text shows; `lkg.SpriteQuilt 0`
-  draws fine), even with shadows off. The staged Shipping build is correct. Use the staged build.
+  lkg.SaveQuilt"`, then `-CropQuilt` and zoom a crop. GOTCHA (fixed Aug 2026): the editor-binary
+  run used to render every sprite-path layer BLACK in the quilt (only a "Text" label showed).
+  CAUSE: the help actor's UTextRenderComponent
+  defaulted to "Text", and the sprite path treats any non-empty HelpScreen text as help-up
+  (layers skipped); Shipping hid it because the boot auto-show/hide cleared the text. The
+  constructor now clears it. ALSO: `holo_auto.ps1 -Cmd quit` can leave the old instance alive
+  for many seconds; two instances share commands.txt and whichever grabs a command runs it, so
+  `Get-Process HoloVCS*` before trusting a capture (a stale instance with lkg.ShowFPS 0 produced
+  a false "no FPS in Shipping" report in Aug 2026 - the FPS overlay works fine in Shipping).
 - Sprite shadows project onto the DEEPEST layer's plane (the background wall), not the next layer
   back - middle layers are often empty where the silhouette lands, and a shadow floating at an
   unoccupied depth plane looks broken on the device.
@@ -634,7 +640,7 @@ overworld start).
   (APP_NAME/APP_DIR/UE_DIR).
 - `BuildAndRunWin64Release.bat` is the local test loop: incremental Shipping cook/stage to
   `dist\win64_test` with roms included (never distribute that folder), then launches it. Both test
-  bats preserve save states (S/L hotkeys write `saves\<system>\<rom>.sav0` since Aug 2026; legacy
+  bats preserve save states (F/G hotkeys (L also loads) write `saves\<system>\<rom>.sav0` since Aug 2026; legacy
   top-level `*.sav0` files are migrated into saves/ when loaded) across restages via a
   dist\savstate_keep_* backup; PackageWin64Release.bat scrubs both from real releases.
 - `BuildAndRunWin64LKG.bat` is the same loop for the Looking Glass hardware build (HoloVCS.uproject,
