@@ -578,8 +578,11 @@ static FAutoConsoleCommand CCmdLKGSaveQuilt(
 	}));
 
 static TAutoConsoleVariable<float> CVarLKGSpriteShadow(
-	TEXT("lkg.SpriteShadow"), 0.6f,
-	TEXT("Opacity of the drop shadow each sprite layer casts on the layers behind it (0 = off)"));
+	TEXT("lkg.SpriteShadow"), 0.8f,
+	TEXT("Opacity of the black drop shadow each sprite layer casts on the layers behind it (0 = off)"));
+static TAutoConsoleVariable<int32> CVarLKGSpriteShadowSoft(
+	TEXT("lkg.SpriteShadowSoft"), 2,
+	TEXT("Shadow softness: number of 2x box-filter halvings applied to the 512px caster union before it stamps (0 = hard pixel-exact silhouette, 2 = 128px mask, 3 = 64px)"));
 
 static TAutoConsoleVariable<float> CVarLKGSpriteAmbient(
 	TEXT("lkg.SpriteAmbient"), 0.7f,
@@ -1026,6 +1029,7 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 				RT->TargetGamma = 1.0f;
 				RT->AddressX = TA_Clamp;
 				RT->AddressY = TA_Clamp;
+				RT->Filter = TF_Bilinear;
 				RT->InitCustomFormat(MaskSize, MaskSize, PF_B8G8R8A8, false);
 				RT->UpdateResourceImmediate();
 				GMaskPool.Add(RT);
@@ -1043,6 +1047,36 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 					RHICmdList.Transition(FRHITransitionInfo(Res->GetRenderTargetTexture(), ERHIAccess::Unknown, ERHIAccess::SRVGraphics));
 				});
 		};
+
+		// Downsample chain for shadow softening (lkg.SpriteShadowSoft halvings of the union):
+		// one rooted RT per step, shared by every receiver since each is consumed before the
+		// next receiver starts
+		static TArray<UTextureRenderTarget2D*> GSoftPool;
+		const int32 SoftSteps = FMath::Clamp(CVarLKGSpriteShadowSoft.GetValueOnGameThread(), 0, 5);
+		TArray<FTextureRenderTargetResource*, TInlineAllocator<5>> SoftRes;
+		for (int32 Step = 0; Step < SoftSteps; Step++)
+		{
+			while (GSoftPool.Num() <= Step)
+			{
+				const int32 Size = MaskSize >> (GSoftPool.Num() + 1);
+				UTextureRenderTarget2D* RT = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), UTextureRenderTarget2D::StaticClass());
+				RT->AddToRoot();
+				RT->ClearColor = FLinearColor(0, 0, 0, 0);
+				RT->TargetGamma = 1.0f;
+				RT->AddressX = TA_Clamp;
+				RT->AddressY = TA_Clamp;
+				RT->Filter = TF_Bilinear;
+				RT->InitCustomFormat(Size, Size, PF_B8G8R8A8, false);
+				RT->UpdateResourceImmediate();
+				GSoftPool.Add(RT);
+			}
+			SoftRes.Add(GSoftPool[Step]->GameThread_GetRenderTargetResource());
+		}
+		if (SoftRes.Contains(nullptr))
+		{
+			SoftRes.Empty();
+		}
+		const int32 SoftStepsAvail = SoftRes.Num();
 
 		for (int32 RecvIdx = 0; RecvIdx < Layers.Num(); RecvIdx++)
 		{
@@ -1114,6 +1148,7 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 				continue;
 			}
 			PoolUsed++;
+			const FTexture* UnionTex = UnionRes;
 
 			// Pass 1: inverted caster union. Alpha starts at 1 and every caster silhouette
 			// multiplies in (1 - alpha) via SE_BLEND_AlphaHoldout, so overlapping casters
@@ -1134,6 +1169,26 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 				FlushToTexture(UnionCanvas, UnionRes);
 			}
 
+			// Softening: halve the union through the small scratch chain. Each step is a
+			// bilinear 2:1 copy, i.e. an exact 2x2 box filter, and the stamp later samples the
+			// small mask bilinearly, so the silhouette edge spreads over 2^N mask texels
+			// instead of being a pixel-exact copy of the sprite. The data stays in the alpha
+			// channel (no canvas blend mode can accumulate alpha additively, which rules out a
+			// multi-tap blur). SE_BLEND_AlphaBlend onto a cleared target is a straight copy.
+			for (int32 Step = 0; Step < SoftStepsAvail; Step++)
+			{
+				FTextureRenderTargetResource* SmallRes = SoftRes[Step];
+				const float SmallSize = (float)(MaskSize >> (Step + 1));
+				FCanvas SmallCanvas(SmallRes, nullptr, GameTime, GMaxRHIFeatureLevel);
+				SmallCanvas.Clear(FLinearColor(0, 0, 0, 0));
+				FCanvasTileItem CopyItem(FVector2D(0, 0), UnionTex, FVector2D(SmallSize, SmallSize),
+					FVector2D(0, 0), FVector2D(1, 1), FLinearColor::White);
+				CopyItem.BlendMode = SE_BLEND_AlphaBlend;
+				SmallCanvas.DrawItem(CopyItem);
+				FlushToTexture(SmallCanvas, SmallRes);
+				UnionTex = SmallRes;
+			}
+
 			// Pass 2: mask alpha = receiver alpha * caster union. Solid receivers (the backdrop
 			// wall, opaque photo materials) count as alpha 1 everywhere; game layers contribute
 			// their colorkey alpha so shadow never floats in their transparent space.
@@ -1145,7 +1200,7 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 					FVector2D(0, 0), FVector2D(1, 1), FLinearColor(0, 0, 0, 1));
 				RecvItem.BlendMode = SE_BLEND_AlphaBlend;	// dest alpha = receiver alpha
 				MaskCanvas.DrawItem(RecvItem);
-				FCanvasTileItem UnionItem(FVector2D(0, 0), UnionRes, FVector2D(MaskSize, MaskSize),
+				FCanvasTileItem UnionItem(FVector2D(0, 0), UnionTex, FVector2D(MaskSize, MaskSize),
 					FVector2D(0, 0), FVector2D(1, 1), FLinearColor::White);
 				UnionItem.BlendMode = SE_BLEND_AlphaHoldout;	// dest alpha *= 1 - (1 - union) = union
 				MaskCanvas.DrawItem(UnionItem);
