@@ -204,7 +204,15 @@ but burns the 5.6 escape hatch like any other resave.
   The projection scale (Lr-Lx)/(Lc-Lx) stays near 1 for the far-forward light - shadows hug
   their casters instead of towering. A directional fallback synthesizes a far-away light
   position so the same code path serves maps without a point light. lkg.SpriteShadow
-  (default 0.6) is the only shadow cvar left; lkg.SpriteShadowBlur is gone. 2D scene shadows
+  (default 0.8, raised from 0.6 so the stamp reads black instead of "a second brown barrel")
+  and lkg.SpriteShadowSoft (default 2) are the shadow cvars. SOFTNESS: the 512px caster union
+  is halved N times through a bilinear 2:1 copy chain (exact 2x2 box filters, AlphaBlend onto
+  a cleared RT is a straight alpha copy) and the small result is sampled bilinearly back into
+  the mask, so the silhouette edge spreads over 2^N mask texels. 0 = the old pixel-exact
+  silhouette, 2 = 128px mask, 3 = 64px (very soft, thins the Pitfall player's shadow). A
+  multi-tap blur is NOT possible with FCanvas: no canvas blend mode accumulates alpha
+  additively (Additive/Modulate are CW_RGB only) and the holdout math needs the value in
+  alpha. 2D scene shadows
   are LEGACY shadow maps (VSM flickered/blotched on the per-frame-updating masked textures;
   the tight ShadowBias 0.05/SlopeBias 0.15 on the point light is what makes legacy resolve
   the 2-unit layer gaps).
@@ -352,6 +360,14 @@ but burns the 5.6 escape hatch like any other resave.
 - The LKG build forces the MAIN window to windowed 1280x720 at BeginPlay - Shipping defaults to
   fullscreen, and the focus-bounce guardian was slamming a fullscreen black window over the
   whole main monitor whenever the hologram window was clicked.
+- TEST SPRITE-PATH CHANGES ON THE DEVICE, NOT THE 2D WINDOW: Seth: the flat 2D build's
+  lighting/shadows look completely different from the hologram and are useless for judging
+  it. Loop: `BuildAndRunWin64LKG.bat nolaunch`, run `dist\win64_lkg_test\Windows\HoloVCSLKG.exe
+  -rom=x`, `holo_auto.ps1 -SavedDir C:\Users\Seth\AppData\Local\HoloVCS\Saved -Cmd "help off","exec
+  lkg.SaveQuilt"`, then `-CropQuilt` and zoom a crop. GOTCHA (unresolved, Aug 2026): running the
+  LKG flavor through the EDITOR binary (`UnrealEditor.exe HoloVCS.uproject -game`) renders every
+  sprite-path layer BLACK in the saved quilt (only the status text shows; `lkg.SpriteQuilt 0`
+  draws fine), even with shadows off. The staged Shipping build is correct. Use the staged build.
 - Sprite shadows project onto the DEEPEST layer's plane (the background wall), not the next layer
   back - middle layers are often empty where the silhouette lands, and a shadow floating at an
   unoccupied depth plane looks broken on the device.
