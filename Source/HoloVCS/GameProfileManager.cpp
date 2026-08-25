@@ -766,20 +766,29 @@ void UpdateDefault3DS(void* pProfileManager)
 	pL->m_pPlayerPawn->SetBGPic();
 	pL->ResetBlitInformation();
 
-	//one plain run per frame: no savestate rewind tricks (the core has none).  With the
+	//frameskip = fast-forward (keys 2-5): run extra full core frames per paced update.  This
+	//core has no savestates so there is no cheap junk render - each extra frame costs real
+	//render time - but a nonzero m_frameSkip also bypasses the pacer wait (see
+	//LibretroManager::Update), so cutscenes still pass several times faster.
+	//m_bDiscardVideoFrame keeps the holo callback from copying the skipped frames' layers.
+	pL->DisableBlitPass(BLIT_PASS0);
+	pL->DisableBlitPass(BLIT_PASS1);
+	for (int i = 0; i < pL->m_frameSkip; i++)
+	{
+		pL->m_bDiscardVideoFrame = true;
+		pL->RenderFrame("11");
+	}
+	pL->m_bDiscardVideoFrame = false;
+
+	//one plain run per visible frame: no savestate rewind tricks (the core has none).  With the
 	//patched holo core the depth-sliced layers arrive through the holo callback, so no blit
 	//pass is wanted; a stock core renders a flat 400x480 composite instead, and we blit its
 	//top-screen portion (clipped to the layer texture) onto the middle layer.
-	if (pL->m_core.retro_set_video_refresh_holo)
-	{
-		pL->DisableBlitPass(BLIT_PASS0);
-	}
-	else
+	if (!pL->m_core.retro_set_video_refresh_holo)
 	{
 		const int w = FMath::Min((int)pL->m_game_av_info.geometry.base_width, pL->m_pLibretroManagedActor->m_layerWidth);
 		const int h = FMath::Min((int)pL->m_game_av_info.geometry.base_height, pL->m_pLibretroManagedActor->m_layerHeight);
 		pL->SetupBlitPass(BLIT_PASS0, pL->m_pLibretroManagedActor->GetLayerCount() / 2, FIntRect(0, 0, w, h), COLOR_KEY_STYLE_NONE, FLinearColor(0, 0, 0, 0));
 	}
-	pL->DisableBlitPass(BLIT_PASS1);
 	pL->RenderFrame("11");
 }

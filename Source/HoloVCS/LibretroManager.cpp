@@ -1045,7 +1045,7 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 		m_romFileExtension2 = ".cci";
 		m_pLibretroManagedActor->m_layerWidth = 400;
 		m_pLibretroManagedActor->m_layerHeight = 240;
-		m_pLibretroManagedActor->m_layerCount = 30; //negotiated to the core via holo_3d_layer_count (core clamps at 32)
+		m_pLibretroManagedActor->m_layerCount = 24; //negotiated to the core via holo_3d_layer_count (core clamps at 32; 30 was tried and dropped fps)
 		m_pLibretroManagedActor->m_total3dDepth = 170;
 		m_pLibretroManagedActor->m_depthOffsetForAllLayers = -35;
 		//the layer quad mesh is (nearly) square, so the scale pair must carry the full
@@ -1446,6 +1446,8 @@ void retro_video_refresh_callback_ex(const void* data, unsigned width, unsigned 
 //blit is pitch-safe (slice dims can differ from the layer texture; rows are clipped).
 void retro_video_refresh_callback_holo(const void* data, unsigned width, unsigned height, size_t pitch, const HoloLayerInfo* info)
 {
+	if (g_pLibretroManager->m_bDiscardVideoFrame) return; //frameskip junk frame: nobody will see it
+
 	if (!info || info->abiVersion != HOLO_LAYER_ABI_VERSION)
 	{
 		static bool warned = false;

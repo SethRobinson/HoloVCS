@@ -51,9 +51,10 @@ the circle pad on 3DS. Verified full 400px top-screen width reaches the display 
 composite dump vs quilt center tile: edge content present, margins both sides); the
 "Mario drifts offscreen" report was the d-pad/camera double-drive, not a crop.
 
-Round 4 (Aug 2026): layer count raised 12 -> 30 (LibretroManager.cpp SetEmulatorData; the
-count is negotiated to the core via the holo_3d_layer_count option, and the core-side
-clamp in holo_slicer.cpp Init is now [2, 32] - raising past 32 needs a core rebuild).
+Round 4 (Aug 2026): layer count raised 12 -> 30, then settled at 24 after 30 dropped fps
+on the device (LibretroManager.cpp SetEmulatorData; the count is negotiated to the core
+via the holo_3d_layer_count option, and the core-side clamp in holo_slicer.cpp Init is
+now [2, 32] - raising past 32 needs a core rebuild).
 C_MAX_LAYERS went 30 -> 40 because the bottom-screen quad indexes
 m_layerSetupInfo[GetLayerCount()], which was out of bounds at exactly 30 layers.
 Verified in the flat build: SM3DL title screen populates 22+ distinct bands including the
@@ -62,6 +63,11 @@ PHYSICAL POSITION on 3DS (PlayerPawn JoyPad_X/Y handlers are key-aware): pad top
 pad left = 3DS Y, and the pad-left "extra B" ini mapping (NES run-on-X ergonomics, kept
 for the other systems) is suppressed for 3DS - it was making the pad X button jump.
 Keyboard Z/C keep their libretro ids (Z = 3DS Y, C = 3DS X).
+Frameskip (keys 2-5) works on 3DS now: UpdateDefault3DS runs m_frameSkip extra full core
+frames per paced update (no savestates = no cheap junk render, but a nonzero frameskip
+also bypasses the pacer wait, so it still fast-forwards well - measured ~3.5x game time
+at skip 4 in level 1-1). m_bDiscardVideoFrame makes the holo callback drop the skipped
+frames' layer copies. Made for skipping the slow cutscenes.
 
 NOT yet done: per-game depth-band profiles, UI band handling (HUD currently lands on the
 far plane), touch input, sound verification, release-bat/core-build integration, and the

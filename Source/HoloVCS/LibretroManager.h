@@ -208,6 +208,7 @@ public:
 	BlitPass m_blitPass[C_MAX_BLITPASS_COUNT];
 	bool m_useAudio = true;
 	int m_frameSkip = 0; //0 means no skipping, normal
+	bool m_bDiscardVideoFrame = false; //true while a frameskip junk frame runs: the holo video callback skips its layer copies
 	double m_targetFPS = 0; //0 means no limit
 	bool m_bUncapFPS = false; //true = skip the pacing busy-wait entirely (0 hotkey, for fps measurement)
 	double m_mainTimer = 0;
