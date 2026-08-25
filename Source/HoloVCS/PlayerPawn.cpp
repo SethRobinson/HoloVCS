@@ -332,8 +332,8 @@ void APlayerPawn::Move_XAxis(float AxisValue)
 {
 	if (!g_pLibretroManager) return; //axis events fire every frame, even during startup/teardown when there's no manager
 	if (FMath::Abs(AxisValue) > C_JOYSTICK_DEAD_ZONE) HelpSwallowedInput(); //movement closes the help like the old splash
-	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_LEFT] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
-	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_RIGHT] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
+	m_moveAxisX = AxisValue;
+	UpdateDpadButtons();
 	g_pLibretroManager->m_joyPad.m_axisLX = FMath::Clamp(AxisValue, -1.0f, 1.0f); //3DS circle pad
 }
 
@@ -341,9 +341,45 @@ void APlayerPawn::Move_YAxis(float AxisValue)
 {
 	if (!g_pLibretroManager) return;
 	if (FMath::Abs(AxisValue) > C_JOYSTICK_DEAD_ZONE) HelpSwallowedInput();
-	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_UP] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
-	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_DOWN] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
+	m_moveAxisY = AxisValue;
+	UpdateDpadButtons();
 	g_pLibretroManager->m_joyPad.m_axisLY = FMath::Clamp(AxisValue, -1.0f, 1.0f); //3DS circle pad
+}
+
+void APlayerPawn::DPad_XAxis(float AxisValue)
+{
+	if (!g_pLibretroManager) return;
+	if (FMath::Abs(AxisValue) > C_JOYSTICK_DEAD_ZONE) HelpSwallowedInput();
+	m_dpadAxisX = AxisValue;
+	UpdateDpadButtons();
+}
+
+void APlayerPawn::DPad_YAxis(float AxisValue)
+{
+	if (!g_pLibretroManager) return;
+	if (FMath::Abs(AxisValue) > C_JOYSTICK_DEAD_ZONE) HelpSwallowedInput();
+	m_dpadAxisY = AxisValue;
+	UpdateDpadButtons();
+}
+
+void APlayerPawn::UpdateDpadButtons()
+{
+	if (!g_pLibretroManager) return;
+	//On the 3DS the circle pad and the d-pad are SEPARATE controls (SM3DL: pad moves Mario,
+	//d-pad turns the camera), so the stick/keys must never set the digital bits there - they
+	//already reach the game through the analog axes.  Every other core only has a d-pad, so
+	//stick, keys and d-pad all merge into it like before.
+	float x = m_dpadAxisX;
+	float y = m_dpadAxisY;
+	if (g_pLibretroManager->m_emulatorType != EMULATOR_3DS)
+	{
+		if (FMath::Abs(m_moveAxisX) > FMath::Abs(x)) x = m_moveAxisX;
+		if (FMath::Abs(m_moveAxisY) > FMath::Abs(y)) y = m_moveAxisY;
+	}
+	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_LEFT] = (x < -C_JOYSTICK_DEAD_ZONE);
+	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_RIGHT] = (x > C_JOYSTICK_DEAD_ZONE);
+	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_UP] = (y < -C_JOYSTICK_DEAD_ZONE);
+	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_DOWN] = (y > C_JOYSTICK_DEAD_ZONE);
 }
 
 void APlayerPawn::RMove_XAxis(float AxisValue)
@@ -417,7 +453,9 @@ void APlayerPawn::UpdateTouchMouseLock()
 			const float dt = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.016f;
 			const float speed = 260.0f; //bottom-screen pixels per second at full deflection
 			g_pLibretroManager->m_touchX = FMath::Clamp(g_pLibretroManager->m_touchX + rx * speed * dt, 0.0f, 319.0f);
-			g_pLibretroManager->m_touchY = FMath::Clamp(g_pLibretroManager->m_touchY + ry * speed * dt, 0.0f, 239.0f);
+			//RMoveY already carries a -1 scale in DefaultInput.ini; verified on hardware that
+			//stick-up must DECREASE screen Y with another negation here
+			g_pLibretroManager->m_touchY = FMath::Clamp(g_pLibretroManager->m_touchY - ry * speed * dt, 0.0f, 239.0f);
 			g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
 		}
 	}
@@ -931,6 +969,8 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	InputComponent->BindAxis("MoveY", this, &APlayerPawn::Move_YAxis);
 	InputComponent->BindAxis("RMoveX", this, &APlayerPawn::RMove_XAxis);
 	InputComponent->BindAxis("RMoveY", this, &APlayerPawn::RMove_YAxis);
+	InputComponent->BindAxis("DPadX", this, &APlayerPawn::DPad_XAxis);
+	InputComponent->BindAxis("DPadY", this, &APlayerPawn::DPad_YAxis);
 	InputComponent->BindAction("JoyPad_A", IE_Pressed, this, &APlayerPawn::JoyPad_A_Pressed);
 	InputComponent->BindAction("JoyPad_A", IE_Released, this, &APlayerPawn::JoyPad_A_Released);
 	InputComponent->BindAction("JoyPad_B", IE_Pressed, this, &APlayerPawn::JoyPad_B_Pressed);

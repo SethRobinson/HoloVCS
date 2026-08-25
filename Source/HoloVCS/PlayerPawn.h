@@ -100,6 +100,13 @@ protected:
 	float m_mouseDX = 0;
 	float m_mouseDY = 0;
 
+	//raw per-frame axis values, kept separate so the 3DS can route the stick/keys to the
+	//analog circle pad and the gamepad d-pad to the real digital d-pad independently
+	float m_moveAxisX = 0;
+	float m_moveAxisY = 0;
+	float m_dpadAxisX = 0;
+	float m_dpadAxisY = 0;
+
 	void UpdateFlatCamera(float DeltaTime);
 	float ComputeFlatCameraFitDist(const FRotator& camRot) const;
 
@@ -124,6 +131,9 @@ public:
 	void Move_YAxis(float AxisValue);
 	void RMove_XAxis(float AxisValue);
 	void RMove_YAxis(float AxisValue);
+	void DPad_XAxis(float AxisValue);
+	void DPad_YAxis(float AxisValue);
+	void UpdateDpadButtons(); //merges the Move and DPad axes into the digital d-pad bits
 
 	void OnMouseX(float AxisValue);
 	void OnMouseY(float AxisValue);

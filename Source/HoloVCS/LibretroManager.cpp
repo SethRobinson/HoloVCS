@@ -834,8 +834,18 @@ int16_t retro_input_state_callback(unsigned port, unsigned device, unsigned inde
 	{
 		if (id < C_MAX_JOYPAD_BUTTONS)
 		{
+			//3DS: harness `press up/left/...` holds feed the circle pad (analog fallback below),
+			//NOT the digital d-pad - SM3DL and friends bind the d-pad to camera control, so
+			//folding them in here would move Mario AND spin the camera at once
+			bool bAutoHeld = g_pLibretroManager->m_autoButtonHoldFrames[id] > 0;
+			if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && bAutoHeld &&
+				(id == RETRO_DEVICE_ID_JOYPAD_UP || id == RETRO_DEVICE_ID_JOYPAD_DOWN ||
+				 id == RETRO_DEVICE_ID_JOYPAD_LEFT || id == RETRO_DEVICE_ID_JOYPAD_RIGHT))
+			{
+				bAutoHeld = false;
+			}
 			//LogMsg("Scanning button %d which is %d", id, (int)g_pLibretroManager->m_joyPad.m_button[id]);
-			return g_pLibretroManager->m_joyPad.m_button[id] || g_pLibretroManager->m_autoButtonHoldFrames[id] > 0;
+			return g_pLibretroManager->m_joyPad.m_button[id] || bAutoHeld;
 		}
 		else
 		{

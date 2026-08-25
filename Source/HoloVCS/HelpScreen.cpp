@@ -112,7 +112,8 @@ FString HelpScreen::BuildHelpText() const
 	FString s;
 	s += FString(G_VERSION_STRING.c_str()).ToUpper() + TEXT(" - CONTROLS\n");
 	s += TEXT("\n");
-	s += TEXT("WASD / Arrows\tMove (D-pad / Circle Pad)\n");
+	s += TEXT("WASD / Arrows / L-stick\tMove (Circle Pad on 3DS)\n");
+	s += TEXT("Gamepad D-pad\tD-pad (3DS: camera etc)\n");
 	s += TEXT("Space\tA button\n");
 	s += TEXT("Ctrl\tB button\n");
 	s += TEXT("C\tX button (3DS)\n");
