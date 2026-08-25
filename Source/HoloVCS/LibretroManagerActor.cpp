@@ -906,23 +906,41 @@ void ALibretroManagerActor::Tick(float DeltaTime)
 
 	m_libretroManager.Update();
 
+	//3DS holo mode maintains per-layer dirty flags in the layer callback, so unchanged
+	//layers (and the many empty ones) skip both the GPU upload and the alpha scan below.
+	//Other systems don't track dirtiness and upload every frame as before.
+	const bool holoDirtyTracking = (g_pLibretroManager->m_emulatorType == EMULATOR_3DS) &&
+		g_pLibretroManager->m_core.retro_set_video_refresh_holo != nullptr;
+
 	for (int i = 0; i < m_layerInfo.size(); i++)
 	{
+		if (holoDirtyTracking && !m_layerInfo[i].m_bDirty)
+		{
+			continue; //pixels unchanged: texture and shadow rect are already correct
+		}
+		m_layerInfo[i].m_bDirty = false;
+
 		if (m_layerInfo[i].GetPixelBuffer())
 		{
 
 			if (C_INIT_TEXTURES_EVERY_FRAME)
 			{
-				FUpdateTextureRegion2D* pRegionTemp = new FUpdateTextureRegion2D(0, 0, 0, 0, m_layerInfo[i].m_texWidth, m_layerInfo[i].m_texHeight);
+				LayerInfo& layer = m_layerInfo[i];
+				//ping-pong staging: the render thread consumes the buffer async, so the
+				//one written last frame may still be in flight - never a fresh heap alloc
+				uint8*& pStaging = layer.m_pUploadBuffer[layer.m_uploadBufferIndex & 1];
+				layer.m_uploadBufferIndex++;
+				if (!pStaging)
+				{
+					pStaging = new uint8[layer.mDataSize];
+				}
+				memcpy(pStaging, layer.m_pTextData, layer.mDataSize);
 
-				uint8* pTexTemp = new uint8[m_layerInfo[i].mDataSize];
-				memcpy(pTexTemp, m_layerInfo[i].m_pTextData, m_layerInfo[i].mDataSize);
-
-				m_layerInfo[i].m_pDynamicTexture->UpdateTextureRegions(0, 1, pRegionTemp, m_layerInfo[i].m_texWidth * 4, 4, (uint8*)pTexTemp,
+				FUpdateTextureRegion2D* pRegionTemp = new FUpdateTextureRegion2D(0, 0, 0, 0, layer.m_texWidth, layer.m_texHeight);
+				layer.m_pDynamicTexture->UpdateTextureRegions(0, 1, pRegionTemp, layer.m_texWidth * 4, 4, pStaging,
 					[](auto pTexTemp, auto pRegionTemp)
 					{
-						delete pTexTemp;
-						delete pRegionTemp;
+						delete pRegionTemp; //staging buffer is owned by the LayerInfo
 					});
 			}
 			else

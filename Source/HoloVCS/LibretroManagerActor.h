@@ -42,6 +42,8 @@ public:
 
 	void Cleanup()
 	{
+		SAFE_DELETE_ARRAY(m_pUploadBuffer[0]);
+		SAFE_DELETE_ARRAY(m_pUploadBuffer[1]);
 		
 		if (m_pDynamicTexture)
 		{
@@ -67,6 +69,16 @@ public:
 	uint32 mDataSize;
 	float m_distanceMod = 0;
 	bool m_bUsedThisFrame = false;
+	//3DS holo layered mode: per-layer upload gating.  m_bDirty = pixels changed since the
+	//last GPU upload (only the 3DS holo path maintains it; other systems upload every
+	//frame as before).  m_bHoloContent = the core's `used` flag from the last delivery,
+	//so a used->unused transition clears the texture once instead of showing stale pixels.
+	bool m_bDirty = true;
+	bool m_bHoloContent = false;
+	//ping-pong staging for UpdateTextureRegions (replaces a 384KB heap alloc per layer
+	//per frame; two buffers because the render thread consumes the copy asynchronously)
+	uint8* m_pUploadBuffer[2] = { 0, 0 };
+	int m_uploadBufferIndex = 0;
 	FVector m_vStartingPos; //remember so we can move back to it later
 	uint8* GetPixelBuffer() { return m_pTextData; };
 	TextureFilter m_filterToUse = TextureFilter::TF_Default;

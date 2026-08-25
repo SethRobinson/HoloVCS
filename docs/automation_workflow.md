@@ -38,6 +38,7 @@ Commands:
 | `pause` / `unpause` | Emulator pause (UE keeps ticking, shots still work). |
 | `help [on\|off]` | Show/hide the help screen (no arg toggles). Same as the ? hotkey: pauses the game while up; `unpause` also closes it. |
 | `savestate` / `loadstate` | The same `saves/<system>/<rom>.sav0` files as the F/G hotkeys (L also loads) (loading migrates any legacy `<rom>.sav0` from next to the top-level exe into saves/). |
+| `touch <x> <y> [frames]` | 3DS only: emulated stylus tap at bottom-screen pixel coords (0..320, 0..240), held N visible frames (default 8). Drives the touch input directly (ignores the virtual mouse cursor and its latch). SM3DL's yellow "Start Game" button only responds to touch - `touch 160 200` presses it; A does not. |
 | `rom <partial>` | Live ROM switch by partial filename match. |
 | `exec <console cmd>` | Anything the UE console accepts (`r.ShadowQuality 0`, `HighResShot 2`, cvars...). |
 | `quit` | Clean exit. |

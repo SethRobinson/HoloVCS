@@ -496,6 +496,15 @@ bool retro_environment_callback(unsigned cmd, void* data)
 			return true;
 		}
 
+		//3DS layered ("shadow buffer") capture: 1 = per-band GPU capture with real
+		//occluded content (default), 0 = the old single-depth-buffer CPU slice.
+		//Launch with -hololegacy to A/B the old path.
+		if (strcmp(pVar->key, "holo_capture_mode") == 0)
+		{
+			pVar->value = FParse::Param(FCommandLine::Get(), TEXT("hololegacy")) ? "0" : "1";
+			return true;
+		}
+
 		    //here we change the palette to pure RGB, easier to setup colorkeys as I can also set
 		    //mesen to "RGB (Nestopia)" and the palettes will exactly match
 			if (strcmp(pVar->key, "fceumm_palette") == 0)
@@ -1468,6 +1477,20 @@ void retro_video_refresh_callback_holo(const void* data, unsigned width, unsigne
 		uint8* pDstBase = pDestLayer->GetPixelBuffer();
 		if (!pDstBase || !src.pixels) continue;
 
+		//honor the core's per-slice `used` flag: an unused slice skips the copy (and its
+		//GPU upload via m_bDirty), with a one-shot clear on the used->unused transition
+		//so the texture doesn't keep showing stale content
+		if (!src.used)
+		{
+			if (pDestLayer->m_bHoloContent)
+			{
+				memset(pDstBase, 0, pDestLayer->mDataSize);
+				pDestLayer->m_bHoloContent = false;
+				pDestLayer->m_bDirty = true;
+			}
+			continue;
+		}
+
 		const int rows = FMath::Min<int>((int)src.height, (int)pDestLayer->m_texHeight);
 		const int rowBytes = FMath::Min<int>((int)src.pitchBytes, (int)pDestLayer->m_texPitchBytes);
 		for (int y = 0; y < rows; y++)
@@ -1475,6 +1498,8 @@ void retro_video_refresh_callback_holo(const void* data, unsigned width, unsigne
 			memcpy(pDstBase + y * pDestLayer->m_texPitchBytes, src.pixels + (size_t)y * src.pitchBytes, rowBytes);
 		}
 		pDestLayer->m_bUsedThisFrame = true;
+		pDestLayer->m_bHoloContent = true;
+		pDestLayer->m_bDirty = true;
 	}
 
 	//the BOTTOM screen goes to the dedicated quad past the depth slices (see InitLayers)
@@ -1498,6 +1523,8 @@ void retro_video_refresh_callback_holo(const void* data, unsigned width, unsigne
 			}
 			DrawTouchCursor(pDstBase, pBottomLayer->m_texWidth, pBottomLayer->m_texHeight, pBottomLayer->m_texPitchBytes);
 			pBottomLayer->m_bUsedThisFrame = true;
+			pBottomLayer->m_bHoloContent = true;
+			pBottomLayer->m_bDirty = true;
 		}
 	}
 }

@@ -69,11 +69,39 @@ also bypasses the pacer wait, so it still fast-forwards well - measured ~3.5x ga
 at skip 4 in level 1-1). m_bDiscardVideoFrame makes the holo callback drop the skipped
 frames' layer copies. Made for skipping the slow cutscenes.
 
-NOT yet done: per-game depth-band profiles, UI band handling (HUD currently lands on the
-far plane), touch input, sound verification, release-bat/core-build integration, and the
-roadmap "true layers" per-band re-render (fills the remaining silhouette-edge disocclusion
-slivers). Cutscenes that render as tilted flat cards (the letter) look janky as dioramas -
-faithful but unflattering; per-scene flattening is a future profile knob.
+Round 5 (Aug 2026): TRUE LAYERED CAPTURE (the "shadow buffer") replaces depth-buffer
+slicing as the default. The core's generated fragment shaders route every top-scene
+fragment into a 24-band GL image array DURING the game's own draws (per-band interlocked
+depth test, the game's real blend equation baked into each capture shader variant, so
+translucency arrives with real alpha). Because the PICA FS always writes gl_FragDepth,
+the host depth test runs late and OCCLUDED fragments still execute - geometry hidden
+behind nearer layers survives in its own band (verified: W1-1's full backdrop exists
+behind the foreground strata in the layer dumps). A compute pass packs portrait bands to
+landscape + does the seam-overlap fill; readback rides the existing async PBO ring.
+Key architecture lessons (all learned the hard way on SM3DL, see the fork commit):
+- The scene is scoped by following display transfers to the top-LCD scan-out address
+  (exact base match) AND packing at the transfer moment itself, with capture gated off
+  from transfer to present. SM3DL reuses the SAME render target for the bottom screen
+  after shipping the top scene - vblank-aligned capture windows let bottom content
+  stamp the top bands (Seth's mushroom bug, the 80px letter strip, the strobing gray
+  overlay were all this or its cousins).
+- Draws that blend by DESTINATION alpha (SM3DL's fog compose) or write partial color
+  masks (dest-alpha prep) are never captured; band alpha is not framebuffer alpha.
+- Depth-less draws (backdrops/HUD) all land on the farthest band; phase-based near
+  routing strobed. HUD-in-front is a future per-game knob.
+- Scene cuts drop stale layers immediately (composite-cut detection), which is what
+  fixed "the letter card wears the previous scene's depth".
+Frontend: honors slice `used` flags with one-shot clears + per-layer dirty gating (empty
+or unchanged layers skip the GPU upload AND the shadow-rect alpha scan), staging is
+ping-ponged instead of a per-frame 384KB heap alloc, and the LKG sprite tile loop skips
+empty layers. `-hololegacy` on the command line forces the old CPU slicing for A/B.
+Harness gained `touch <x> <y> [frames]` (bottom-screen pixel tap - the SM3DL "Start
+Game" button needs it; A does not work there).
+
+NOT yet done: per-game depth-band profiles, near-band HUD routing knob, sound
+verification, release-bat/core-build integration, non-uniform bands via depth01.
+Fallbacks: no interlock extension -> packed RGB565 opaque capture; no GL4.3 compute ->
+legacy CPU slicing automatically.
 
 ## Where things live
 

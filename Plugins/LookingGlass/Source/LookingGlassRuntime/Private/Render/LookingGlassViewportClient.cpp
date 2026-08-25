@@ -1316,6 +1316,13 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 			{
 				continue;
 			}
+			// Empty layer (zero content rect reported by the game): nothing to draw in any
+			// tile - saves NumTiles quad draws per empty layer, which matters at 24+ layers
+			if (Layer.ContentUV.Z - Layer.ContentUV.X <= 0.0 ||
+				Layer.ContentUV.W - Layer.ContentUV.Y <= 0.0)
+			{
+				continue;
+			}
 
 			// Off-axis projection: camera slides +Y by ViewOffset (and +Z by TiltOffset), frustum
 			// shears back so the focal plane (X = Focal.X) is identical in every view

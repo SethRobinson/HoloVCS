@@ -95,6 +95,24 @@ void AutomationHarness::Update()
 	//key releases must tick even while the emulator is paused (the physical keyboard works then too)
 	TickKeyHolds();
 
+	//scripted stylus tap: force the virtual cursor + latch to the target and hold the touch
+	//down; bypasses the mouse cursor and its press-position history entirely
+	if (m_touchHoldFrames > 0)
+	{
+		m_touchHoldFrames--;
+		m_pManager->m_touchX = m_touchHoldX;
+		m_pManager->m_touchY = m_touchHoldY;
+		m_pManager->m_touchLatchX = m_touchHoldX;
+		m_pManager->m_touchLatchY = m_touchHoldY;
+		m_pManager->m_touchLatched = true;
+		m_pManager->m_touchDown = true;
+		m_pManager->m_touchLastActiveTime = FPlatformTime::Seconds();
+		if (m_touchHoldFrames == 0)
+		{
+			m_pManager->SetTouchDown(false);
+		}
+	}
+
 	//per-frame video capture runs even while a command file isn't present
 	if (m_videoFramesLeft > 0)
 	{
@@ -232,6 +250,15 @@ void AutomationHarness::ProcessCommandLine(const FString& line)
 			m_keyHolds.Add({ key, ticks });
 			AppendToLog(FString::Printf(TEXT("key %s held %d ticks"), *key.ToString(), ticks));
 		}
+	}
+	else if (cmd == TEXT("touch") && parts.Num() >= 3)
+	{
+		//touch <x> <y> [frames] - emulated stylus tap at 3DS bottom-screen pixel coords
+		//(0..320, 0..240), held N visible frames (default 8).  Ignores the mouse cursor.
+		m_touchHoldX = FMath::Clamp(FCString::Atof(*parts[1]), 0.0f, 319.0f);
+		m_touchHoldY = FMath::Clamp(FCString::Atof(*parts[2]), 0.0f, 239.0f);
+		m_touchHoldFrames = (parts.Num() >= 4) ? FMath::Clamp(FCString::Atoi(*parts[3]), 1, 600) : 8;
+		AppendToLog(FString::Printf(TEXT("touch %.0f,%.0f for %d frames"), m_touchHoldX, m_touchHoldY, m_touchHoldFrames));
 	}
 	else if (cmd == TEXT("savestate"))
 	{

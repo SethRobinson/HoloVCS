@@ -42,4 +42,9 @@ private:
 	//'key' command: synthesized UE key events held for N ticks, released here
 	struct KeyHold { FKey m_key; int m_ticksLeft; };
 	TArray<KeyHold> m_keyHolds;
+
+	//'touch' command: emulated stylus tap at 3DS bottom-screen pixel coords, held N frames
+	int m_touchHoldFrames = 0;
+	float m_touchHoldX = 0;
+	float m_touchHoldY = 0;
 };
