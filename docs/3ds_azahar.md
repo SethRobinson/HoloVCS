@@ -40,6 +40,17 @@ good/broken strobe. Depth persists across the game's internal 30fps cadence. The
   with <root>/saves, which the test bats already preserve (core keeps its user dir at
   saves/Azahar/).
 
+Round 3 (Aug 2026): touch input (mouse or right stick moves a bottom-screen cursor,
+click / right trigger / stick-click taps; ClipCursor confines the mouse), START-held
+gamepad hotkey combos, Q/E shoulder keys. Input split fix: on the 3DS the d-pad and the
+circle pad are SEPARATE controls (SM3DL turns the camera with the d-pad), so the gamepad
+d-pad now has its own DPadX/DPadY axes and only those set the digital d-pad bits there;
+stick and keyboard reach the game through the analog circle pad alone. Other emulators
+still merge stick/keys/d-pad into the digital d-pad. Harness `press up/...` feeds only
+the circle pad on 3DS. Verified full 400px top-screen width reaches the display (core
+composite dump vs quilt center tile: edge content present, margins both sides); the
+"Mario drifts offscreen" report was the d-pad/camera double-drive, not a crop.
+
 NOT yet done: per-game depth-band profiles, UI band handling (HUD currently lands on the
 far plane), touch input, sound verification, release-bat/core-build integration, and the
 roadmap "true layers" per-band re-render (fills the remaining silhouette-edge disocclusion
