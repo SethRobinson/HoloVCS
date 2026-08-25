@@ -864,7 +864,8 @@ int16_t retro_input_state_callback(unsigned port, unsigned device, unsigned inde
 		}
 		if (index == RETRO_DEVICE_INDEX_ANALOG_RIGHT)
 		{
-			return axisToRetro(id == RETRO_DEVICE_ID_ANALOG_X ? pad.m_axisRX : pad.m_axisRY);
+			//the right stick drives OUR touch cursor (PlayerPawn::Tick), not the 3DS C-stick
+			return 0;
 		}
 	}
 

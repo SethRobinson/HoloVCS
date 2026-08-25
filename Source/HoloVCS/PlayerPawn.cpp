@@ -370,7 +370,7 @@ void APlayerPawn::OnMouseX(float AxisValue)
 	{
 		if (AxisValue != 0)
 		{
-			const float sensitivity = 2.5f; //felt sluggish at 1:1 - the 320px screen fills the whole panel
+			const float sensitivity = 7.5f; //Seth-tuned: 2.5 still felt sluggish
 			g_pLibretroManager->m_touchX = FMath::Clamp(g_pLibretroManager->m_touchX + AxisValue * sensitivity, 0.0f, 319.0f);
 			g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
 		}
@@ -386,7 +386,7 @@ void APlayerPawn::OnMouseY(float AxisValue)
 		if (AxisValue != 0)
 		{
 			//UE mouse Y is positive upward; screen coordinates grow downward
-			const float sensitivity = 2.5f;
+			const float sensitivity = 7.5f;
 			g_pLibretroManager->m_touchY = FMath::Clamp(g_pLibretroManager->m_touchY - AxisValue * sensitivity, 0.0f, 239.0f);
 			g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
 		}
@@ -403,7 +403,24 @@ void APlayerPawn::OnMouseY(float AxisValue)
 void HoloConfineMouseToGameWindow(bool bEnable); //defined in LibretroManager.cpp (has the windows.h wrapper)
 void APlayerPawn::UpdateTouchMouseLock()
 {
-	HoloConfineMouseToGameWindow(g_pLibretroManager && g_pLibretroManager->m_emulatorType == EMULATOR_3DS);
+	const bool b3DS = g_pLibretroManager && g_pLibretroManager->m_emulatorType == EMULATOR_3DS;
+	HoloConfineMouseToGameWindow(b3DS);
+
+	//the RIGHT STICK also drives the touch cursor (gamepad touchscreen mode) - it and the
+	//mouse move the same cursor, so "whichever was used last" wins automatically
+	if (b3DS)
+	{
+		const float rx = g_pLibretroManager->m_joyPad.m_axisRX;
+		const float ry = g_pLibretroManager->m_joyPad.m_axisRY;
+		if (FMath::Abs(rx) > 0.2f || FMath::Abs(ry) > 0.2f)
+		{
+			const float dt = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.016f;
+			const float speed = 260.0f; //bottom-screen pixels per second at full deflection
+			g_pLibretroManager->m_touchX = FMath::Clamp(g_pLibretroManager->m_touchX + rx * speed * dt, 0.0f, 319.0f);
+			g_pLibretroManager->m_touchY = FMath::Clamp(g_pLibretroManager->m_touchY + ry * speed * dt, 0.0f, 239.0f);
+			g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
+		}
+	}
 }
 
 void APlayerPawn::JoyPad_B_Pressed(FKey key)
@@ -534,10 +551,21 @@ void APlayerPawn::JoyPad_LeftStick_Released()
 void APlayerPawn::JoyPad_RightStick_Pressed()
 {
 	if (HelpSwallowedInput()) return;
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS)
+	{
+		//clicking the right stick taps the touchscreen at the cursor
+		g_pLibretroManager->m_touchDown = true;
+		g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R3] = true;
 }
 void APlayerPawn::JoyPad_RightStick_Released()
 {
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS)
+	{
+		g_pLibretroManager->m_touchDown = false;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R3] = false;
 }
 
@@ -547,6 +575,13 @@ void APlayerPawn::JoyPad_RTrigger_Pressed()
 	if (g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START])
 	{
 		g_pLibretroManager->ModRom(1); //START + right trigger = next game
+		return;
+	}
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS)
+	{
+		//on the 3DS the right trigger taps the touchscreen at the cursor
+		g_pLibretroManager->m_touchDown = true;
+		g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
 		return;
 	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R2] = true;
@@ -565,6 +600,10 @@ void APlayerPawn::JoyPad_LTrigger_Pressed()
 
 void APlayerPawn::JoyPad_RTrigger_Released()
 {
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS)
+	{
+		g_pLibretroManager->m_touchDown = false;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R2] = false;
 }
 
