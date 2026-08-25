@@ -19,6 +19,11 @@ class LayerSetupInfo
 public:
 
 	bool m_bIgnoreShadows = false;
+	//Force the unlit material on this layer regardless of the global lighting mode (both the
+	//flat scene and the LKG sprite path key off the material, so this kills lighting AND
+	//shadow stamps on it in one place).  Used for the 3DS backdrop band: it holds the game's
+	//sky/backdrop, and tree silhouettes shadow-stamped onto a sky read as glitch blobs.
+	bool m_bUnlit = false;
 };
 
 #define C_MAX_LAYERS 40 //must exceed the largest m_layerCount plus one (the 3DS bottom screen quad sits at index GetLayerCount())

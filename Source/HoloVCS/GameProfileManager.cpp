@@ -688,6 +688,26 @@ void GameProfileManager::ApplyStartingGameSpecificSetup()
 		m_layerSetupInfo[i] = LayerSetupInfo();
 	}
 
+	//3DS (any rom): layer 0 is the farthest depth band, which holds the game's sky/backdrop
+	//(plus far scene geometry).  Shadow silhouettes stamped onto a sky look like glitch
+	//blobs, so it renders unlit and receives no shadows in either renderer.
+	if (m_pLibretroManager->m_emulatorType == EMULATOR_3DS)
+	{
+		m_layerSetupInfo[0].m_bIgnoreShadows = true;
+		m_layerSetupInfo[0].m_bUnlit = true;
+	}
+
+	//3DS: hide the LayerBG backdrop wall (the moon photo).  The 3DS capture delivers its
+	//own full-screen backdrop band, so the wall only ever shows through transient capture
+	//gaps, where it reads as glitching rather than scenery.  Re-shown for other systems.
+	if (m_pLibretroManager->m_pLibretroManagedActor)
+	{
+		if (AActor* pBGWall = GetActorByTag(m_pLibretroManager->m_pLibretroManagedActor->GetWorld(), "LayerBG"))
+		{
+			pBGWall->SetActorHiddenInGame(m_pLibretroManager->m_emulatorType == EMULATOR_3DS);
+		}
+	}
+
 	if (m_curGameProfileIndex == 0)
 	{
 		LogMsg("Applying game specific setup... unknown rom, using defaults.");

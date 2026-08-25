@@ -87,8 +87,45 @@ Key architecture lessons (all learned the hard way on SM3DL, see the fork commit
   overlay were all this or its cousins).
 - Draws that blend by DESTINATION alpha (SM3DL's fog compose) or write partial color
   masks (dest-alpha prep) are never captured; band alpha is not framebuffer alpha.
-- Depth-less draws (backdrops/HUD) all land on the farthest band; phase-based near
-  routing strobed. HUD-in-front is a future per-game knob.
+- Depth-less draw routing (fixed Aug 2026, two revisions; before this the title
+  logo/(c)/3D-badge overlays landed on the farthest band BEHIND the diorama and blinked
+  through gaps = "the Mario overlay appearing and disappearing"): pre-scene depth-less
+  draws (before any real depth-tested draw; clears with func Always don't count) are
+  backdrops -> farthest band. Post-scene depth-less draws render into the NEAREST band
+  and phase-tag their pixels with the draw's capture-seq; the core's pack pass settles
+  them against the frame's final last-depth-draw seq - earlier tags (SM3DL's mid-scene
+  sky/cloud sheets, which INTERLEAVE with the 3D draws) composite into the farthest
+  band, later tags (the true UI tail: logo, HUD, badges) stay near. Per-draw guessing
+  failed both ways: same-frame flag = gray wall in front; previous-frame profile =
+  background flashing gray/white through gaps during animated intros (draw counts
+  shift every frame). Verified: title logo, in-level HUD (timer/W1-1/lives/medals) and
+  cutscene letterbox bars float in FRONT; intro-animation band logs show the far band
+  fully populated every frame with smooth color transitions.
+  THE BACKGROUND STROBE (found + fixed Aug 2026 via the core's per-frame band logger,
+  see below - composite screenshots at half rate ALIAS these away, do not trust them
+  for strobe hunting): the ship/gate cycle assumed the game's frame boundaries align
+  with emulator presents, but the GPU command stream runs AHEAD of vblank, so whole
+  game frames landed inside the ship-to-present capture gate, never packed, and the
+  composite-cut detector (comparing against the last PACKED composite) saw a changed
+  frame with no pack and wiped the diorama flat = fresh/flat alternating at 30Hz
+  (background "gone/gray/correct" cycling). Three-part fix in the core:
+  - Ship requires the transfer DESTINATION to be a top-LCD buffer (learned exact-base
+    set backing up the lagging register check, right-eye registers included, span from
+    the live stride register - the old 240*400*4 constant overlapped the bottom LCD
+    buffer). Input-only matching had shipped bottom-screen reuse as the top scene.
+  - The capture gate REOPENS when the scene RT ships to a non-top destination (the
+    bottom-reuse pass is over), so every game frame packs.
+  - The flat-wipe needs >= 3 packless frames before honoring the composite-cut
+    detector (real 2D cuts stop packs entirely; one-frame cadence gaps must not wipe).
+  Verified: 2x180-frame band logs at the title show zero flat frames (was 16/180) and
+  the far band fully populated every frame.
+  DEBUG TOOLING: drop `holo_band_log_request.txt` in the game process's working
+  directory (editor runs: the ENGINE Binaries\Win64 dir) and the core appends 180
+  frames of per-band used/nonzero/meanRGB lines to `holo_band_log.txt` there - one
+  line per DELIVERED frame, so 30/60Hz strobes cannot alias. `holo_dump_request.txt`
+  still dumps 10 raw composite+depth frames to holo_dump/.
+  The LayerBG moon wall is HIDDEN for 3DS (ApplyStartingGameSpecificSetup; the 3DS
+  capture has its own backdrop band, the wall only ever showed through capture gaps).
 - Scene cuts drop stale layers immediately (composite-cut detection), which is what
   fixed "the letter card wears the previous scene's depth".
 Frontend: honors slice `used` flags with one-shot clears + per-layer dirty gating (empty

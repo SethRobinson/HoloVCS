@@ -138,7 +138,15 @@ bool ALibretroManagerActor::SetupLayer(LayerInfo* pLayer, char* pActorName, int 
 	UMeshComponent* pComp1 = (UMeshComponent*)pActor->GetComponentByClass(UMeshComponent::StaticClass());
 	if (pComp1)
 	{
-		switch (m_curLightingMode)
+		//per-layer unlit override (3DS backdrop band): the material choice drives both the
+		//flat scene AND the LKG sprite path, so this one swap disables lighting and shadow
+		//stamps on the layer everywhere.  Survives the 8-key toggle because that just
+		//re-runs InitLayers -> SetupLayer.
+		if (g_pLibretroManager->m_profManager.m_layerSetupInfo[layerID].m_bUnlit)
+		{
+			pComp1->SetMaterial(0, LayerMatNoLighting);
+		}
+		else switch (m_curLightingMode)
 		{
 		case LIGHTING_MODE_NORMAL:
 			pComp1->SetMaterial(0, LayerMatNormal);
@@ -610,14 +618,18 @@ void FitLookingGlassCaptureToLayers(UWorld* pWorld)
 				}
 				//The backdrop wall (moon picture etc, set per game profile) sits behind the layer
 				//stack and must show through the layers' colorkey holes.  It's deliberately NOT in
-				//the framing AABB above - it's much bigger than the game screen.
+				//the framing AABB above - it's much bigger than the game screen.  Hidden actors
+				//stay out of the hologram too (3DS hides the wall - its capture has its own backdrop).
 				if (AActor* pBGActor = GetActorByTag(pWorld, "LayerBG"))
 				{
-					pCaptureComp->ShowOnlyActors.Add(pBGActor);
-					FVector vBGOrigin, vBGExtent;
-					pBGActor->GetActorBounds(false, vBGOrigin, vBGExtent);
-					LogMsg("LKG fit: added LayerBG backdrop (center %.0f,%.0f,%.0f extent %.0f x %.0f x %.0f)",
-						vBGOrigin.X, vBGOrigin.Y, vBGOrigin.Z, vBGExtent.X, vBGExtent.Y, vBGExtent.Z);
+					if (!pBGActor->IsHidden())
+					{
+						pCaptureComp->ShowOnlyActors.Add(pBGActor);
+						FVector vBGOrigin, vBGExtent;
+						pBGActor->GetActorBounds(false, vBGOrigin, vBGExtent);
+						LogMsg("LKG fit: added LayerBG backdrop (center %.0f,%.0f,%.0f extent %.0f x %.0f x %.0f)",
+							vBGOrigin.X, vBGOrigin.Y, vBGOrigin.Z, vBGExtent.X, vBGExtent.Y, vBGExtent.Z);
+					}
 				}
 			}
 
