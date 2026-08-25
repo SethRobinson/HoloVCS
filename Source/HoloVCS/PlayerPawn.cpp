@@ -370,7 +370,8 @@ void APlayerPawn::OnMouseX(float AxisValue)
 	{
 		if (AxisValue != 0)
 		{
-			g_pLibretroManager->m_touchX = FMath::Clamp(g_pLibretroManager->m_touchX + AxisValue, 0.0f, 319.0f);
+			const float sensitivity = 2.5f; //felt sluggish at 1:1 - the 320px screen fills the whole panel
+			g_pLibretroManager->m_touchX = FMath::Clamp(g_pLibretroManager->m_touchX + AxisValue * sensitivity, 0.0f, 319.0f);
 			g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
 		}
 		return;
@@ -385,7 +386,8 @@ void APlayerPawn::OnMouseY(float AxisValue)
 		if (AxisValue != 0)
 		{
 			//UE mouse Y is positive upward; screen coordinates grow downward
-			g_pLibretroManager->m_touchY = FMath::Clamp(g_pLibretroManager->m_touchY - AxisValue, 0.0f, 239.0f);
+			const float sensitivity = 2.5f;
+			g_pLibretroManager->m_touchY = FMath::Clamp(g_pLibretroManager->m_touchY - AxisValue * sensitivity, 0.0f, 239.0f);
 			g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
 		}
 		return;
@@ -393,29 +395,15 @@ void APlayerPawn::OnMouseY(float AxisValue)
 	m_mouseDY += AxisValue;
 }
 
-//While 3DS touch is active, keep the OS cursor from wandering out of the window (clicks
-//outside would defocus the game).  Recenters only when it nears an edge, NOT per frame -
-//per-frame cursor clipping is the documented ~90ms-stall trap (see AGENTS.md audio notes).
-//UE reads mouse axes from raw input, so the teleport does not create a phantom delta.
+//While the 3DS is active and our window is foreground, hard-confine the OS cursor to the
+//window (Win32 ClipCursor) so a click can never land on the desktop and steal focus.
+//The clip is applied only when Windows has dropped it (focus changes clear clips), NOT
+//re-applied every frame - the per-mousemove re-clip is the documented ~90ms-stall trap
+//(see AGENTS.md audio notes); the STALL watchdog in the log would catch a regression.
+void HoloConfineMouseToGameWindow(bool bEnable); //defined in LibretroManager.cpp (has the windows.h wrapper)
 void APlayerPawn::UpdateTouchMouseLock()
 {
-	if (!g_pLibretroManager || g_pLibretroManager->m_emulatorType != EMULATOR_3DS) return;
-
-	APlayerController* pPC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
-	if (!pPC) return;
-
-	float mx = 0, my = 0;
-	if (!pPC->GetMousePosition(mx, my)) return; //no focus / no cursor data - leave it alone
-
-	int32 vx = 0, vy = 0;
-	pPC->GetViewportSize(vx, vy);
-	if (vx < 100 || vy < 100) return;
-
-	const float margin = 60.0f;
-	if (mx < margin || my < margin || mx > vx - margin || my > vy - margin)
-	{
-		pPC->SetMouseLocation(vx / 2, vy / 2);
-	}
+	HoloConfineMouseToGameWindow(g_pLibretroManager && g_pLibretroManager->m_emulatorType == EMULATOR_3DS);
 }
 
 void APlayerPawn::JoyPad_B_Pressed(FKey key)
@@ -505,8 +493,15 @@ void APlayerPawn::JoyPad_Select_Released()
 void APlayerPawn::JoyPad_LShoulder_Pressed()
 {
 	if (HelpSwallowedInput()) return;
+	//gamepad system hotkeys all require HOLDING START (Seth: bare buttons kept triggering
+	//them by accident).  With START held the press is a pure hotkey - the game does not see
+	//the button id.  Without START, shoulders/triggers are ordinary L/R/ZL/ZR buttons.
+	if (g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START])
+	{
+		g_pLibretroManager->SaveStateToFile();
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L] = true;
-	g_pLibretroManager->SaveStateToFile();
 }
 
 void APlayerPawn::JoyPad_LShoulder_Released()
@@ -517,8 +512,12 @@ void APlayerPawn::JoyPad_LShoulder_Released()
 void APlayerPawn::JoyPad_RShoulder_Pressed()
 {
 	if (HelpSwallowedInput()) return;
+	if (g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START])
+	{
+		g_pLibretroManager->LoadStateFromFile();
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R] = true;
-	g_pLibretroManager->LoadStateFromFile();
 }
 
 
@@ -526,8 +525,6 @@ void APlayerPawn::JoyPad_LeftStick_Pressed()
 {
 	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L3] = true;
-
-	OnResetGame();
 }
 void APlayerPawn::JoyPad_LeftStick_Released()
 {
@@ -538,8 +535,6 @@ void APlayerPawn::JoyPad_RightStick_Pressed()
 {
 	if (HelpSwallowedInput()) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R3] = true;
-	g_pLibretroManager->ModRom(1);
-
 }
 void APlayerPawn::JoyPad_RightStick_Released()
 {
@@ -549,15 +544,23 @@ void APlayerPawn::JoyPad_RightStick_Released()
 void APlayerPawn::JoyPad_RTrigger_Pressed()
 {
 	if (HelpSwallowedInput()) return;
+	if (g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START])
+	{
+		g_pLibretroManager->ModRom(1); //START + right trigger = next game
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R2] = true;
-//	g_pLibretroManager->ModRom(-1);
 }
 
 void APlayerPawn::JoyPad_LTrigger_Pressed()
 {
 	if (HelpSwallowedInput()) return;
+	if (g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START])
+	{
+		OnResetGame(); //START + left trigger = reset game
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L2] = true;
-//	g_pLibretroManager->ModRom(1);
 }
 
 void APlayerPawn::JoyPad_RTrigger_Released()

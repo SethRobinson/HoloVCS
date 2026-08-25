@@ -243,6 +243,7 @@ public:
 	float m_touchY = 120.0f;
 	bool m_touchDown = false;
 	double m_touchLastActiveTime = 0; //FPlatformTime seconds; drives cursor auto-hide
+	bool m_touchCursorShownOnce = false; //primes a few visible seconds on the first delivered frame
 
 	NesHacker m_nesHacker;
 	AutomationHarness m_autoHarness;

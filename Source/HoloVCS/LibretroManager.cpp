@@ -55,8 +55,60 @@ THIRD_PARTY_INCLUDES_END
 #endif
 
 #include "Shared/UnrealMisc.h"
+#include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
+#include "Widgets/SWindow.h"
+#include "GenericPlatform/GenericWindow.h"
 
 #pragma warning(disable:4191)
+
+//Hard-confine the OS cursor to the game window while the 3DS touch cursor is in use, so a
+//click can never land on the desktop and steal focus.  The clip is only APPLIED when it is
+//missing or wrong (Windows clears clips on focus changes) - never re-applied per frame,
+//which is the documented ~90ms-stall trap (see AGENTS.md audio section).
+#if PLATFORM_WINDOWS
+#include "Windows/AllowWindowsPlatformTypes.h"
+void HoloConfineMouseToGameWindow(bool bEnable)
+{
+	static bool bWasClipped = false;
+	HWND hwnd = NULL;
+	if (GEngine && GEngine->GameViewport)
+	{
+		TSharedPtr<SWindow> pWindow = GEngine->GameViewport->GetWindow();
+		if (pWindow.IsValid() && pWindow->GetNativeWindow().IsValid())
+		{
+			hwnd = (HWND)pWindow->GetNativeWindow()->GetOSWindowHandle();
+		}
+	}
+	const bool bWant = bEnable && hwnd && GetForegroundWindow() == hwnd;
+	if (!bWant)
+	{
+		if (bWasClipped)
+		{
+			ClipCursor(NULL);
+			bWasClipped = false;
+		}
+		return;
+	}
+	RECT rClient;
+	GetClientRect(hwnd, &rClient);
+	POINT tl = { rClient.left, rClient.top };
+	POINT br = { rClient.right, rClient.bottom };
+	ClientToScreen(hwnd, &tl);
+	ClientToScreen(hwnd, &br);
+	RECT rWant = { tl.x, tl.y, br.x, br.y };
+	RECT rCur;
+	GetClipCursor(&rCur);
+	if (!EqualRect(&rCur, &rWant))
+	{
+		ClipCursor(&rWant);
+	}
+	bWasClipped = true;
+}
+#include "Windows/HideWindowsPlatformTypes.h"
+#else
+void HoloConfineMouseToGameWindow(bool) {}
+#endif
 
 const unsigned short ASYNC_BUTTON_DOWN_MSB = 0x8000;
 
@@ -939,10 +991,15 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 		m_pLibretroManagedActor->m_layerCount = 12; //negotiated to the core via holo_3d_layer_count
 		m_pLibretroManagedActor->m_total3dDepth = 170;
 		m_pLibretroManagedActor->m_depthOffsetForAllLayers = -35;
-		m_pLibretroManagedActor->m_coreLayerScale = FVector2D(3.1f, 2.9f);
+		//the layer quad mesh is (nearly) square, so the scale pair must carry the full
+		//400:240 content aspect or everything displays horizontally squished (mesh aspect
+		//measured ~1.05: 3.5*1.05/2.2 = 1.67 = 400/240).  The bottom screen quad derives
+		//its own scale from this, so it stays correct automatically.
+		m_pLibretroManagedActor->m_coreLayerScale = FVector2D(3.5f, 2.2f);
 		m_pLibretroManagedActor->m_corePosition = FVector2D(0, 0);
 		m_pLibretroManagedActor->m_bgAllowShadows = false;
 		m_targetFPS = 59.8331; //real 3DS refresh; audio rate comes from retro_get_system_av_info
+		m_touchCursorShownOnce = false; //re-arm the "show the cursor briefly at boot" hint
 		break;
 
 	default:
@@ -1374,6 +1431,12 @@ void retro_video_refresh_callback_holo(const void* data, unsigned width, unsigne
 			{
 				memcpy(pDstBase + y * pBottomLayer->m_texPitchBytes, info->bottom.pixels + (size_t)y * info->bottom.pitchBytes, rowBytes);
 			}
+			if (!g_pLibretroManager->m_touchCursorShownOnce)
+			{
+				//show the touch cursor for a few seconds on the first real frame so the feature is discoverable
+				g_pLibretroManager->m_touchCursorShownOnce = true;
+				g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds() + 3;
+			}
 			DrawTouchCursor(pDstBase, pBottomLayer->m_texWidth, pBottomLayer->m_texHeight, pBottomLayer->m_texPitchBytes);
 			pBottomLayer->m_bUsedThisFrame = true;
 		}
@@ -1388,25 +1451,28 @@ void DrawTouchCursor(uint8* pDstBase, int texWidth, int texHeight, int texPitchB
 	const double now = FPlatformTime::Seconds();
 	if (!g_pLibretroManager->m_touchDown && now - g_pLibretroManager->m_touchLastActiveTime > 4.0) return;
 
-	static const char* arrow[18] = {
-		"X           ",
-		"XX          ",
-		"X.X         ",
-		"X..X        ",
-		"X...X       ",
-		"X....X      ",
-		"X.....X     ",
-		"X......X    ",
-		"X.......X   ",
-		"X........X  ",
-		"X.....XXXXX ",
-		"X..X..X     ",
-		"X.X X..X    ",
-		"XX  X..X    ",
-		"X    X..X   ",
-		"     X..X   ",
-		"      XX    ",
-		"            ",
+	//classic pointer proportions (about half as wide as tall) or it reads squished on the panel
+	static const char* arrow[20] = {
+		"X         ",
+		"XX        ",
+		"X.X       ",
+		"X..X      ",
+		"X...X     ",
+		"X....X    ",
+		"X.....X   ",
+		"X......X  ",
+		"X.......X ",
+		"X........X",
+		"X....XXXXX",
+		"X..X.X    ",
+		"X.X X.X   ",
+		"XX  X.X   ",
+		"X    X.X  ",
+		"     X.X  ",
+		"      X.X ",
+		"      X.X ",
+		"       X  ",
+		"          ",
 	};
 	const int scale = 2;
 	const int cx = (int)g_pLibretroManager->m_touchX;
@@ -1414,9 +1480,9 @@ void DrawTouchCursor(uint8* pDstBase, int texWidth, int texHeight, int texPitchB
 	const uint32 colFill = g_pLibretroManager->m_touchDown ? 0xFF60C0FFu : 0xFFFFFFFFu; //fill flashes blue while touching
 	const uint32 colOutline = 0xFF000000u;
 
-	for (int ay = 0; ay < 18; ay++)
+	for (int ay = 0; ay < 20; ay++)
 	{
-		for (int ax = 0; ax < 12; ax++)
+		for (int ax = 0; ax < 10; ax++)
 		{
 			const char c = arrow[ay][ax];
 			if (c == ' ') continue;
