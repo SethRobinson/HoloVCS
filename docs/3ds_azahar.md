@@ -8,10 +8,24 @@ canonical copy synced with the fork). Verified in the flat build: world-map dior
 correct depth ordering and orientation; layer dumps clean. A stock (unpatched) core still
 falls back to the flat software-renderer path automatically.
 
-NOT yet done: Looking Glass hardware validation (Go), per-game depth-band profiles, UI
-band handling (HUD currently lands on the far plane), bottom screen delivery + touch,
-circle-pad analog (menus work, 3D movement doesn't), sound verification, release-bat/
-core-build integration, uniform-band flicker check (band edges smooth over ~5 frames).
+Hardware-validated on the Looking Glass Go (Aug 2026). First-round fixes after Seth's
+on-device feedback (jitter + black seams), all in the fork's holo_slicer/holo_hook:
+- Color+depth now read as a SAME-FRAME pair from the render framebuffer's own attachments
+  (reading the display texture paired stale color with fresh depth = motion jitter).
+- Readback goes through round-robin PBOs consumed one present later; a synchronous
+  glReadPixels of the live frame stalled the GL pipeline (60fps -> 28fps).
+- Depth persists across depthless frames (frames without a depth-tested 240x400 draw used
+  to flat-fallback, alternating flat/sliced every frame = the "every other frame wrong"
+  jitter); flat fallback only after 60 depthless frames.
+- Band range expands instantly, contracts slowly (edge-pixel layer flicker).
+- Band overlap (kBandOverlap 0.35): edge pixels duplicate into the adjacent band's empty
+  slots, closing the black seams where cut strips of continuous surfaces meet.
+
+NOT yet done: per-game depth-band profiles, UI band handling (HUD currently lands on the
+far plane), bottom screen delivery + touch, circle-pad analog (menus work, 3D movement
+doesn't), sound verification, release-bat/core-build integration, and the roadmap "true
+layers" per-band re-render (fills the remaining silhouette-edge disocclusion slivers).
+Cutscene oddities (letter/storm scenes showing partial content) are unfixed low priority.
 
 ## Where things live
 
