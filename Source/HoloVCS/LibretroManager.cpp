@@ -147,6 +147,52 @@ LibretroManager::LibretroManager()
 	{
 		m_pSaveStateBuffer[i] = NULL;
 	}
+	for (int i = 0; i < C_TOUCH_HISTORY; i++)
+	{
+		m_touchHistX[i] = m_touchX;
+		m_touchHistY[i] = m_touchY;
+	}
+}
+
+void LibretroManager::RecordTouchHistory()
+{
+	m_touchHistPos = (m_touchHistPos + 1) % C_TOUCH_HISTORY;
+	m_touchHistX[m_touchHistPos] = m_touchX;
+	m_touchHistY[m_touchHistPos] = m_touchY;
+
+	//a held touch stays at the latch until the cursor clearly moves away - that's a
+	//deliberate drag, so hand control back to the live position
+	if (m_touchDown && m_touchLatched)
+	{
+		const float dx = m_touchX - m_touchLatchX;
+		const float dy = m_touchY - m_touchLatchY;
+		if (dx * dx + dy * dy > 15.0f * 15.0f) m_touchLatched = false;
+	}
+}
+
+void LibretroManager::SetTouchDown(bool bDown)
+{
+	if (bDown && !m_touchDown)
+	{
+		const int framesBack = 5; //~83ms at 60fps, roughly the cursor's display latency
+		const int idx = (m_touchHistPos - framesBack + C_TOUCH_HISTORY) % C_TOUCH_HISTORY;
+		m_touchLatchX = m_touchHistX[idx];
+		m_touchLatchY = m_touchHistY[idx];
+		m_touchLatched = true;
+		m_touchLastActiveTime = FPlatformTime::Seconds();
+	}
+	if (!bDown) m_touchLatched = false;
+	m_touchDown = bDown;
+}
+
+float LibretroManager::GetTouchPointX()
+{
+	return (m_touchDown && m_touchLatched) ? m_touchLatchX : m_touchX;
+}
+
+float LibretroManager::GetTouchPointY()
+{
+	return (m_touchDown && m_touchLatched) ? m_touchLatchY : m_touchY;
 }
 
 LibretroManager::~LibretroManager()
@@ -884,8 +930,8 @@ int16_t retro_input_state_callback(unsigned port, unsigned device, unsigned inde
 	//virtual cursor lives in bottom-screen pixels; convert here.  Left click = pressed.
 	if (port == 0 && device == RETRO_DEVICE_POINTER)
 	{
-		const float absX = 40.0f + g_pLibretroManager->m_touchX;
-		const float absY = 240.0f + g_pLibretroManager->m_touchY;
+		const float absX = 40.0f + g_pLibretroManager->GetTouchPointX();
+		const float absY = 240.0f + g_pLibretroManager->GetTouchPointY();
 		if (id == RETRO_DEVICE_ID_POINTER_X) return (int16_t)FMath::Clamp((int)((absX / 400.0f * 2.0f - 1.0f) * 32767.0f), -32767, 32767);
 		if (id == RETRO_DEVICE_ID_POINTER_Y) return (int16_t)FMath::Clamp((int)((absY / 480.0f * 2.0f - 1.0f) * 32767.0f), -32767, 32767);
 		if (id == RETRO_DEVICE_ID_POINTER_PRESSED) return g_pLibretroManager->m_touchDown ? 1 : 0;
@@ -1486,8 +1532,9 @@ void DrawTouchCursor(uint8* pDstBase, int texWidth, int texHeight, int texPitchB
 		"          ",
 	};
 	const int scale = 2;
-	const int cx = (int)g_pLibretroManager->m_touchX;
-	const int cy = (int)g_pLibretroManager->m_touchY;
+	//draw at the latched point while pressing so the arrow marks EXACTLY where the tap registers
+	const int cx = (int)g_pLibretroManager->GetTouchPointX();
+	const int cy = (int)g_pLibretroManager->GetTouchPointY();
 	const uint32 colFill = g_pLibretroManager->m_touchDown ? 0xFF60C0FFu : 0xFFFFFFFFu; //fill flashes blue while touching
 	const uint32 colOutline = 0xFF000000u;
 

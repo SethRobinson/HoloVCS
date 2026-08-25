@@ -245,6 +245,22 @@ public:
 	double m_touchLastActiveTime = 0; //FPlatformTime seconds; drives cursor auto-hide
 	bool m_touchCursorShownOnce = false; //primes a few visible seconds on the first delivered frame
 
+	//Press-position latch: the panel shows the cursor a few frames late and the act of
+	//clicking (stick-click wobble, trigger squeeze, mouse nudge) moves it right as the press
+	//lands, so a tap latches to where the cursor was ~100ms ago and stays there until the
+	//cursor clearly drags away.  All touch press/release goes through SetTouchDown.
+	static const int C_TOUCH_HISTORY = 16;
+	float m_touchHistX[C_TOUCH_HISTORY];
+	float m_touchHistY[C_TOUCH_HISTORY];
+	int m_touchHistPos = 0;
+	bool m_touchLatched = false;
+	float m_touchLatchX = 160.0f;
+	float m_touchLatchY = 120.0f;
+	void SetTouchDown(bool bDown);
+	void RecordTouchHistory(); //once per game-thread tick while the 3DS is active
+	float GetTouchPointX(); //latched during a fresh press, live otherwise
+	float GetTouchPointY();
+
 	NesHacker m_nesHacker;
 	AutomationHarness m_autoHarness;
 	HelpScreen m_helpScreen;

@@ -54,6 +54,7 @@ static void KeepGameWindowFocused()
 }
 
 void FitLookingGlassCaptureToLayers(UWorld* pWorld);
+static float GetLookingGlassDeviceAspect(UWorld* pWorld);
 
 //Console twin of the [ and ] hotkeys so the automation harness can drive the depth spread
 //headlessly (exec holo.DepthScale 2)
@@ -347,11 +348,21 @@ void ALibretroManagerActor::InitLayers()
 			vScale.X = m_coreLayerScale.X * 320.0f / 400.0f;
 			vScale.Y = m_coreLayerScale.Y;
 			pActor->SetActorScale3D(vScale);
-			//world Y = horizontal, world Z = vertical; one screen-height down plus a small gap
+			//world Y = horizontal, world Z = vertical; one screen-height down plus a gap.
+			//On the portrait Go (device aspect ~0.56) the hologram frame is bound by WIDTH,
+			//so there's free vertical room for a real 80px gap between the screens.  Squarer
+			//panels (Portrait 0.75 etc) are height-bound - a big gap would shrink both
+			//screens to fit, so they keep the near-touching layout.
 			const float quadWorldHeight = pActor->GetComponentsBoundingBox().GetSize().Z;
+			float gapFactor = 1.04f;
+			const float deviceAspect = GetLookingGlassDeviceAspect(GetWorld());
+			if (deviceAspect > 0.0f && deviceAspect < 0.6f)
+			{
+				gapFactor = 1.0f + 80.0f / 240.0f; //80 bottom-screen pixels of daylight
+			}
 			FVector vPos = pActor->GetActorLocation();
 			vPos.Y = m_corePosition.X;
-			vPos.Z = m_corePosition.Y - quadWorldHeight * 1.04f;
+			vPos.Z = m_corePosition.Y - quadWorldHeight * gapFactor;
 			pActor->SetActorLocation(vPos);
 		}
 	}
@@ -417,6 +428,29 @@ void ALibretroManagerActor::SetUserDepthScale(float scale)
 //can never frame them all.  Refit it to the current layer AABB whenever the layers rebuild.  The
 //plugin classes are resolved by NAME so the game module keeps zero compile-time plugin dependency
 //(this is a no-op in the flat build, where the actor doesn't exist).
+//Device aspect (width/height) of the connected Looking Glass panel, or 0 when no capture
+//actor exists (flat build / no plugin).  Lets layout adapt per panel: the portrait Go
+//(~0.56) has spare vertical room that squarer panels don't.
+static float GetLookingGlassDeviceAspect(UWorld* pWorld)
+{
+	if (!pWorld) return 0.0f;
+	for (TActorIterator<AActor> it(pWorld); it; ++it)
+	{
+		if (it->GetClass()->GetName() != TEXT("LookingGlassCapture")) continue;
+		for (UActorComponent* pComp : it->GetComponents())
+		{
+			if (pComp->GetClass()->GetName() != TEXT("LookingGlassSceneCaptureComponent2D")) continue;
+			if (UFunction* pAspectFunc = pComp->FindFunction(TEXT("GetAspectRatio")))
+			{
+				struct { float ReturnValue; } aspectParams = { 0.0f };
+				pComp->ProcessEvent(pAspectFunc, &aspectParams);
+				if (aspectParams.ReturnValue > 0.05f) return aspectParams.ReturnValue;
+			}
+		}
+	}
+	return 0.0f;
+}
+
 void FitLookingGlassCaptureToLayers(UWorld* pWorld)
 {
 	if (!pWorld) return;

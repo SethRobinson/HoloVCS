@@ -458,6 +458,8 @@ void APlayerPawn::UpdateTouchMouseLock()
 			g_pLibretroManager->m_touchY = FMath::Clamp(g_pLibretroManager->m_touchY - ry * speed * dt, 0.0f, 239.0f);
 			g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
 		}
+
+		g_pLibretroManager->RecordTouchHistory(); //feeds the press-position latch
 	}
 }
 
@@ -468,8 +470,7 @@ void APlayerPawn::JoyPad_B_Pressed(FKey key)
 	//(Ctrl and the gamepad button still press B there)
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::LeftMouseButton)
 	{
-		g_pLibretroManager->m_touchDown = true;
-		g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
+		g_pLibretroManager->SetTouchDown(true);
 		return;
 	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = true;
@@ -479,7 +480,7 @@ void APlayerPawn::JoyPad_B_Released(FKey key)
 {
 	if (key == EKeys::LeftMouseButton)
 	{
-		g_pLibretroManager->m_touchDown = false;
+		g_pLibretroManager->SetTouchDown(false);
 	}
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::LeftMouseButton)
 	{
@@ -592,8 +593,7 @@ void APlayerPawn::JoyPad_RightStick_Pressed()
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS)
 	{
 		//clicking the right stick taps the touchscreen at the cursor
-		g_pLibretroManager->m_touchDown = true;
-		g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
+		g_pLibretroManager->SetTouchDown(true);
 		return;
 	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R3] = true;
@@ -602,7 +602,7 @@ void APlayerPawn::JoyPad_RightStick_Released()
 {
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS)
 	{
-		g_pLibretroManager->m_touchDown = false;
+		g_pLibretroManager->SetTouchDown(false);
 	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R3] = false;
 }
@@ -618,8 +618,7 @@ void APlayerPawn::JoyPad_RTrigger_Pressed()
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS)
 	{
 		//on the 3DS the right trigger taps the touchscreen at the cursor
-		g_pLibretroManager->m_touchDown = true;
-		g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
+		g_pLibretroManager->SetTouchDown(true);
 		return;
 	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R2] = true;
@@ -640,7 +639,7 @@ void APlayerPawn::JoyPad_RTrigger_Released()
 {
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS)
 	{
-		g_pLibretroManager->m_touchDown = false;
+		g_pLibretroManager->SetTouchDown(false);
 	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R2] = false;
 }
