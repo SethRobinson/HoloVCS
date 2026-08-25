@@ -35,6 +35,7 @@ enum eEmulatorType
 	EMULATOR_ATARI,
 	EMULATOR_NES,
 	EMULATOR_VB,
+	EMULATOR_3DS,
 
 	//add more above here
 	EMULATOR_COUNT

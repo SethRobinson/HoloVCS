@@ -466,6 +466,10 @@ but burns the 5.6 escape hatch like any other resave.
   tracked or force-added. Build them from the vendored sources with `BuildCores.bat`; release
   packaging rebuilds them before staging. The core source and build recipes, not compiled DLLs,
   are the repository artifacts.
+- 3DS (IN PROGRESS, Aug 2026): `azahar_libretro.dll`, built from Seth's Azahar fork at
+  `f:\Unreal\azahar` (branch `holo`; NOT part of BuildCores.bat yet, copied to Binaries/Win64 by
+  hand). Read `docs/3ds_azahar.md` before touching EMULATOR_3DS - it differs from the other
+  systems (no savestates, path-loaded 512MB roms, per-frame SET_GEOMETRY, software renderer).
 - `LibretroManager::LoadCore` loads them with LoadLibraryA - bare name first (packaged builds, exe
   sits next to the DLLs), then `<ProjectDir>/Binaries/Win64/` (editor runs).
 - **NEVER statically link the cores into the game module again.** GPL-2.0 and the Unreal Engine
@@ -487,6 +491,8 @@ split backgrounds. Startup ROM is hardcoded by partial name ("astle") near the t
 LibretroManager.cpp.
 
 Feature docs (read before working on these):
+- 3DS / Azahar integration (fork location, no-savestate constraints, software-vs-holo renderer
+  plan, proof-of-concept results): `docs/3ds_azahar.md`.
 - Automation harness (file-based game control/screenshots/video, no window focus), the NES
   state dump tool (N key), and the NES profile-authoring method: `docs/automation_workflow.md`.
   Also covers the UE 5.8 "Unreal MCP" editor plugin (enabled in the FLAT uproject only).

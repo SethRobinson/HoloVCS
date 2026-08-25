@@ -226,6 +226,11 @@ void GameProfileManager::UpdateAtari()
 }
 
 
+void GameProfileManager::Update3DS()
+{
+	UpdateDefault3DS(this);
+}
+
 void GameProfileManager::Update()
 {
 	if (m_pLibretroManager->m_emulatorType == EMULATOR_ATARI)
@@ -236,6 +241,9 @@ void GameProfileManager::Update()
 
 	if (m_pLibretroManager->m_emulatorType == EMULATOR_VB)
 		UpdateVB();
+
+	if (m_pLibretroManager->m_emulatorType == EMULATOR_3DS)
+		Update3DS();
 
 }
 
@@ -748,4 +756,22 @@ void UpdateDefaultVB(void* pProfileManager)
 	pL->RenderFrame("11");
 	pL->SaveState(0); //the real one we're going to save for the next frame
 
+}
+
+void UpdateDefault3DS(void* pProfileManager)
+{
+	GameProfileManager* pProf = (GameProfileManager*)pProfileManager;
+	LibretroManager* pL = pProf->m_pLibretroManager;
+
+	pL->m_pPlayerPawn->SetBGPic();
+
+	//one plain run per frame: no savestate rewind tricks (the core has none) and no
+	//multi-pass splitting yet - the core delivers both 3DS screens stacked (400x480) and
+	//we blit the whole thing flat to layer 0. Depth layers arrive with the holo core.
+	FIntRect rectFull = FIntRect(0, 0, pL->m_game_av_info.geometry.base_width, pL->m_game_av_info.geometry.base_height);
+
+	pL->ResetBlitInformation();
+	pL->SetupBlitPass(BLIT_PASS0, 0, rectFull, COLOR_KEY_STYLE_NONE, FLinearColor(0, 0, 0, 0));
+	pL->DisableBlitPass(BLIT_PASS1);
+	pL->RenderFrame("11");
 }

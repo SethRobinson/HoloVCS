@@ -110,3 +110,5 @@ cores/**/Release/
 cores/**/Debug/
 cores/**/.vs/
 *.vcxproj.user
+*.3ds
+*.cci

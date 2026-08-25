@@ -1,0 +1,52 @@
+# 3DS support via Azahar (in progress)
+
+Status Aug 2026: Phase 1 "flat" integration works: EMULATOR_3DS boots the official-style
+azahar_libretro.dll, renders both 3DS screens stacked (400x480) on layer 0, keyboard input
+and rom switching work. NOT yet done: depth layers (Phase 2 holo core patch), sound
+verification, circle-pad analog, touch, release-bat/core-build integration, LKG testing.
+
+## Where things live
+
+- The emulator source is Seth's fork of Azahar (Citra successor), checked out at
+  `f:\Unreal\azahar` (github.com/SethRobinson/azahar, branch `holo`, based on the upstream
+  2126.0 tag). NEVER push it without Seth's permission. Its `AGENTS.md` has the MSVC build
+  recipe; output is `build-lr\bin\Release\azahar_libretro.dll`, currently copied by hand to
+  `Binaries\Win64` (BuildCores.bat integration pending). `f:\Unreal\azahar\holo_tools\` has
+  a RetroArch-based automation harness (UDP input/screenshots) and the depth-slice analysis
+  scripts from the proof of concept.
+- ROMs: `3ds/` in the project root, extensions `.3ds`/`.cci`, DECRYPTED dumps only (the
+  core refuses encrypted ones; some "decrypted" dumps still need the NCCH NoCrypto flag set,
+  see holo_tools/AGENTS.md).
+
+## How the integration differs from the other cores
+
+- The core has NO savestates (`retro_serialize_size()==0`): InitEmulator skips the state
+  buffers (a hard error for other systems), SaveState/LoadState no-op, and the profile
+  update (`UpdateDefault3DS`) is a single RenderFrame per frame, no rewind multi-pass.
+  Harness `savestate`/`loadstate` and the F/G/L hotkeys do nothing for 3DS.
+- ROMs are huge (512MB): LoadRom does NOT read the file into RAM for 3DS; it hashes the
+  first 1MB for the GameProfileManager key and passes only ginfo.path (the core loads the
+  file itself, need_fullpath).
+- Sample rate (32728 Hz) is applied from retro_get_system_av_info in LoadRom (3DS-scoped;
+  the SET_GEOMETRY handler only reacts on rate CHANGE now because this core re-sends
+  SET_GEOMETRY every frame and used to rebuild the audio buffer 60x/second).
+- Pacer catch-up is clamped to 1 frame for 3DS (a frame can cost 10ms+).
+- Core options are prefixed `citra_`; the env callback answers `citra_graphics_api` =
+  "Software" for now. The software renderer is SLOW (~120ms/frame in heavy scenes, ~20fps
+  title screens): fine for plumbing tests, not shippable. The Phase 2 plan is a core-side
+  "holo mode" (own offscreen GL context + depth-slice readback delivering pre-split layers
+  like the VB core, via a new HoloLayer ABI).
+- Frontend env additions worth knowing: the core also calls ~15 env commands the frontend
+  answers false to (core options v2, VFS, mic, sensors...); all verified harmless. The
+  core's stub HLE applets auto-pick a premade Mii (no dialog).
+
+## Known gaps / gotchas
+
+- Movement in 3D games needs the circle pad; the frontend is digital-only today, so games
+  like Mario 3D Land can navigate menus but not walk. Planned fix is core-side
+  (dpad-to-circle-pad option) rather than frontend analog.
+- Audio arrives via retro_audio_sample_batch but possibly from a non-game thread (the
+  core's DSP thread); RTBufferGenerator thread-safety unverified. Verify before shipping.
+- The depth-slice proof of concept (validated Aug 2026): the emulated GPU keeps a clean
+  240x400 D24S8 depth buffer per frame that slices into good-looking diorama layers.
+  Details, captures, and the parallax previews: f:\Unreal\azahar\holo_tools\poc_out.

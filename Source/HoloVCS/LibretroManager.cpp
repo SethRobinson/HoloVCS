@@ -3,6 +3,8 @@
 #include "PlayerPawn.h"
 #include "StatusDisplayActor.h" //so we can show messages on screen
 #include "HAL/FileManager.h"
+#include "HAL/PlatformFileManager.h"
+#include "GenericPlatform/GenericPlatformFile.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
@@ -398,6 +400,16 @@ bool retro_environment_callback(unsigned cmd, void* data)
 				pVar->value = "rgb";
 				return true;
 			}
+
+		//Azahar (3DS) core options - keys are prefixed "citra_". Software renderer delivers
+		//plain CPU frames through the normal video refresh (slow but zero GL plumbing); the
+		//patched holo core will switch this to its own GL path.
+		if (strcmp(pVar->key, "citra_graphics_api") == 0)
+		{
+			pVar->value = "Software";
+			return true;
+		}
+
 		return false;
 	}
 	break;
@@ -460,11 +472,17 @@ bool retro_environment_callback(unsigned cmd, void* data)
 	{
 		retro_system_av_info* pInfo = (retro_system_av_info*)data;
 
-		LogMsg("Update from core says screen is %d, %d, but max is %d, %d.", pInfo->geometry.base_width, pInfo->geometry.base_height,
-			pInfo->geometry.max_width, pInfo->geometry.max_height);
-		LogMsg("FPS %f, sample rate: %f", (float)pInfo->timing.fps, (float)pInfo->timing.sample_rate);
-
-		g_pLibretroManager->m_pLibretroManagedActor->SetSampleRate(pInfo->timing.sample_rate);
+		//the Azahar core re-sends SET_GEOMETRY every frame; only react (and log) on change,
+		//or the audio buffer gets torn down and rebuilt 60 times a second
+		static double lastAppliedRate = -1;
+		if (pInfo->timing.sample_rate != lastAppliedRate)
+		{
+			lastAppliedRate = pInfo->timing.sample_rate;
+			LogMsg("Update from core says screen is %d, %d, but max is %d, %d.", pInfo->geometry.base_width, pInfo->geometry.base_height,
+				pInfo->geometry.max_width, pInfo->geometry.max_height);
+			LogMsg("FPS %f, sample rate: %f", (float)pInfo->timing.fps, (float)pInfo->timing.sample_rate);
+			g_pLibretroManager->m_pLibretroManagedActor->SetSampleRate(pInfo->timing.sample_rate);
+		}
 		break;
 	}
 
@@ -577,26 +595,48 @@ bool LibretroManager::LoadRom(string fileName)
 	
 	m_romDataArray.Empty();
 
-	FFileHelper::LoadFileToArray(m_romDataArray, ANSI_TO_TCHAR(fileName.c_str()));
-	ginfo.data = m_romDataArray.GetData();
-	ginfo.size = m_romDataArray.Num();
-
-	if (ginfo.size == 0 || ginfo.data == NULL)
+	if (m_emulatorType == EMULATOR_3DS)
 	{
-		LogMsg("Error loading rom (can't find it)");
-		return false;
+		//3DS images are hundreds of MB and the Azahar core loads from ginfo.path itself
+		//(need_fullpath), so never pull the whole file into RAM. Hash the first 1MB for the
+		//game-profile key; the NCSD/NCCH headers in there identify the title and revision.
+		TUniquePtr<IFileHandle> file(FPlatformFileManager::Get().GetPlatformFile().OpenRead(ANSI_TO_TCHAR(fileName.c_str())));
+		if (!file)
+		{
+			LogMsg("Error loading rom (can't find it)");
+			return false;
+		}
+		const int64 hashBytes = FMath::Min<int64>(file->Size(), 1024 * 1024);
+		m_romDataArray.SetNumUninitialized((int32)hashBytes);
+		file->Read(m_romDataArray.GetData(), hashBytes);
+		m_romHash = TCHAR_TO_UTF8(*FMD5::HashBytes(m_romDataArray.GetData(), hashBytes));
+		m_romDataArray.Empty();
+		ginfo.data = NULL;
+		ginfo.size = 0;
+	}
+	else
+	{
+		FFileHelper::LoadFileToArray(m_romDataArray, ANSI_TO_TCHAR(fileName.c_str()));
+		ginfo.data = m_romDataArray.GetData();
+		ginfo.size = m_romDataArray.Num();
+
+		if (ginfo.size == 0 || ginfo.data == NULL)
+		{
+			LogMsg("Error loading rom (can't find it)");
+			return false;
+		}
+
+		int headerSizeToSkipForRomHash = 0;
+
+		//calculate checksum, needed to recognize which game we're running
+		if (m_emulatorType == EMULATOR_NES)
+		{
+			headerSizeToSkipForRomHash = 16;
+		}
+
+		m_romHash = TCHAR_TO_UTF8(*FMD5::HashBytes((uint8*)&((byte*)ginfo.data)[headerSizeToSkipForRomHash], ginfo.size - headerSizeToSkipForRomHash));
 	}
 
-	int headerSizeToSkipForRomHash = 0;
-
-	//calculate checksum, needed to recognize which game we're running
-	if (m_emulatorType == EMULATOR_NES)
-	{
-		headerSizeToSkipForRomHash = 16;
-	}
-
-	m_romHash = TCHAR_TO_UTF8(*FMD5::HashBytes((uint8*)&((byte*)ginfo.data)[headerSizeToSkipForRomHash], ginfo.size - headerSizeToSkipForRomHash));
-		
 	ginfo.path = fileName.c_str();
 	LogMsg("Loading rom %s, has a MD5 hash of %s", ginfo.path, m_romHash.c_str());
 	if (!m_core.retro_load_game(&ginfo))
@@ -610,6 +650,14 @@ bool LibretroManager::LoadRom(string fileName)
 	m_core.retro_get_system_av_info(&m_game_av_info);
 	LogMsg("Core says screen is %d, %d, but max is %d, %d.", m_game_av_info.geometry.base_width, m_game_av_info.geometry.base_height,
 		m_game_av_info.geometry.max_width, m_game_av_info.geometry.max_height);
+
+	//The 3DS core reports its 32728 Hz rate only here (never via SET_GEOMETRY, which is the
+	//only place the older cores' rates got applied). Scoped to 3DS so NES's hardcoded 48000
+	//override in SetEmulatorData keeps winning there.
+	if (m_emulatorType == EMULATOR_3DS && m_game_av_info.timing.sample_rate > 0)
+	{
+		m_pLibretroManagedActor->SetSampleRate(m_game_av_info.timing.sample_rate);
+	}
 
 	m_profManager.InitGame(m_romHash);
 	//ShowStatusMessage(fileName.c_str());
@@ -807,6 +855,26 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 		m_targetFPS = 50;
 		break;
 
+	case EMULATOR_3DS:
+		//Azahar (Citra successor) official libretro core. Software renderer for now (slow but
+		//zero GL plumbing); the patched fork's holo mode will replace this. The core presents
+		//both screens stacked: 400x480 XRGB8888, which the RGBA_32 blit path handles (bytes are
+		//B,G,R,X in memory, same order our PF_B8G8R8A8 textures want).
+		m_coreName = "azahar_libretro.dll";
+		m_surfaceSourceType = SURFACE_SOURCE_RGBA_32;
+		m_romDir = "3ds";
+		m_romFileExtension1 = ".3ds";
+		m_romFileExtension2 = ".cci";
+		m_pLibretroManagedActor->m_layerWidth = 400;
+		m_pLibretroManagedActor->m_layerHeight = 480;
+		m_pLibretroManagedActor->m_layerCount = 1; //flat for now, depth layers come with the holo core
+		m_pLibretroManagedActor->m_total3dDepth = 10;
+		m_pLibretroManagedActor->m_coreLayerScale = FVector2D(2.6f, 3.1f); //400:480 on the quad
+		m_pLibretroManagedActor->m_corePosition = FVector2D(0, 0);
+		m_pLibretroManagedActor->m_bgAllowShadows = false;
+		m_targetFPS = 59.8331; //real 3DS refresh; audio rate comes from retro_get_system_av_info
+		break;
+
 	default:
 		LogMsg("Error, unknown emulator type");
 		return;
@@ -991,6 +1059,16 @@ void LibretroManager::InitEmulator()
 			m_pSaveStateBuffer[i] = new uint8[m_maxSaveStateSize];
 		}
 	}
+	else if (m_emulatorType == EMULATOR_3DS)
+	{
+		//the Azahar libretro core genuinely has no savestate support (retro_serialize_size()
+		//returns 0, verified Aug 2026) - run without the multi-pass/savestate machinery
+		LogMsg("Core has no savestate support; savestates and rewind tricks disabled for this system");
+		for (int i = 0; i < C_SAVE_STATE_COUNT; i++)
+		{
+			SAFE_DELETE_ARRAY(m_pSaveStateBuffer[i]);
+		}
+	}
 	else
 	{
 		LogMsg("Serious error with savestate reporting, can't continue");
@@ -1075,7 +1153,8 @@ void LibretroManager::Init(ALibretroManagerActor * pLibretroManagedActor)
 
 bool LibretroManager::SaveState(int index)
 {
-	
+	if (m_maxSaveStateSize <= 0 || !m_pSaveStateBuffer[index]) return false; //core has no savestates (3DS)
+
 	if (!m_core.retro_serialize(m_pSaveStateBuffer[index], m_maxSaveStateSize))
 	{
 		LogMsg("Error saving state %d", index);
@@ -1099,6 +1178,8 @@ bool LibretroManager::CopyState(int fromState, int toState)
 
 bool LibretroManager::LoadState(int index)
 {
+	if (m_maxSaveStateSize <= 0 || !m_pSaveStateBuffer[index]) return false; //core has no savestates (3DS)
+
 	if (!m_core.retro_unserialize(m_pSaveStateBuffer[index], m_maxSaveStateSize))
 	{
 		LogMsg("Error loading state %d", index);
@@ -1571,7 +1652,8 @@ void LibretroManager::Update()
 	{
 		const double waitStart = FPlatformTime::Seconds();
 		const double desiredInterval = 1.0 / m_targetFPS;
-		const int maxCatchUpFrames = 3;
+		//a 3DS frame can cost 10ms+; running 3 in one tick to catch up would hitch, so no catch-up there
+		const int maxCatchUpFrames = (m_emulatorType == EMULATOR_3DS) ? 1 : 3;
 		double now = FPlatformTime::Seconds();
 
 		if (m_timeOfLastFrame == 0 || now - m_timeOfLastFrame > desiredInterval * (maxCatchUpFrames + 1))

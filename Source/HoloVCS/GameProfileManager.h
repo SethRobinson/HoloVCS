@@ -63,6 +63,8 @@ public:
 
 	void UpdateAtari();
 
+	void Update3DS();
+
 	void Update();
 
 
@@ -74,3 +76,4 @@ public:
 };
 
 void UpdateDefaultVB(void* pProfileManager);
+void UpdateDefault3DS(void* pProfileManager);
