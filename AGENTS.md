@@ -469,7 +469,9 @@ but burns the 5.6 escape hatch like any other resave.
 - 3DS (IN PROGRESS, Aug 2026): `azahar_libretro.dll`, built from Seth's Azahar fork at
   `f:\Unreal\azahar` (branch `holo`; NOT part of BuildCores.bat yet, copied to Binaries/Win64 by
   hand). Read `docs/3ds_azahar.md` before touching EMULATOR_3DS - it differs from the other
-  systems (no savestates, path-loaded 512MB roms, per-frame SET_GEOMETRY, software renderer).
+  systems (no savestates, path-loaded 512MB roms, per-frame SET_GEOMETRY, and since round 5 a
+  GL layered "shadow buffer" capture that records occluded geometry per depth band during the
+  game's own draws; `-hololegacy` reverts to the old single-depth-buffer slicing).
 - `LibretroManager::LoadCore` loads them with LoadLibraryA - bare name first (packaged builds, exe
   sits next to the DLLs), then `<ProjectDir>/Binaries/Win64/` (editor runs).
 - **NEVER statically link the cores into the game module again.** GPL-2.0 and the Unreal Engine
