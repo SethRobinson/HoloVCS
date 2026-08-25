@@ -419,8 +419,11 @@ void FitLookingGlassCaptureToLayers(UWorld* pWorld)
 	//sees it).  Crop the framing box to the used portion or games like Pitfall (320x228 used of a
 	//568x312 texture) render small and off-center on the hologram.
 	//EXCEPTION: Virtual Boy delivers pre-split layers through the custom refresh callback and they
-	//fill the whole texture - cropping there showed a quarter of the game zoomed in.
-	if (g_pLibretroManager && g_pLibretroManager->m_emulatorType != EMULATOR_VB)
+	//fill the whole texture - cropping there showed a quarter of the game zoomed in.  The 3DS
+	//holo core's layers fill their 400x240 textures the same way (and its av_info geometry
+	//describes the 400x480 two-screen composite, not the layers), so it skips the crop too.
+	if (g_pLibretroManager && g_pLibretroManager->m_emulatorType != EMULATOR_VB &&
+		g_pLibretroManager->m_emulatorType != EMULATOR_3DS)
 	{
 		auto& geo = g_pLibretroManager->m_game_av_info.geometry;
 		if (geo.max_width > 0 && geo.max_height > 0 &&

@@ -57,9 +57,13 @@ echo Copying core dlls and roms into the staged build...
 copy /Y "%~dp0Binaries\Win64\stella_libretro.dll" "%STAGE_DIR%\Windows\%STAGED_PROJ%\Binaries\Win64"
 copy /Y "%~dp0Binaries\Win64\fceumm_libretro.dll" "%STAGE_DIR%\Windows\%STAGED_PROJ%\Binaries\Win64"
 copy /Y "%~dp0Binaries\Win64\beetle-vb-libretro.dll" "%STAGE_DIR%\Windows\%STAGED_PROJ%\Binaries\Win64"
+rem 3DS core is optional while the Azahar integration is in progress (built from the
+rem f:\Unreal\azahar fork, not BuildCores.bat) - stage it only when present
+if exist "%~dp0Binaries\Win64\azahar_libretro.dll" copy /Y "%~dp0Binaries\Win64\azahar_libretro.dll" "%STAGE_DIR%\Windows\%STAGED_PROJ%\Binaries\Win64"
 xcopy "%~dp0atari2600" "%STAGE_DIR%\Windows\atari2600\" /E /Y /Q
 xcopy "%~dp0nes" "%STAGE_DIR%\Windows\nes\" /E /Y /Q
 xcopy "%~dp0vb" "%STAGE_DIR%\Windows\vb\" /E /Y /Q
+if exist "%~dp03ds" xcopy "%~dp03ds" "%STAGE_DIR%\Windows\3ds\" /E /Y /Q
 
 :Put preserved save states back
 if exist "%SAV_KEEP%" (

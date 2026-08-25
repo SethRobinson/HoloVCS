@@ -26,5 +26,8 @@ public class HoloVCS : ModuleRules
         //loaded at runtime.  Keep it that way - statically linking GPL code into the UE binary is a license violation.
         //We only borrow this one header, the ABI struct the patched beetle-vb core hands us layers through.
         PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "..", "..", "cores", "beetle-vb", "mednafen", "vb"));
+        //Same idea, v2 of that ABI: the patched Azahar (3DS) core's depth-sliced layers (canonical
+        //copy synced with the fork, see the header comment).
+        PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "..", "..", "cores", "holo_abi"));
     }
 }

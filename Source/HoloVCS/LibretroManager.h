@@ -10,6 +10,7 @@
 #ifndef LibretroManager_h__
 #define LibretroManager_h__
 #include "libretro.h"
+#include "holo_layer_abi.h" //v2 layer ABI shared with the patched Azahar (3DS) core
 #include "Shared/UnrealMisc.h"
 #include "NesHacker.h"
 #include "AutomationHarness.h"
@@ -83,6 +84,9 @@ public:
 	void (*retro_set_environment)(retro_environment_t);
 	void (*retro_set_video_refresh)(retro_video_refresh_t);
 	void (*retro_set_video_refresh_ex)(retro_video_refresh_ex_t);
+	//Nonstandard optional extension of the patched Azahar core: depth-sliced layer delivery
+	//(v2 of the VB scheme above).  Presence of the export doubles as "holo mode available".
+	void (*retro_set_video_refresh_holo)(retro_video_refresh_holo_t) = nullptr;
 	void (*retro_set_audio_sample)(retro_audio_sample_t);
 	void (*retro_set_audio_sample_batch)(retro_audio_sample_batch_t);
 	void (*retro_set_input_poll)(retro_input_poll_t);

@@ -65,6 +65,7 @@ string G_VERSION_STRING = "HoloVCS V1.4";
 LibretroManager* g_pLibretroManager = NULL; //I don't want to fool with caring how to get Unreal globals correctly
 void retro_video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch);
 void retro_video_refresh_callback_ex(const void* data, unsigned width, unsigned height, size_t pitch, const void* extradata);
+void retro_video_refresh_callback_holo(const void* data, unsigned width, unsigned height, size_t pitch, const HoloLayerInfo* info);
 #include <thread>
 
 bool retro_environment_callback(unsigned cmd, void* data);
@@ -303,6 +304,8 @@ bool LibretroManager::LoadCore(string fileName)
 	//MapFunction's missing-symbol warning and let the Zelda profile fail safe when absent.
 	m_core.retro_set_holo_bg_tile_filter = (decltype(m_core.retro_set_holo_bg_tile_filter))GetProcAddress(m_dllHandle, "retro_set_holo_bg_tile_filter");
 	m_core.retro_get_holo_bg_tile_ids = (decltype(m_core.retro_get_holo_bg_tile_ids))GetProcAddress(m_dllHandle, "retro_get_holo_bg_tile_ids");
+	//Optional patched-Azahar extension (3DS depth-sliced layers); absence = flat fallback
+	m_core.retro_set_video_refresh_holo = (decltype(m_core.retro_set_video_refresh_holo))GetProcAddress(m_dllHandle, "retro_set_video_refresh_holo");
 	m_core.retro_load_game = (decltype(m_core.retro_load_game))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_load_game));
 	m_core.retro_get_system_av_info = (decltype(m_core.retro_get_system_av_info))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_get_system_av_info));
 	m_core.retro_run = (decltype(m_core.retro_run))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_run));
@@ -401,12 +404,13 @@ bool retro_environment_callback(unsigned cmd, void* data)
 				return true;
 			}
 
-		//Azahar (3DS) core options - keys are prefixed "citra_". Software renderer delivers
-		//plain CPU frames through the normal video refresh (slow but zero GL plumbing); the
-		//patched holo core will switch this to its own GL path.
+		//Azahar (3DS) core options - keys are prefixed "citra_".  With the patched holo core
+		//(detected by its layer-callback export) we ask for OpenGL: the core then runs its
+		//own offscreen GL context and delivers depth-sliced layers.  The stock core gets the
+		//Software renderer instead (slow, flat, but works with zero GL plumbing).
 		if (strcmp(pVar->key, "citra_graphics_api") == 0)
 		{
-			pVar->value = "Software";
+			pVar->value = g_pLibretroManager->m_core.retro_set_video_refresh_holo ? "OpenGL" : "Software";
 			return true;
 		}
 
@@ -463,8 +467,11 @@ bool retro_environment_callback(unsigned cmd, void* data)
 
 	case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
 	{
+		//The multi-pass systems re-read their render-flag variables every frame, so they get a
+		//standing "yes".  The Azahar core treats "yes" as "re-parse and re-apply EVERY option"
+		//each retro_run (settings churn + env-call log spam), so 3DS gets "no changes".
 		bool* updated = (bool*)data;
-		*updated = true;
+		*updated = (g_pLibretroManager->m_emulatorType != EMULATOR_3DS);
 	}
 	break;
 
@@ -856,20 +863,21 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 		break;
 
 	case EMULATOR_3DS:
-		//Azahar (Citra successor) official libretro core. Software renderer for now (slow but
-		//zero GL plumbing); the patched fork's holo mode will replace this. The core presents
-		//both screens stacked: 400x480 XRGB8888, which the RGBA_32 blit path handles (bytes are
-		//B,G,R,X in memory, same order our PF_B8G8R8A8 textures want).
+		//Azahar (Citra successor) core from the fork at f:\Unreal\azahar. The patched "holo"
+		//build delivers the TOP screen as depth-sliced 400x240 layers via the v2 layer
+		//callback (docs/3ds_azahar.md); a stock core falls back to the software renderer and
+		//the profile blits the top-screen crop of its 400x480 composite flat onto one layer.
 		m_coreName = "azahar_libretro.dll";
 		m_surfaceSourceType = SURFACE_SOURCE_RGBA_32;
 		m_romDir = "3ds";
 		m_romFileExtension1 = ".3ds";
 		m_romFileExtension2 = ".cci";
 		m_pLibretroManagedActor->m_layerWidth = 400;
-		m_pLibretroManagedActor->m_layerHeight = 480;
-		m_pLibretroManagedActor->m_layerCount = 1; //flat for now, depth layers come with the holo core
-		m_pLibretroManagedActor->m_total3dDepth = 10;
-		m_pLibretroManagedActor->m_coreLayerScale = FVector2D(2.6f, 3.1f); //400:480 on the quad
+		m_pLibretroManagedActor->m_layerHeight = 240;
+		m_pLibretroManagedActor->m_layerCount = 12; //negotiated to the core via holo_3d_layer_count
+		m_pLibretroManagedActor->m_total3dDepth = 170;
+		m_pLibretroManagedActor->m_depthOffsetForAllLayers = -35;
+		m_pLibretroManagedActor->m_coreLayerScale = FVector2D(3.1f, 2.9f);
 		m_pLibretroManagedActor->m_corePosition = FVector2D(0, 0);
 		m_pLibretroManagedActor->m_bgAllowShadows = false;
 		m_targetFPS = 59.8331; //real 3DS refresh; audio rate comes from retro_get_system_av_info
@@ -1021,6 +1029,9 @@ void LibretroManager::InitEmulator()
 
 	if (m_core.retro_set_video_refresh_ex) //this is nonstandard, I added it to the VB core
 		m_core.retro_set_video_refresh_ex(retro_video_refresh_callback_ex);
+
+	if (m_core.retro_set_video_refresh_holo) //nonstandard too, the patched Azahar (3DS) core.
+		m_core.retro_set_video_refresh_holo(retro_video_refresh_callback_holo); //registering opts the core into holo mode
 
 	m_core.retro_set_audio_sample(retro_audio_sample_callback);
 
@@ -1252,6 +1263,41 @@ void retro_video_refresh_callback_ex(const void* data, unsigned width, unsigned 
 		g_pLibretroManager->m_pLibretroManagedActor->GetLayer(i)->m_bUsedThisFrame = true;
 	}
 
+}
+
+//v2 of the callback above: the patched Azahar (3DS) core's depth-sliced layers.  Slice 0 is
+//the NEAREST band while HoloVCS layer 0 is the DEEPEST plane, so the order flips here.  The
+//blit is pitch-safe (slice dims can differ from the layer texture; rows are clipped).
+void retro_video_refresh_callback_holo(const void* data, unsigned width, unsigned height, size_t pitch, const HoloLayerInfo* info)
+{
+	if (!info || info->abiVersion != HOLO_LAYER_ABI_VERSION)
+	{
+		static bool warned = false;
+		if (!warned) { warned = true; LogMsg("holo callback: ABI mismatch (core %u, we want %d)", info ? info->abiVersion : 0, HOLO_LAYER_ABI_VERSION); }
+		return;
+	}
+
+	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+	const int unrealLayerCount = pActor->GetLayerCount();
+
+	for (int slice = 0; slice < info->layerCount; slice++)
+	{
+		const int unrealLayer = (unrealLayerCount - 1) - slice; //near slice -> high (near) layer index
+		if (unrealLayer < 0 || unrealLayer >= (int)pActor->m_layerInfo.size()) continue;
+
+		const HoloLayerSlice& src = info->layers[slice];
+		LayerInfo* pDestLayer = pActor->GetLayer(unrealLayer);
+		uint8* pDstBase = pDestLayer->GetPixelBuffer();
+		if (!pDstBase || !src.pixels) continue;
+
+		const int rows = FMath::Min<int>((int)src.height, (int)pDestLayer->m_texHeight);
+		const int rowBytes = FMath::Min<int>((int)src.pitchBytes, (int)pDestLayer->m_texPitchBytes);
+		for (int y = 0; y < rows; y++)
+		{
+			memcpy(pDstBase + y * pDestLayer->m_texPitchBytes, src.pixels + (size_t)y * src.pitchBytes, rowBytes);
+		}
+		pDestLayer->m_bUsedThisFrame = true;
+	}
 }
 
 void retro_video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch)
