@@ -145,11 +145,11 @@ public:
 	void JoyPad_A_Pressed();
 	void JoyPad_A_Released();
 
-	void JoyPad_Y_Pressed();
-	void JoyPad_Y_Released();
+	void JoyPad_Y_Pressed(FKey key); //key-aware: the 3DS maps the gamepad TOP face button to its X (positional)
+	void JoyPad_Y_Released(FKey key);
 
-	void JoyPad_X_Pressed();
-	void JoyPad_X_Released();
+	void JoyPad_X_Pressed(FKey key); //key-aware: the 3DS maps the gamepad LEFT face button to its Y (positional)
+	void JoyPad_X_Released(FKey key);
 
 	void JoyPad_Start_Pressed();
 	void JoyPad_Start_Released();

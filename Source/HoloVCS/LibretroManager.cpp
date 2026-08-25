@@ -1045,7 +1045,7 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 		m_romFileExtension2 = ".cci";
 		m_pLibretroManagedActor->m_layerWidth = 400;
 		m_pLibretroManagedActor->m_layerHeight = 240;
-		m_pLibretroManagedActor->m_layerCount = 12; //negotiated to the core via holo_3d_layer_count
+		m_pLibretroManagedActor->m_layerCount = 30; //negotiated to the core via holo_3d_layer_count (core clamps at 32)
 		m_pLibretroManagedActor->m_total3dDepth = 170;
 		m_pLibretroManagedActor->m_depthOffsetForAllLayers = -35;
 		//the layer quad mesh is (nearly) square, so the scale pair must carry the full

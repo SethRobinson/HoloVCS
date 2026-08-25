@@ -473,6 +473,12 @@ void APlayerPawn::JoyPad_B_Pressed(FKey key)
 		g_pLibretroManager->SetTouchDown(true);
 		return;
 	}
+	//the gamepad LEFT face button doubles as B for the retro systems (classic NES run-on-X feel),
+	//but on the 3DS it is the positional Y button (handled by JoyPad_X) and must not also jump
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::Gamepad_FaceButton_Left)
+	{
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = true;
 }
 
@@ -485,6 +491,10 @@ void APlayerPawn::JoyPad_B_Released(FKey key)
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::LeftMouseButton)
 	{
 		return; //the press went to the touchscreen, don't release a B that was never pressed
+	}
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::Gamepad_FaceButton_Left)
+	{
+		return; //3DS: that button is the positional Y (see JoyPad_X), no B was pressed
 	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = false;
 }
@@ -500,27 +510,50 @@ void APlayerPawn::JoyPad_A_Released()
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_A] = false;
 }
 
-void APlayerPawn::JoyPad_Y_Pressed()
+//3DS gamepad face buttons map by physical POSITION: gamepad top = 3DS X, gamepad left = 3DS Y
+//(the ini binds gamepad top to JoyPad_Y and gamepad left to JoyPad_X, which is correct id-wise
+//for the other systems but positionally crossed on the 3DS). Keyboard Z/C keep their ids.
+void APlayerPawn::JoyPad_Y_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::Gamepad_FaceButton_Top)
+	{
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_X] = true;
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_Y] = true;
 }
 
-void APlayerPawn::JoyPad_Y_Released()
+void APlayerPawn::JoyPad_Y_Released(FKey key)
 {
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::Gamepad_FaceButton_Top)
+	{
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_X] = false;
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_Y] = false;
 }
 
 //X stays disabled for VB (its core uses the id to toggle low battery) but the 3DS needs it
-void APlayerPawn::JoyPad_X_Pressed()
+void APlayerPawn::JoyPad_X_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::Gamepad_FaceButton_Left)
+	{
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_Y] = true;
+		return;
+	}
 	if (g_pLibretroManager->m_emulatorType != EMULATOR_VB)
 		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_X] = true;
 }
 
-void APlayerPawn::JoyPad_X_Released()
+void APlayerPawn::JoyPad_X_Released(FKey key)
 {
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::Gamepad_FaceButton_Left)
+	{
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_Y] = false;
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_X] = false;
 }
 

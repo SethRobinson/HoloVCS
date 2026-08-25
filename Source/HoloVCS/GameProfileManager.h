@@ -21,7 +21,7 @@ public:
 	bool m_bIgnoreShadows = false;
 };
 
-#define C_MAX_LAYERS 30
+#define C_MAX_LAYERS 40 //must exceed the largest m_layerCount plus one (the 3DS bottom screen quad sits at index GetLayerCount())
 
 //Hardcoded the path to this interface I made when I modified the VB core
 #include "HoloVB.h"
