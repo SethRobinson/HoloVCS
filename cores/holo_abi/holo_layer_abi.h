@@ -23,7 +23,7 @@
 extern "C" {
 #endif
 
-#define HOLO_LAYER_ABI_VERSION 2
+#define HOLO_LAYER_ABI_VERSION 3
 
 typedef struct HoloLayerSlice {
     int32_t used;        /* nonzero when this slice has any content this frame */
@@ -39,6 +39,7 @@ typedef struct HoloLayerInfo {
     int32_t layerCount;  /* number of entries in layers[]; 0 = nearest */
     int32_t layersUsed;  /* how many have used != 0 this frame */
     HoloLayerSlice* layers;
+    HoloLayerSlice bottom; /* v3: the composed 3DS BOTTOM screen (320x240, opaque, flat) */
 } HoloLayerInfo;
 
 typedef void (*retro_video_refresh_holo_t)(const void* data, unsigned width, unsigned height,

@@ -85,6 +85,7 @@ void JoyPadButtonStates::Clear()
 	{
 		m_button[i] = false;
 	}
+	m_axisLX = m_axisLY = m_axisRX = m_axisRY = 0;
 }
 
 LibretroManager::LibretroManager()
@@ -454,6 +455,17 @@ bool retro_environment_callback(unsigned cmd, void* data)
 		break;
 	}
 
+	case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
+	{
+		//the Azahar core roots its whole user dir (game saves, config) here (appends
+		//"Azahar/").  Point it at saves/ so the test bats' save-keep logic preserves 3DS
+		//game saves across restages, same as the .sav0 state files.
+		static string savePath;
+		savePath = g_pLibretroManager->m_rootPath + "saves";
+		*reinterpret_cast<const char**>(data) = savePath.c_str();
+		break;
+	}
+
 	case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
 	{
 		FString RelativePath = FPaths::ProjectDir();
@@ -767,6 +779,31 @@ int16_t retro_input_state_callback(unsigned port, unsigned device, unsigned inde
 		else
 		{
 			LogMsg("Unhandled button: %d", id);
+		}
+	}
+
+	//Analog sticks (the 3DS core reads its circle pad and C-stick this way).  The axes are
+	//fed by MoveX/MoveY/RMoveX/RMoveY, so keyboard and gamepad dpad give full deflection
+	//while a real stick is properly analog.  The harness dpad holds are folded in too so
+	//`press right` walks Mario in analog-only games.  libretro convention: +X right, +Y down.
+	if (port == 0 && device == RETRO_DEVICE_ANALOG)
+	{
+		JoyPadButtonStates& pad = g_pLibretroManager->m_joyPad;
+		auto axisToRetro = [](float v) -> int16_t { return (int16_t)FMath::Clamp((int)(v * 32767.0f), -32767, 32767); };
+
+		if (index == RETRO_DEVICE_INDEX_ANALOG_LEFT)
+		{
+			float x = pad.m_axisLX;
+			float y = pad.m_axisLY;
+			if (g_pLibretroManager->m_autoButtonHoldFrames[RETRO_DEVICE_ID_JOYPAD_LEFT] > 0) x = -1;
+			if (g_pLibretroManager->m_autoButtonHoldFrames[RETRO_DEVICE_ID_JOYPAD_RIGHT] > 0) x = 1;
+			if (g_pLibretroManager->m_autoButtonHoldFrames[RETRO_DEVICE_ID_JOYPAD_UP] > 0) y = -1;
+			if (g_pLibretroManager->m_autoButtonHoldFrames[RETRO_DEVICE_ID_JOYPAD_DOWN] > 0) y = 1;
+			return axisToRetro(id == RETRO_DEVICE_ID_ANALOG_X ? x : y);
+		}
+		if (index == RETRO_DEVICE_INDEX_ANALOG_RIGHT)
+		{
+			return axisToRetro(id == RETRO_DEVICE_ID_ANALOG_X ? pad.m_axisRX : pad.m_axisRY);
 		}
 	}
 	return 0;
@@ -1297,6 +1334,23 @@ void retro_video_refresh_callback_holo(const void* data, unsigned width, unsigne
 			memcpy(pDstBase + y * pDestLayer->m_texPitchBytes, src.pixels + (size_t)y * src.pitchBytes, rowBytes);
 		}
 		pDestLayer->m_bUsedThisFrame = true;
+	}
+
+	//the BOTTOM screen goes to the dedicated quad past the depth slices (see InitLayers)
+	if (info->bottom.used && info->bottom.pixels && (int)pActor->m_layerInfo.size() > unrealLayerCount)
+	{
+		LayerInfo* pBottomLayer = pActor->GetLayer(unrealLayerCount);
+		uint8* pDstBase = pBottomLayer->GetPixelBuffer();
+		if (pDstBase)
+		{
+			const int rows = FMath::Min<int>((int)info->bottom.height, (int)pBottomLayer->m_texHeight);
+			const int rowBytes = FMath::Min<int>((int)info->bottom.pitchBytes, (int)pBottomLayer->m_texPitchBytes);
+			for (int y = 0; y < rows; y++)
+			{
+				memcpy(pDstBase + y * pBottomLayer->m_texPitchBytes, info->bottom.pixels + (size_t)y * info->bottom.pitchBytes, rowBytes);
+			}
+			pBottomLayer->m_bUsedThisFrame = true;
+		}
 	}
 }
 

@@ -62,9 +62,14 @@ public:
 		Clear();
 	}
 	void Clear();
-	
+
 	bool m_button[C_MAX_JOYPAD_BUTTONS];
 
+	//analog sticks, -1..1 (fed by the same MoveX/MoveY axes as the digital dpad bits, so
+	//keyboard/dpad give full deflection and a real stick gives true analog).  Served to
+	//cores that ask for RETRO_DEVICE_ANALOG - the 3DS circle pad and C-stick.
+	float m_axisLX = 0, m_axisLY = 0;
+	float m_axisRX = 0, m_axisRY = 0;
 };
 
 class ALibretroManagerActor;

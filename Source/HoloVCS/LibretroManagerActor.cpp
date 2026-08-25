@@ -328,6 +328,34 @@ void ALibretroManagerActor::InitLayers()
 	SetScaleLayersXY(m_coreLayerScale.X, m_coreLayerScale.Y);
 	SetLayersPosXY(m_corePosition.X, m_corePosition.Y);
 
+	//3DS: a dedicated quad for the BOTTOM screen, parked below the top-screen layer stack
+	//(a perfect fit for the portrait Looking Glass Go; other displays just letterbox more).
+	//It lives at m_layerInfo[GetLayerCount()], past the depth slices, so the layer-depth
+	//spread and the holo slice blits never touch it; the holo callback blits its 320x240
+	//image directly.  Created AFTER SetScaleLayersXY/SetLayersPosXY, which slam every
+	//"Layers"-tagged actor to the shared scale/position.
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS)
+	{
+		m_layerInfo.resize(GetLayerCount() + 1);
+		LayerInfo* pBottom = &m_layerInfo[GetLayerCount()];
+		if (SetupLayer(pBottom, (char*)"LayerBottomScreen", 320, 240, GetLayerCount()))
+		{
+			pBottom->SetLayerPosZ(-m_depthOffsetForAllLayers); //middle of the depth spread
+			AActor* pActor = pBottom->m_pActor;
+			//narrower than the 400px-wide top screen at the same pixel density
+			FVector vScale = pActor->GetActorScale3D();
+			vScale.X = m_coreLayerScale.X * 320.0f / 400.0f;
+			vScale.Y = m_coreLayerScale.Y;
+			pActor->SetActorScale3D(vScale);
+			//world Y = horizontal, world Z = vertical; one screen-height down plus a small gap
+			const float quadWorldHeight = pActor->GetComponentsBoundingBox().GetSize().Z;
+			FVector vPos = pActor->GetActorLocation();
+			vPos.Y = m_corePosition.X;
+			vPos.Z = m_corePosition.Y - quadWorldHeight * 1.04f;
+			pActor->SetActorLocation(vPos);
+		}
+	}
+
 	//layers moved/scaled, so reframe the flat camera (does nothing on LG hardware)
 	if (m_libretroManager.m_pPlayerPawn)
 	{
@@ -344,10 +372,14 @@ void ALibretroManagerActor::InitLayers()
 //recreation hitch, so this is safe to spam from a held-down hotkey.
 void ALibretroManagerActor::ApplyLayerDepth()
 {
-	float step = (m_total3dDepth * m_userDepthScale) / (float)GetLayerCount();
+	//at user scale 0 keep a microscopic spacing: reads as perfectly flat on the panel but
+	//the 2D scene view's real quads never z-fight
+	const float effectiveScale = FMath::Max(m_userDepthScale, 0.0025f);
+	float step = (m_total3dDepth * effectiveScale) / (float)GetLayerCount();
 	float depth = step * (GetLayerCount() / 2);
 
-	for (int i = 0; i < (int)m_layerInfo.size(); i++)
+	//entries past GetLayerCount() are not depth slices (the 3DS bottom-screen quad) - leave them be
+	for (int i = 0; i < FMath::Min((int)m_layerInfo.size(), GetLayerCount()); i++)
 	{
 		if (m_layerInfo[i].m_pActor)
 		{
@@ -369,7 +401,10 @@ void ALibretroManagerActor::ApplyLayerDepth()
 
 void ALibretroManagerActor::SetUserDepthScale(float scale)
 {
-	m_userDepthScale = FMath::Clamp(scale, 0.2f, 5.0f);
+	//0 = completely flat is allowed (Seth request); a hair below 0.05 snaps to true 0 so
+	//the [ key can land exactly on "no 3d at all"
+	m_userDepthScale = FMath::Clamp(scale, 0.0f, 5.0f);
+	if (m_userDepthScale < 0.05f) m_userDepthScale = 0.0f;
 	ApplyLayerDepth();
 
 	char st[64];

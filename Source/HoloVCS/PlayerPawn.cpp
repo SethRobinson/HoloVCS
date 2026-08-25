@@ -333,6 +333,7 @@ void APlayerPawn::Move_XAxis(float AxisValue)
 	if (FMath::Abs(AxisValue) > C_JOYSTICK_DEAD_ZONE) HelpSwallowedInput(); //movement closes the help like the old splash
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_LEFT] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_RIGHT] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
+	g_pLibretroManager->m_joyPad.m_axisLX = FMath::Clamp(AxisValue, -1.0f, 1.0f); //3DS circle pad
 }
 
 void APlayerPawn::Move_YAxis(float AxisValue)
@@ -341,6 +342,7 @@ void APlayerPawn::Move_YAxis(float AxisValue)
 	if (FMath::Abs(AxisValue) > C_JOYSTICK_DEAD_ZONE) HelpSwallowedInput();
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_UP] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_DOWN] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
+	g_pLibretroManager->m_joyPad.m_axisLY = FMath::Clamp(AxisValue, -1.0f, 1.0f); //3DS circle pad
 }
 
 void APlayerPawn::RMove_XAxis(float AxisValue)
@@ -348,6 +350,7 @@ void APlayerPawn::RMove_XAxis(float AxisValue)
 	if (!g_pLibretroManager) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R2] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R3] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
+	g_pLibretroManager->m_joyPad.m_axisRX = FMath::Clamp(AxisValue, -1.0f, 1.0f); //3DS C-stick
 }
 
 void APlayerPawn::RMove_YAxis(float AxisValue)
@@ -355,6 +358,7 @@ void APlayerPawn::RMove_YAxis(float AxisValue)
 	if (!g_pLibretroManager) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L3] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L2] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
+	g_pLibretroManager->m_joyPad.m_axisRY = FMath::Clamp(AxisValue, -1.0f, 1.0f); //3DS C-stick
 }
 
 void APlayerPawn::OnMouseX(float AxisValue)
@@ -400,16 +404,17 @@ void APlayerPawn::JoyPad_Y_Released()
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_Y] = false;
 }
 
-//I disabled X because no HoloVCS supported emulator uses it and the VB editor uses to toggle low battery I guess
+//X stays disabled for VB (its core uses the id to toggle low battery) but the 3DS needs it
 void APlayerPawn::JoyPad_X_Pressed()
 {
-	HelpSwallowedInput();
-	//g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_X] = true;
+	if (HelpSwallowedInput()) return;
+	if (g_pLibretroManager->m_emulatorType != EMULATOR_VB)
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_X] = true;
 }
 
 void APlayerPawn::JoyPad_X_Released()
 {
-	//g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_X] = false;
+	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_X] = false;
 }
 
 void APlayerPawn::JoyPad_Start_Pressed()
@@ -725,7 +730,9 @@ void APlayerPawn::OnLeftBracketKey()
 	if (!g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
 	if (HelpSwallowedInput()) return;
 	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
-	pActor->SetUserDepthScale(pActor->m_userDepthScale / 1.15f);
+	//subtract-with-divide hybrid so repeated presses actually REACH 0 instead of only
+	//approaching it (SetUserDepthScale snaps the last sliver to a true 0)
+	pActor->SetUserDepthScale((pActor->m_userDepthScale / 1.15f) - 0.01f);
 }
 
 void APlayerPawn::OnRightBracketKey()
@@ -733,7 +740,8 @@ void APlayerPawn::OnRightBracketKey()
 	if (!g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
 	if (HelpSwallowedInput()) return;
 	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
-	pActor->SetUserDepthScale(pActor->m_userDepthScale * 1.15f);
+	//the additive floor lets ] climb back out of a true-0 flat setting
+	pActor->SetUserDepthScale(FMath::Max(pActor->m_userDepthScale * 1.15f, pActor->m_userDepthScale + 0.06f));
 }
 
 void APlayerPawn::OnSlashKey()
