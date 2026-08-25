@@ -1,9 +1,17 @@
 # 3DS support via Azahar (in progress)
 
-Status Aug 2026: Phase 1 "flat" integration works: EMULATOR_3DS boots the official-style
-azahar_libretro.dll, renders both 3DS screens stacked (400x480) on layer 0, keyboard input
-and rom switching work. NOT yet done: depth layers (Phase 2 holo core patch), sound
-verification, circle-pad analog, touch, release-bat/core-build integration, LKG testing.
+Status Aug 2026: HOLO MODE WORKS. The patched core (fork `holo` branch) runs its own
+offscreen WGL 4.3 context, reads the top screen's color + depth back each frame, slices
+into N depth-banded 400x240 layers on the CPU and delivers them through the new
+`retro_set_video_refresh_holo` export (v2 layer ABI, `cores/holo_abi/holo_layer_abi.h`,
+canonical copy synced with the fork). Verified in the flat build: world-map diorama with
+correct depth ordering and orientation; layer dumps clean. A stock (unpatched) core still
+falls back to the flat software-renderer path automatically.
+
+NOT yet done: Looking Glass hardware validation (Go), per-game depth-band profiles, UI
+band handling (HUD currently lands on the far plane), bottom screen delivery + touch,
+circle-pad analog (menus work, 3D movement doesn't), sound verification, release-bat/
+core-build integration, uniform-band flicker check (band edges smooth over ~5 frames).
 
 ## Where things live
 
