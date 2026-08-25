@@ -112,3 +112,4 @@ cores/**/.vs/
 *.vcxproj.user
 *.3ds
 *.cci
+/Azahar/
