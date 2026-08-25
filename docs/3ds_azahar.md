@@ -21,11 +21,30 @@ on-device feedback (jitter + black seams), all in the fork's holo_slicer/holo_ho
 - Band overlap (kBandOverlap 0.35): edge pixels duplicate into the adjacent band's empty
   slots, closing the black seams where cut strips of continuous surfaces meet.
 
+Round 2 (Aug 2026, same day): color capture moved to the COMPOSED frame (renderer output
+into a core-owned offscreen FBO; the hidden window's default framebuffer fails GL pixel
+ownership and reads back black) - correct for every scene type, killed the 30Hz
+good/broken strobe. Depth persists across the game's internal 30fps cadence. Then:
+- ANALOG works: JoyPadButtonStates carries stick axes (-1..1); MoveX/MoveY/RMoveX/RMoveY
+  feed them, the input callback serves RETRO_DEVICE_ANALOG (left = circle pad, right =
+  C-stick), harness `press left/right/up/down` folds in as full deflection so scripted
+  gameplay walks. Keyboard WASD/arrows and gamepad dpad give full deflection; real sticks
+  are true analog. X button enabled for non-VB systems (C key / gamepad X).
+- BOTTOM SCREEN: ABI v3 adds info->bottom (composed 320x240, opaque); the frontend shows
+  it on a dedicated quad at m_layerInfo[GetLayerCount()], parked one screen-height below
+  the top-screen stack at mid depth (great fit on the portrait Go). ApplyLayerDepth skips
+  entries past GetLayerCount().
+- Depth scale reaches a TRUE 0 now ([ key / holo.DepthScale; tiny epsilon spacing keeps
+  the 2D view from z-fighting); ] climbs back out of 0.
+- 3DS game saves persist across restages: the env callback answers GET_SAVE_DIRECTORY
+  with <root>/saves, which the test bats already preserve (core keeps its user dir at
+  saves/Azahar/).
+
 NOT yet done: per-game depth-band profiles, UI band handling (HUD currently lands on the
-far plane), bottom screen delivery + touch, circle-pad analog (menus work, 3D movement
-doesn't), sound verification, release-bat/core-build integration, and the roadmap "true
-layers" per-band re-render (fills the remaining silhouette-edge disocclusion slivers).
-Cutscene oddities (letter/storm scenes showing partial content) are unfixed low priority.
+far plane), touch input, sound verification, release-bat/core-build integration, and the
+roadmap "true layers" per-band re-render (fills the remaining silhouette-edge disocclusion
+slivers). Cutscenes that render as tilted flat cards (the letter) look janky as dioramas -
+faithful but unflattering; per-scene flattening is a future profile knob.
 
 ## Where things live
 
