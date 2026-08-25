@@ -128,8 +128,9 @@ public:
 	void OnMouseX(float AxisValue);
 	void OnMouseY(float AxisValue);
 
-	void JoyPad_B_Pressed();
-	void JoyPad_B_Released();
+	void JoyPad_B_Pressed(FKey key); //key-aware: on 3DS a left CLICK is a touchscreen tap, not B
+	void JoyPad_B_Released(FKey key);
+	void UpdateTouchMouseLock(); //keeps the OS cursor inside the window while 3DS touch is active
 
 	void JoyPad_A_Pressed();
 	void JoyPad_A_Released();

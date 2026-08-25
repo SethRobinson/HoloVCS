@@ -66,6 +66,7 @@ LibretroManager* g_pLibretroManager = NULL; //I don't want to fool with caring h
 void retro_video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch);
 void retro_video_refresh_callback_ex(const void* data, unsigned width, unsigned height, size_t pitch, const void* extradata);
 void retro_video_refresh_callback_holo(const void* data, unsigned width, unsigned height, size_t pitch, const HoloLayerInfo* info);
+void DrawTouchCursor(uint8* pDstBase, int texWidth, int texHeight, int texPitchBytes);
 #include <thread>
 
 bool retro_environment_callback(unsigned cmd, void* data);
@@ -412,6 +413,14 @@ bool retro_environment_callback(unsigned cmd, void* data)
 		if (strcmp(pVar->key, "citra_graphics_api") == 0)
 		{
 			pVar->value = g_pLibretroManager->m_core.retro_set_video_refresh_holo ? "OpenGL" : "Software";
+			return true;
+		}
+
+		//right stick is a pure C-stick; with the default "both" the core's own pointer
+		//tracker also follows it and fights our mouse-driven touch cursor
+		if (strcmp(pVar->key, "citra_analog_function") == 0)
+		{
+			pVar->value = "c_stick";
 			return true;
 		}
 
@@ -805,6 +814,22 @@ int16_t retro_input_state_callback(unsigned port, unsigned device, unsigned inde
 		{
 			return axisToRetro(id == RETRO_DEVICE_ID_ANALOG_X ? pad.m_axisRX : pad.m_axisRY);
 		}
+	}
+
+	//Touchscreen: the 3DS core polls an absolute pointer over its whole 400x480 layout and
+	//maps positions inside the bottom-screen rect (40,240..360,480 at 1x) to touch.  Our
+	//virtual cursor lives in bottom-screen pixels; convert here.  Left click = pressed.
+	if (port == 0 && device == RETRO_DEVICE_POINTER)
+	{
+		const float absX = 40.0f + g_pLibretroManager->m_touchX;
+		const float absY = 240.0f + g_pLibretroManager->m_touchY;
+		if (id == RETRO_DEVICE_ID_POINTER_X) return (int16_t)FMath::Clamp((int)((absX / 400.0f * 2.0f - 1.0f) * 32767.0f), -32767, 32767);
+		if (id == RETRO_DEVICE_ID_POINTER_Y) return (int16_t)FMath::Clamp((int)((absY / 480.0f * 2.0f - 1.0f) * 32767.0f), -32767, 32767);
+		if (id == RETRO_DEVICE_ID_POINTER_PRESSED) return g_pLibretroManager->m_touchDown ? 1 : 0;
+	}
+	if (port == 0 && device == RETRO_DEVICE_MOUSE && id == RETRO_DEVICE_ID_MOUSE_LEFT)
+	{
+		return g_pLibretroManager->m_touchDown ? 1 : 0;
 	}
 	return 0;
 }
@@ -1349,7 +1374,63 @@ void retro_video_refresh_callback_holo(const void* data, unsigned width, unsigne
 			{
 				memcpy(pDstBase + y * pBottomLayer->m_texPitchBytes, info->bottom.pixels + (size_t)y * info->bottom.pitchBytes, rowBytes);
 			}
+			DrawTouchCursor(pDstBase, pBottomLayer->m_texWidth, pBottomLayer->m_texHeight, pBottomLayer->m_texPitchBytes);
 			pBottomLayer->m_bUsedThisFrame = true;
+		}
+	}
+}
+
+//Big obvious mouse pointer stamped onto the 3DS bottom-screen texture at the virtual touch
+//cursor position (the hologram has no OS cursor, so we ARE the cursor).  White fill, black
+//outline, 2x scale (24x36 px on the 320x240 screen).  Auto-hides after a few idle seconds.
+void DrawTouchCursor(uint8* pDstBase, int texWidth, int texHeight, int texPitchBytes)
+{
+	const double now = FPlatformTime::Seconds();
+	if (!g_pLibretroManager->m_touchDown && now - g_pLibretroManager->m_touchLastActiveTime > 4.0) return;
+
+	static const char* arrow[18] = {
+		"X           ",
+		"XX          ",
+		"X.X         ",
+		"X..X        ",
+		"X...X       ",
+		"X....X      ",
+		"X.....X     ",
+		"X......X    ",
+		"X.......X   ",
+		"X........X  ",
+		"X.....XXXXX ",
+		"X..X..X     ",
+		"X.X X..X    ",
+		"XX  X..X    ",
+		"X    X..X   ",
+		"     X..X   ",
+		"      XX    ",
+		"            ",
+	};
+	const int scale = 2;
+	const int cx = (int)g_pLibretroManager->m_touchX;
+	const int cy = (int)g_pLibretroManager->m_touchY;
+	const uint32 colFill = g_pLibretroManager->m_touchDown ? 0xFF60C0FFu : 0xFFFFFFFFu; //fill flashes blue while touching
+	const uint32 colOutline = 0xFF000000u;
+
+	for (int ay = 0; ay < 18; ay++)
+	{
+		for (int ax = 0; ax < 12; ax++)
+		{
+			const char c = arrow[ay][ax];
+			if (c == ' ') continue;
+			const uint32 col = (c == 'X') ? colOutline : colFill;
+			for (int sy = 0; sy < scale; sy++)
+			{
+				for (int sx = 0; sx < scale; sx++)
+				{
+					const int px = cx + ax * scale + sx;
+					const int py = cy + ay * scale + sy;
+					if (px < 0 || px >= texWidth || py < 0 || py >= texHeight) continue;
+					*(uint32*)(pDstBase + py * texPitchBytes + px * 4) = col;
+				}
+			}
 		}
 	}
 }

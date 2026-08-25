@@ -116,6 +116,7 @@ FString HelpScreen::BuildHelpText() const
 	s += TEXT("Space\tA button\n");
 	s += TEXT("Ctrl / Click\tB button\n");
 	s += TEXT("C\tX button (3DS)\n");
+	s += TEXT("Mouse + Click\tTouch screen (3DS)\n");
 	s += TEXT("Enter\tStart\n");
 	s += TEXT("Tab\tSelect\n");
 	s += TEXT("Gamepad\tSticks + buttons supported\n");

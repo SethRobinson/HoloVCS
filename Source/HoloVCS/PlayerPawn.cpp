@@ -309,6 +309,7 @@ void APlayerPawn::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	UpdateFlatCamera(DeltaTime);
+	UpdateTouchMouseLock();
 }
 
 const float C_JOYSTICK_DEAD_ZONE = 0.3f;
@@ -363,22 +364,84 @@ void APlayerPawn::RMove_YAxis(float AxisValue)
 
 void APlayerPawn::OnMouseX(float AxisValue)
 {
+	//on the 3DS the mouse drives the bottom-screen touch cursor instead of the orbit camera;
+	//the cursor is confined to the screen ("locked"), so you can't click off of it
+	if (g_pLibretroManager && g_pLibretroManager->m_emulatorType == EMULATOR_3DS)
+	{
+		if (AxisValue != 0)
+		{
+			g_pLibretroManager->m_touchX = FMath::Clamp(g_pLibretroManager->m_touchX + AxisValue, 0.0f, 319.0f);
+			g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
+		}
+		return;
+	}
 	m_mouseDX += AxisValue;
 }
 
 void APlayerPawn::OnMouseY(float AxisValue)
 {
+	if (g_pLibretroManager && g_pLibretroManager->m_emulatorType == EMULATOR_3DS)
+	{
+		if (AxisValue != 0)
+		{
+			//UE mouse Y is positive upward; screen coordinates grow downward
+			g_pLibretroManager->m_touchY = FMath::Clamp(g_pLibretroManager->m_touchY - AxisValue, 0.0f, 239.0f);
+			g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
+		}
+		return;
+	}
 	m_mouseDY += AxisValue;
 }
 
-void APlayerPawn::JoyPad_B_Pressed()
+//While 3DS touch is active, keep the OS cursor from wandering out of the window (clicks
+//outside would defocus the game).  Recenters only when it nears an edge, NOT per frame -
+//per-frame cursor clipping is the documented ~90ms-stall trap (see AGENTS.md audio notes).
+//UE reads mouse axes from raw input, so the teleport does not create a phantom delta.
+void APlayerPawn::UpdateTouchMouseLock()
+{
+	if (!g_pLibretroManager || g_pLibretroManager->m_emulatorType != EMULATOR_3DS) return;
+
+	APlayerController* pPC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+	if (!pPC) return;
+
+	float mx = 0, my = 0;
+	if (!pPC->GetMousePosition(mx, my)) return; //no focus / no cursor data - leave it alone
+
+	int32 vx = 0, vy = 0;
+	pPC->GetViewportSize(vx, vy);
+	if (vx < 100 || vy < 100) return;
+
+	const float margin = 60.0f;
+	if (mx < margin || my < margin || mx > vx - margin || my > vy - margin)
+	{
+		pPC->SetMouseLocation(vx / 2, vy / 2);
+	}
+}
+
+void APlayerPawn::JoyPad_B_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
+	//on the 3DS a left CLICK means "touch the bottom screen where the big cursor is", not B
+	//(Ctrl and the gamepad button still press B there)
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::LeftMouseButton)
+	{
+		g_pLibretroManager->m_touchDown = true;
+		g_pLibretroManager->m_touchLastActiveTime = FPlatformTime::Seconds();
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = true;
 }
 
-void APlayerPawn::JoyPad_B_Released()
+void APlayerPawn::JoyPad_B_Released(FKey key)
 {
+	if (key == EKeys::LeftMouseButton)
+	{
+		g_pLibretroManager->m_touchDown = false;
+	}
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::LeftMouseButton)
+	{
+		return; //the press went to the touchscreen, don't release a B that was never pressed
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = false;
 }
 

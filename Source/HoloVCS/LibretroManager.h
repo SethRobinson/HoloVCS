@@ -236,6 +236,14 @@ public:
 	TArray< int > m_emulatorIDList;
 	int m_activeRomIndex = 0;
 
+	//virtual touch cursor for the 3DS bottom screen, in bottom-screen pixels.  Mouse deltas
+	//move it (PlayerPawn), it never leaves the screen, and the holo blit draws a big pointer
+	//at its position so it's obvious on the hologram.  Left click = touch.
+	float m_touchX = 160.0f;
+	float m_touchY = 120.0f;
+	bool m_touchDown = false;
+	double m_touchLastActiveTime = 0; //FPlatformTime seconds; drives cursor auto-hide
+
 	NesHacker m_nesHacker;
 	AutomationHarness m_autoHarness;
 	HelpScreen m_helpScreen;
