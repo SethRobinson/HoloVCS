@@ -153,9 +153,21 @@ Key architecture lessons (all learned the hard way on SM3DL, see the fork commit
   IF THE WHOLE SCENE ENDS UP ON ONE LAYER: that is the core's adaptive band range
   measuring a degenerate depth buffer, not a frontend bug. Arm the band log and read
   `spread=` / `topshare=` (healthy in-level SM3DL = spread 24, topshare ~0.37; the
-  collapse signature is spread<=2, topshare>=0.5). Note a flat 2D screen like the world
-  map at rest legitimately reads spread=2 - check which screen you measured. Root cause
+  collapse signature is spread<=2, topshare>=0.5). Root cause
   and the reverted dead ends are in the fork's AGENTS.md.
+  THE STORED-ITEM MEDALLION COLLAPSE (fixed Aug 2026): with an item in Mario's
+  inventory the world map collapsed to spread=2 - 90% of the screen on the NEAREST
+  layer under a solid-blue far band. The map clears the scene DEPTH buffer mid-frame
+  and draws the held-item medallion (top-right circle) on the wiped buffer before
+  shipping, so the core's ship-time depth read measured only the medallion's
+  0.0001-wide depth island and the adaptive band range snapped to it, clamping every
+  scene fragment into band 0. The core now snapshots the scene depth AT that
+  mid-frame clear (the fill of the recorded depth address after captured scene draws
+  is a positive "screen-space gadget" signal) and routes the post-clear medallion
+  draws near with the UI. Fix is core-side only (no frontend change); details and the
+  band-log numbers are in the fork's AGENTS.md. NOTE: this fix removed the reason the
+  world map ever read spread=2 - the map is a real 3D scene there; a legit flat
+  compose reading spread=2 still exists on true 2D screens (menus, letter cards).
   The LayerBG moon wall is HIDDEN for 3DS (ApplyStartingGameSpecificSetup; the 3DS
   capture has its own backdrop band, the wall only ever showed through capture gaps).
 - Scene cuts drop stale layers immediately (composite-cut detection), which is what
