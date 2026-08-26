@@ -225,6 +225,17 @@ legacy CPU slicing automatically.
 
 ## Known gaps / gotchas
 
+- In-level game shadows (Mario's blob shadow, the W1-1 sign's projected shadow) are
+  MISSING from the layered capture. Deliberate capture skip, not z-fighting: SM3DL draws
+  them exactly like its save-load darkening (shadow silhouettes rasterized into the
+  stencil buffer, then full-screen dst x (1-constant) multiply quads with stencil func
+  NotEqual darkening the marked region), and the capture skips every draw whose stencil
+  func is not Always - the fix that stopped the gray-card / save-dim band corruption,
+  because stencil coverage is data-dependent and the stencil test runs after the
+  fragment shader. The shadows exist in the game's composed frame; they never reach any
+  band. Root cause detail, the in-level draw-log signature (150 "stencil" skips at 3 per
+  game frame), and the stencil-emulation fix direction are in the fork's AGENTS.md
+  (gray-sky item 3).
 - Movement in 3D games needs the circle pad; the frontend is digital-only today, so games
   like Mario 3D Land can navigate menus but not walk. Planned fix is core-side
   (dpad-to-circle-pad option) rather than frontend analog.
