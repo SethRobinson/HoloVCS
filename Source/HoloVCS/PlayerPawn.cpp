@@ -21,6 +21,7 @@
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "UnrealClient.h"
+#include "HAL/IConsoleManager.h"
 
 // Sets default values
 APlayerPawn::APlayerPawn()
@@ -166,6 +167,9 @@ void APlayerPawn::FitFlatCameraToLayers()
 	m_layerBounds = box;
 	m_camPivot = box.GetCenter();
 	m_bLayerBoundsValid = true;
+	//while the fly camera is out, keep tracking bounds (exit handback and fly speed use them)
+	//but don't yank the camera - layer rebuilds land here on every depth ramp tick
+	if (m_bFlyCam) return;
 	m_camDist = 0; //next update snaps straight out to whatever the new stack needs
 	UpdateFlatCamera(0.0f);
 
@@ -217,7 +221,16 @@ float APlayerPawn::ComputeFlatCameraFitDist(const FRotator& camRot) const
 
 void APlayerPawn::UpdateFlatCamera(float DeltaTime)
 {
-	if (!m_pFlatCamera || !m_bLayerBoundsValid) return;
+	if (!m_pFlatCamera) return;
+
+	//debug fly mode owns the camera outright - the orbit/fit machinery below would stomp it
+	if (m_bFlyCam)
+	{
+		UpdateFlyCamera(DeltaTime);
+		return;
+	}
+
+	if (!m_bLayerBoundsValid) return;
 
 	float dx = m_mouseDX;
 	float dy = m_mouseDY;
@@ -225,6 +238,15 @@ void APlayerPawn::UpdateFlatCamera(float DeltaTime)
 
 	if (FMath::Abs(dx) + FMath::Abs(dy) > 0.02f)
 	{
+		if (m_camScript != ECamScript::None)
+		{
+			//the user grabbed the mouse mid-script: the script yields exactly where it is
+			m_camScript = ECamScript::None;
+			m_manualYaw = m_dispYaw;
+			m_manualPitch = m_dispPitch;
+			m_manualBlend = 1.0f;
+			LogMsg("Camera script cancelled by mouse");
+		}
 		if (m_manualBlend < 1.0f)
 		{
 			//grab the camera from wherever the idle sweep left it so there's no pop
@@ -250,9 +272,51 @@ void APlayerPawn::UpdateFlatCamera(float DeltaTime)
 	float autoYaw = FMath::Sin(m_autoClock * (2.0f * PI) / FMath::Max(1.0f, m_autoOrbitPeriod)) * m_autoOrbitYawRange;
 	float autoPitch = m_autoOrbitPitch;
 
-	float blend = FMath::SmoothStep(0.0f, 1.0f, m_manualBlend);
-	m_dispYaw = FRotator::NormalizeAxis(autoYaw + FRotator::NormalizeAxis(m_manualYaw - autoYaw) * blend);
-	m_dispPitch = FMath::Lerp(autoPitch, m_manualPitch, blend);
+	if (m_camScript != ECamScript::None)
+	{
+		//a scripted GIF move drives the displayed angles directly; the shared fit/transform
+		//code below keeps the framing correct at every angle for free
+		m_scriptT += DeltaTime;
+		switch (m_camScript)
+		{
+		case ECamScript::Sweep:
+		{
+			float alpha = FMath::Clamp(m_scriptT / m_scriptDur, 0.0f, 1.0f);
+			m_dispYaw = FRotator::NormalizeAxis(FMath::Lerp(m_scriptA, m_scriptB, alpha));
+			m_dispPitch = m_scriptPitch;
+			if (m_scriptT >= m_scriptDur) FinishCamScript();
+			break;
+		}
+		case ECamScript::Pose:
+		{
+			float alpha = FMath::SmoothStep(0.0f, 1.0f, FMath::Clamp(m_scriptT / m_scriptDur, 0.0f, 1.0f));
+			m_dispYaw = FRotator::NormalizeAxis(m_scriptStartYaw + FRotator::NormalizeAxis(m_scriptA - m_scriptStartYaw) * alpha);
+			m_dispPitch = FMath::Lerp(m_scriptStartPitch, m_scriptB, alpha);
+			if (m_scriptT >= m_scriptDur) FinishCamScript();
+			break;
+		}
+		case ECamScript::Wiggle:
+		{
+			m_dispYaw = FRotator::NormalizeAxis(m_scriptStartYaw + m_scriptA * FMath::Sin(m_scriptT * (2.0f * PI) / m_scriptDur));
+			m_dispPitch = m_scriptPitch;
+			//whole cycles end at sin=0, exactly where they started = a seamless GIF loop
+			if (m_scriptCycles > 0 && m_scriptT >= m_scriptCycles * m_scriptDur)
+			{
+				m_dispYaw = m_scriptStartYaw;
+				FinishCamScript();
+			}
+			break;
+		}
+		default:
+			break;
+		}
+	}
+	else
+	{
+		float blend = FMath::SmoothStep(0.0f, 1.0f, m_manualBlend);
+		m_dispYaw = FRotator::NormalizeAxis(autoYaw + FRotator::NormalizeAxis(m_manualYaw - autoYaw) * blend);
+		m_dispPitch = FMath::Lerp(autoPitch, m_manualPitch, blend);
+	}
 
 	FRotator camRot(m_dispPitch, m_dispYaw, 0);
 	float wantDist = ComputeFlatCameraFitDist(camRot);
@@ -269,6 +333,258 @@ void APlayerPawn::UpdateFlatCamera(float DeltaTime)
 	m_pFlatCamera->SetWorldLocation(m_camPivot - camRot.Vector() * m_camDist);
 	m_pFlatCamera->SetWorldRotation(camRot);
 }
+
+//Free-fly debug camera: left stick moves, right stick looks, triggers rise/sink, LB/RB set
+//speed.  The mouse also looks on non-3DS systems (on the 3DS it stays the touch cursor and
+//never reaches m_mouseDX/DY).  All speeds scale by the layer AABB so NES (~41 units) and
+//VB (~310) feel the same.
+void APlayerPawn::UpdateFlyCamera(float DeltaTime)
+{
+	//consume the mouse accumulators even if unused - left pooling, they'd yank the orbit
+	//into manual mode with one giant delta the moment fly mode exits
+	float dx = m_mouseDX;
+	float dy = m_mouseDY;
+	m_mouseDX = m_mouseDY = 0;
+
+	//m_padRY sign matches the hardware-verified touch-cursor math in UpdateTouchMouseLock
+	//(positive = stick up after the ini's -1 scale), so += looks up on stick up.  Mouse
+	//forward = look up, standard FPS sense.
+	m_flyYaw = FRotator::NormalizeAxis(m_flyYaw + m_padRX * m_flyLookYawSpeed * DeltaTime + dx * m_mouseYawSensitivity);
+	m_flyPitch = FMath::Clamp(m_flyPitch + m_padRY * m_flyLookPitchSpeed * DeltaTime + dy * m_mousePitchSensitivity,
+		-m_flyPitchLimit, m_flyPitchLimit);
+
+	const float boundsMax = m_bLayerBoundsValid ? (float)m_layerBounds.GetSize().GetMax() : 200.0f;
+	const float moveSpeed = m_flyMoveSpeedFactor * boundsMax * m_flySpeedMult;
+
+	FRotator camRot(m_flyPitch, m_flyYaw, 0);
+	FRotationMatrix mat(camRot);
+	m_flyPos += mat.GetUnitAxis(EAxis::X) * (-m_padLY) * moveSpeed * DeltaTime; //stick up = forward (LY carries the ini's -1 scale, up = -1 like W)
+	m_flyPos += mat.GetUnitAxis(EAxis::Y) * m_padLX * moveSpeed * DeltaTime;
+	m_flyPos.Z += (m_padRT - m_padLT) * m_flyVerticalSpeedFactor * boundsMax * m_flySpeedMult * DeltaTime;
+
+	m_pFlatCamera->SetWorldLocation(m_flyPos);
+	m_pFlatCamera->SetWorldRotation(camRot);
+}
+
+void APlayerPawn::SetFlyCamEnabled(bool bEnable)
+{
+	if (bEnable == m_bFlyCam) return;
+
+	if (bEnable)
+	{
+		m_camScript = ECamScript::None; //fly and the scripted moves both want the camera (a depth ramp may keep running)
+		//seed from the live camera so there's no pop
+		if (m_pFlatCamera)
+		{
+			m_flyPos = m_pFlatCamera->GetComponentLocation();
+		}
+		m_flyYaw = m_dispYaw;
+		m_flyPitch = m_dispPitch;
+		m_flySpeedMult = 1.0f;
+		//the pad flies the camera now - release everything it was holding in the game.
+		//(A keyboard BUTTON held across the toggle is lost until re-pressed - acceptable;
+		//keyboard axes re-assert next frame, and harness `press` holds live elsewhere.)
+		if (g_pLibretroManager)
+		{
+			for (int i = 0; i < C_MAX_JOYPAD_BUTTONS; i++)
+			{
+				g_pLibretroManager->m_joyPad.m_button[i] = false;
+			}
+			g_pLibretroManager->m_joyPad.m_axisLX = 0;
+			g_pLibretroManager->m_joyPad.m_axisLY = 0;
+			g_pLibretroManager->m_joyPad.m_axisRX = 0;
+			g_pLibretroManager->m_joyPad.m_axisRY = 0;
+		}
+		m_bFlyCam = true;
+		ShowStatusMessage("Fly camera ON (Start+L-stick click or V to exit)");
+	}
+	else
+	{
+		m_bFlyCam = false;
+		//hand back to the orbit along the ray we're already on: aim at the pivot from here,
+		//keep the current distance, and the fit logic walks it to whatever it needs
+		FVector toPivot = m_camPivot - m_flyPos;
+		if (m_bLayerBoundsValid && toPivot.Size() > 1.0f)
+		{
+			FRotator r = toPivot.Rotation();
+			m_manualYaw = (float)r.Yaw;
+			m_manualPitch = FMath::Clamp((float)r.Pitch, -m_manualPitchLimit, m_manualPitchLimit);
+			m_manualBlend = 1.0f;
+			m_timeSinceMouseMove = 0;
+			m_camDist = (float)toPivot.Size();
+		}
+		ShowStatusMessage("Fly camera OFF");
+	}
+	LogMsg("Fly camera %s", m_bFlyCam ? "ON" : "OFF");
+}
+
+//---- Scripted camera moves for GIF capture.  Feedback is log-only on purpose: a status
+//message would render into every captured frame. ----
+
+void APlayerPawn::FinishCamScript()
+{
+	m_camScript = ECamScript::None;
+	//hand off like a mouse release: hold the final angles, the idle-return machinery
+	//eases back to the sweep after m_idleReturnDelay
+	m_manualYaw = m_dispYaw;
+	m_manualPitch = m_dispPitch;
+	m_manualBlend = 1.0f;
+	m_timeSinceMouseMove = 0;
+	LogMsg("Camera script done");
+}
+
+void APlayerPawn::StartCamSweep(float yawA, float yawB, float seconds, float pitch)
+{
+	SetFlyCamEnabled(false);
+	m_camScript = ECamScript::Sweep;
+	m_scriptT = 0;
+	m_scriptDur = FMath::Max(0.1f, seconds);
+	m_scriptA = yawA;
+	m_scriptB = yawB;
+	m_scriptPitch = (pitch >= CAM_PITCH_KEEP) ? m_dispPitch : pitch;
+	LogMsg("holo.CamSweep: yaw %.1f -> %.1f over %.1fs, pitch %.1f", yawA, yawB, m_scriptDur, m_scriptPitch);
+}
+
+void APlayerPawn::StartCamPose(float yaw, float pitch, float seconds)
+{
+	SetFlyCamEnabled(false);
+	m_camScript = ECamScript::Pose;
+	m_scriptT = 0;
+	m_scriptDur = FMath::Max(0.1f, seconds);
+	m_scriptA = yaw;
+	m_scriptB = pitch;
+	m_scriptStartYaw = m_dispYaw;
+	m_scriptStartPitch = m_dispPitch;
+	LogMsg("holo.CamPose: to yaw %.1f pitch %.1f over %.1fs", yaw, pitch, m_scriptDur);
+}
+
+void APlayerPawn::StartCamWiggle(float amplitude, float period, float cycles, float pitch)
+{
+	SetFlyCamEnabled(false);
+	m_camScript = ECamScript::Wiggle;
+	m_scriptT = 0;
+	m_scriptDur = FMath::Max(0.1f, period);
+	m_scriptA = amplitude;
+	m_scriptCycles = FMath::Max(0.0f, cycles);
+	m_scriptStartYaw = m_dispYaw;
+	m_scriptPitch = (pitch >= CAM_PITCH_KEEP) ? m_dispPitch : pitch;
+	LogMsg("holo.CamWiggle: +/-%.1f deg, period %.1fs, cycles %.0f", amplitude, m_scriptDur, m_scriptCycles);
+}
+
+void APlayerPawn::StartDepthRamp(float from, float to, float seconds)
+{
+	SetFlyCamEnabled(false);
+	m_depthRampFrom = from;
+	m_depthRampTo = to;
+	m_depthRampDur = FMath::Max(0.1f, seconds);
+	m_depthRampT = 0;
+	m_depthRampActive = true;
+	//snap to the start value now so a recording can begin on the very first frame
+	if (g_pLibretroManager && g_pLibretroManager->m_pLibretroManagedActor)
+	{
+		g_pLibretroManager->m_pLibretroManagedActor->SetUserDepthScale(from, false);
+	}
+	LogMsg("holo.DepthRamp: %.2f -> %.2f over %.1fs", from, to, m_depthRampDur);
+}
+
+void APlayerPawn::StopCamScripts()
+{
+	if (m_camScript != ECamScript::None)
+	{
+		FinishCamScript(); //settles at the current angles, no snap
+	}
+	m_depthRampActive = false;
+}
+
+void APlayerPawn::UpdateDepthRamp(float DeltaTime)
+{
+	if (!m_depthRampActive) return;
+	if (!g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor)
+	{
+		m_depthRampActive = false;
+		return;
+	}
+	m_depthRampT += DeltaTime;
+	float alpha = FMath::Clamp(m_depthRampT / m_depthRampDur, 0.0f, 1.0f);
+	g_pLibretroManager->m_pLibretroManagedActor->SetUserDepthScale(
+		FMath::Lerp(m_depthRampFrom, m_depthRampTo, alpha), false); //silent - no status text in GIF frames
+	if (alpha >= 1.0f)
+	{
+		m_depthRampActive = false;
+		LogMsg("holo.DepthRamp done at %.2f", m_depthRampTo);
+	}
+}
+
+static APlayerPawn* GetHoloPawn()
+{
+	return g_pLibretroManager ? g_pLibretroManager->m_pPlayerPawn : nullptr;
+}
+
+//Console twins so the automation harness can drive all of this headlessly (exec holo.CamSweep ...).
+//The harness can `exec` but cannot press a gamepad chord.
+static FAutoConsoleCommand CCmdHoloFlyCam(
+	TEXT("holo.FlyCam"),
+	TEXT("Toggle the debug fly camera (same as V / Start+L-stick click). Usage: holo.FlyCam [0|1]"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		APlayerPawn* pPawn = GetHoloPawn();
+		if (!pPawn) return;
+		bool bEnable = args.Num() > 0 ? (FCString::Atoi(*args[0]) != 0) : !pPawn->IsFlyCamEnabled();
+		pPawn->SetFlyCamEnabled(bEnable);
+	}));
+
+static FAutoConsoleCommand CCmdHoloCamSweep(
+	TEXT("holo.CamSweep"),
+	TEXT("Linear orbit yaw sweep for GIF capture. Usage: holo.CamSweep <yawA> <yawB> <seconds> [pitch]"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		APlayerPawn* pPawn = GetHoloPawn();
+		if (!pPawn || args.Num() < 3) return;
+		pPawn->StartCamSweep(FCString::Atof(*args[0]), FCString::Atof(*args[1]), FCString::Atof(*args[2]),
+			args.Num() > 3 ? FCString::Atof(*args[3]) : APlayerPawn::CAM_PITCH_KEEP);
+	}));
+
+static FAutoConsoleCommand CCmdHoloCamPose(
+	TEXT("holo.CamPose"),
+	TEXT("Ease the orbit camera to a pose. Usage: holo.CamPose <yaw> <pitch> <seconds>"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		APlayerPawn* pPawn = GetHoloPawn();
+		if (!pPawn || args.Num() < 3) return;
+		pPawn->StartCamPose(FCString::Atof(*args[0]), FCString::Atof(*args[1]), FCString::Atof(*args[2]));
+	}));
+
+static FAutoConsoleCommand CCmdHoloCamWiggle(
+	TEXT("holo.CamWiggle"),
+	TEXT("Parallax yaw oscillation; whole cycles loop seamlessly. Usage: holo.CamWiggle <amplitudeDeg> <periodSec> [cycles] [pitch]  (cycles 0 = until holo.CamStop)"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		APlayerPawn* pPawn = GetHoloPawn();
+		if (!pPawn || args.Num() < 2) return;
+		pPawn->StartCamWiggle(FCString::Atof(*args[0]), FCString::Atof(*args[1]),
+			args.Num() > 2 ? FCString::Atof(*args[2]) : 0.0f,
+			args.Num() > 3 ? FCString::Atof(*args[3]) : APlayerPawn::CAM_PITCH_KEEP);
+	}));
+
+static FAutoConsoleCommand CCmdHoloDepthRamp(
+	TEXT("holo.DepthRamp"),
+	TEXT("Animate the 3D depth spread (the [ ] value) for GIF capture, status text suppressed. Usage: holo.DepthRamp <from> <to> <seconds>  (0 = flat; values snap to 0 below 0.05)"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		APlayerPawn* pPawn = GetHoloPawn();
+		if (!pPawn || args.Num() < 3) return;
+		pPawn->StartDepthRamp(FCString::Atof(*args[0]), FCString::Atof(*args[1]), FCString::Atof(*args[2]));
+	}));
+
+static FAutoConsoleCommand CCmdHoloCamStop(
+	TEXT("holo.CamStop"),
+	TEXT("Cancel any running camera script and depth ramp."),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		APlayerPawn* pPawn = GetHoloPawn();
+		if (!pPawn) return;
+		pPawn->StopCamScripts();
+	}));
 
 void APlayerPawn::FindBGMeshIfNeeded()
 {
@@ -308,6 +624,7 @@ void APlayerPawn::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	UpdateDepthRamp(DeltaTime); //before the camera update so the fit sees the freshly moved layers
 	UpdateFlatCamera(DeltaTime);
 	UpdateTouchMouseLock();
 }
@@ -331,6 +648,7 @@ static bool HelpSwallowedInput()
 void APlayerPawn::Move_XAxis(float AxisValue)
 {
 	if (!g_pLibretroManager) return; //axis events fire every frame, even during startup/teardown when there's no manager
+	if (m_bFlyCam) AxisValue -= m_padLX; //strip the gamepad stick (it flies the camera); keyboard keeps playing
 	if (FMath::Abs(AxisValue) > C_JOYSTICK_DEAD_ZONE) HelpSwallowedInput(); //movement closes the help like the old splash
 	m_moveAxisX = AxisValue;
 	UpdateDpadButtons();
@@ -340,6 +658,7 @@ void APlayerPawn::Move_XAxis(float AxisValue)
 void APlayerPawn::Move_YAxis(float AxisValue)
 {
 	if (!g_pLibretroManager) return;
+	if (m_bFlyCam) AxisValue -= m_padLY;
 	if (FMath::Abs(AxisValue) > C_JOYSTICK_DEAD_ZONE) HelpSwallowedInput();
 	m_moveAxisY = AxisValue;
 	UpdateDpadButtons();
@@ -349,6 +668,7 @@ void APlayerPawn::Move_YAxis(float AxisValue)
 void APlayerPawn::DPad_XAxis(float AxisValue)
 {
 	if (!g_pLibretroManager) return;
+	if (m_bFlyCam) AxisValue = 0; //gamepad-only keys, the game isn't listening to the pad now
 	if (FMath::Abs(AxisValue) > C_JOYSTICK_DEAD_ZONE) HelpSwallowedInput();
 	m_dpadAxisX = AxisValue;
 	UpdateDpadButtons();
@@ -357,10 +677,20 @@ void APlayerPawn::DPad_XAxis(float AxisValue)
 void APlayerPawn::DPad_YAxis(float AxisValue)
 {
 	if (!g_pLibretroManager) return;
+	if (m_bFlyCam) AxisValue = 0;
 	if (FMath::Abs(AxisValue) > C_JOYSTICK_DEAD_ZONE) HelpSwallowedInput();
 	m_dpadAxisY = AxisValue;
 	UpdateDpadButtons();
 }
+
+//Recorders for the gamepad-only mirror axes (PadLX..PadRT).  Bound BEFORE the merged
+//Move/RMove axes so the values are fresh when those handlers subtract them in fly mode.
+void APlayerPawn::Pad_LX(float v) { m_padLX = v; }
+void APlayerPawn::Pad_LY(float v) { m_padLY = v; }
+void APlayerPawn::Pad_RX(float v) { m_padRX = v; }
+void APlayerPawn::Pad_RY(float v) { m_padRY = v; }
+void APlayerPawn::Pad_LT(float v) { m_padLT = v; }
+void APlayerPawn::Pad_RT(float v) { m_padRT = v; }
 
 void APlayerPawn::UpdateDpadButtons()
 {
@@ -385,6 +715,9 @@ void APlayerPawn::UpdateDpadButtons()
 void APlayerPawn::RMove_XAxis(float AxisValue)
 {
 	if (!g_pLibretroManager) return;
+	//fly mode: the right stick looks around, so only the keyboard share (H/K) reaches the
+	//game - this also keeps the stick out of the 3DS touch cursor and the digital bits below
+	if (m_bFlyCam) AxisValue -= m_padRX;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R2] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R3] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_axisRX = FMath::Clamp(AxisValue, -1.0f, 1.0f); //3DS C-stick
@@ -393,6 +726,7 @@ void APlayerPawn::RMove_XAxis(float AxisValue)
 void APlayerPawn::RMove_YAxis(float AxisValue)
 {
 	if (!g_pLibretroManager) return;
+	if (m_bFlyCam) AxisValue -= m_padRY;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L3] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L2] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
 	g_pLibretroManager->m_joyPad.m_axisRY = FMath::Clamp(AxisValue, -1.0f, 1.0f); //3DS C-stick
@@ -466,6 +800,7 @@ void APlayerPawn::UpdateTouchMouseLock()
 void APlayerPawn::JoyPad_B_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
+	if (m_bFlyCam && key.IsGamepadKey()) return; //fly mode: pad buttons don't reach the game
 	//on the 3DS a left CLICK means "touch the bottom screen where the big cursor is", not B
 	//(Ctrl and the gamepad button still press B there)
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::LeftMouseButton)
@@ -499,13 +834,14 @@ void APlayerPawn::JoyPad_B_Released(FKey key)
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = false;
 }
 
-void APlayerPawn::JoyPad_A_Pressed()
+void APlayerPawn::JoyPad_A_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
+	if (m_bFlyCam && key.IsGamepadKey()) return; //fly mode: pad buttons don't reach the game, Space still does
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_A] = true;
 }
 
-void APlayerPawn::JoyPad_A_Released()
+void APlayerPawn::JoyPad_A_Released(FKey key)
 {
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_A] = false;
 }
@@ -516,6 +852,7 @@ void APlayerPawn::JoyPad_A_Released()
 void APlayerPawn::JoyPad_Y_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
+	if (m_bFlyCam && key.IsGamepadKey()) return;
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::Gamepad_FaceButton_Top)
 	{
 		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_X] = true;
@@ -538,6 +875,7 @@ void APlayerPawn::JoyPad_Y_Released(FKey key)
 void APlayerPawn::JoyPad_X_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
+	if (m_bFlyCam && key.IsGamepadKey()) return;
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::Gamepad_FaceButton_Left)
 	{
 		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_Y] = true;
@@ -557,31 +895,51 @@ void APlayerPawn::JoyPad_X_Released(FKey key)
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_X] = false;
 }
 
-void APlayerPawn::JoyPad_Start_Pressed()
+void APlayerPawn::JoyPad_Start_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
+	if (key.IsGamepadKey())
+	{
+		//the fly-cam chord reads this flag, NOT the game bit, which fly mode keeps clear
+		m_bPadStartHeld = true;
+		if (m_bFlyCam) return; //pad Start must not pause/menu the game while flying
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START] = true;
 }
 
-void APlayerPawn::JoyPad_Start_Released()
+void APlayerPawn::JoyPad_Start_Released(FKey key)
 {
+	if (key.IsGamepadKey())
+	{
+		m_bPadStartHeld = false;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START] = false;
 }
 
-void APlayerPawn::JoyPad_Select_Pressed()
+void APlayerPawn::JoyPad_Select_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
+	if (m_bFlyCam && key.IsGamepadKey()) return;
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_SELECT] = true;
 }
 
-void APlayerPawn::JoyPad_Select_Released()
+void APlayerPawn::JoyPad_Select_Released(FKey key)
 {
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_SELECT] = false;
 }
 
-void APlayerPawn::JoyPad_LShoulder_Pressed()
+void APlayerPawn::JoyPad_LShoulder_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
+	if (m_bFlyCam && key.IsGamepadKey())
+	{
+		//while flying LB/RB halve/double the camera speed; keyboard F/Q still save state etc
+		m_flySpeedMult = FMath::Max(0.125f, m_flySpeedMult * 0.5f);
+		char st[48];
+		snprintf(st, sizeof(st), "Fly speed x%.2f", m_flySpeedMult);
+		ShowStatusMessage(st);
+		return;
+	}
 	//gamepad system hotkeys all require HOLDING START (Seth: bare buttons kept triggering
 	//them by accident).  With START held the press is a pure hotkey - the game does not see
 	//the button id.  Without START, shoulders/triggers are ordinary L/R/ZL/ZR buttons.
@@ -598,9 +956,17 @@ void APlayerPawn::JoyPad_LShoulder_Released()
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L] = false;
 }
 
-void APlayerPawn::JoyPad_RShoulder_Pressed()
+void APlayerPawn::JoyPad_RShoulder_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
+	if (m_bFlyCam && key.IsGamepadKey())
+	{
+		m_flySpeedMult = FMath::Min(8.0f, m_flySpeedMult * 2.0f);
+		char st[48];
+		snprintf(st, sizeof(st), "Fly speed x%.2f", m_flySpeedMult);
+		ShowStatusMessage(st);
+		return;
+	}
 	if (g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START])
 	{
 		g_pLibretroManager->LoadStateFromFile();
@@ -613,6 +979,15 @@ void APlayerPawn::JoyPad_RShoulder_Pressed()
 void APlayerPawn::JoyPad_LeftStick_Pressed()
 {
 	if (HelpSwallowedInput()) return;
+	//START + L-stick click toggles the debug fly camera (same chord family as the
+	//shoulder/trigger hotkeys above).  m_bPadStartHeld covers the EXIT press, when fly
+	//mode is keeping the game-facing Start bit clear.
+	if (m_bPadStartHeld || g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START])
+	{
+		SetFlyCamEnabled(!m_bFlyCam);
+		return;
+	}
+	if (m_bFlyCam) return; //bare L3 is a game button; the game isn't listening to the pad now
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L3] = true;
 }
 void APlayerPawn::JoyPad_LeftStick_Released()
@@ -623,6 +998,7 @@ void APlayerPawn::JoyPad_LeftStick_Released()
 void APlayerPawn::JoyPad_RightStick_Pressed()
 {
 	if (HelpSwallowedInput()) return;
+	if (m_bFlyCam) return; //gamepad-only binding
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS)
 	{
 		//clicking the right stick taps the touchscreen at the cursor
@@ -643,6 +1019,7 @@ void APlayerPawn::JoyPad_RightStick_Released()
 void APlayerPawn::JoyPad_RTrigger_Pressed()
 {
 	if (HelpSwallowedInput()) return;
+	if (m_bFlyCam) return; //gamepad-only binding; the analog trigger axes fly the camera up/down
 	if (g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START])
 	{
 		g_pLibretroManager->ModRom(1); //START + right trigger = next game
@@ -660,6 +1037,7 @@ void APlayerPawn::JoyPad_RTrigger_Pressed()
 void APlayerPawn::JoyPad_LTrigger_Pressed()
 {
 	if (HelpSwallowedInput()) return;
+	if (m_bFlyCam) return; //gamepad-only binding; the analog trigger axes fly the camera up/down
 	if (g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START])
 	{
 		OnResetGame(); //START + left trigger = reset game
@@ -904,6 +1282,12 @@ void APlayerPawn::OnNKey()
 	ShowStatusMessage("Dumping NES state to Saved/nes_state_dump.txt");
 }
 
+void APlayerPawn::OnVKey()
+{
+	if (HelpSwallowedInput()) return;
+	SetFlyCamEnabled(!m_bFlyCam);
+}
+
 void APlayerPawn::OnCommaKey()
 {
 	if (HelpSwallowedInput()) return;
@@ -1007,6 +1391,7 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(EKeys::Eight, IE_Pressed, this, &APlayerPawn::OnNum8Key);
 	PlayerInputComponent->BindKey(EKeys::P, IE_Pressed, this, &APlayerPawn::OnPKey);
 	PlayerInputComponent->BindKey(EKeys::N, IE_Pressed, this, &APlayerPawn::OnNKey);
+	PlayerInputComponent->BindKey(EKeys::V, IE_Pressed, this, &APlayerPawn::OnVKey); //fly camera toggle (pad chord: Start + L-stick click)
 	PlayerInputComponent->BindKey(EKeys::LeftBracket, IE_Pressed, this, &APlayerPawn::OnLeftBracketKey);
 	PlayerInputComponent->BindKey(EKeys::LeftBracket, IE_Repeat, this, &APlayerPawn::OnLeftBracketKey);
 	PlayerInputComponent->BindKey(EKeys::RightBracket, IE_Pressed, this, &APlayerPawn::OnRightBracketKey);
@@ -1024,6 +1409,15 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	//mouse orbits the flat camera around the layer diorama, see UpdateFlatCamera
 	InputComponent->BindAxisKey(EKeys::MouseX, this, &APlayerPawn::OnMouseX);
 	InputComponent->BindAxisKey(EKeys::MouseY, this, &APlayerPawn::OnMouseY);
+
+	//gamepad-only mirror axes MUST bind before the merged Move/RMove axes below - the axis
+	//delegates fire in binding order and fly mode subtracts these for keyboard passthrough
+	InputComponent->BindAxis("PadLX", this, &APlayerPawn::Pad_LX);
+	InputComponent->BindAxis("PadLY", this, &APlayerPawn::Pad_LY);
+	InputComponent->BindAxis("PadRX", this, &APlayerPawn::Pad_RX);
+	InputComponent->BindAxis("PadRY", this, &APlayerPawn::Pad_RY);
+	InputComponent->BindAxis("PadLT", this, &APlayerPawn::Pad_LT);
+	InputComponent->BindAxis("PadRT", this, &APlayerPawn::Pad_RT);
 
 	// Respond every frame to the values of our two movement axes, "MoveX" and "MoveY".
 	InputComponent->BindAxis("MoveX", this, &APlayerPawn::Move_XAxis);

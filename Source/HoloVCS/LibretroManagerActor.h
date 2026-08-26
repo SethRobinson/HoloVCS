@@ -113,7 +113,7 @@ public:
 	void SetTextureSmoothingToUse(bool bfilteringOn);
 	int GetUnusedLayerID(); //returns -1 for none
 	int GetLayerCount() { return m_layerCount; }
-	void SetUserDepthScale(float scale); //clamps, re-spreads the live layers, shows a status message
+	void SetUserDepthScale(float scale, bool bShowStatus = true); //clamps, re-spreads the live layers; bShowStatus=false for per-tick ramps (no text in GIF frames)
 	void ApplyLayerDepth(); //reposition existing layer actors to the current depth spread (no respawn)
 	void SetLayersPeeled(int count); //debug: hide the N nearest layers (';' and ''' hotkeys) to see the back
 	int GetLayersPeeled() { return m_layersPeeled; }

@@ -225,6 +225,12 @@ legacy CPU slicing automatically.
 
 ## Known gaps / gotchas
 
+- Debug fly camera (V / Start + L-stick click, Aug 2026, see AGENTS.md): while flying, the
+  right stick looks around instead of moving the touch cursor, the trigger tap and R-stick
+  click taps are blocked (triggers fly up/down), and the pad's circle-pad feed is withheld
+  from the game - but the MOUSE stays the touch cursor (mouse fly-look is non-3DS only) and
+  keyboard WASD still walks. `touch x y` from the harness works as always.
+
 - In-level game shadows (Mario's blob shadow, the W1-1 sign's projected shadow) are
   MISSING from the layered capture. Deliberate capture skip, not z-fighting: SM3DL draws
   them exactly like its save-load darkening (shadow silhouettes rasterized into the

@@ -43,6 +43,22 @@ Commands:
 | `exec <console cmd>` | Anything the UE console accepts (`r.ShadowQuality 0`, `HighResShot 2`, cvars...). |
 | `quit` | Clean exit. |
 
+Camera / GIF-capture console commands (drive via `exec`, flat build; feedback is log-only so no
+status text lands in recorded frames). Pair with `video <frames> <name>` for GIF source PNGs:
+
+| Console command | What it does |
+|---|---|
+| `holo.FlyCam [0\|1]` | Toggle the debug fly camera (same as the V key / Start + L-stick click pad chord). Gamepad flies (left stick move, right stick look, triggers up/down, LB/RB speed), game keeps running, keyboard still plays. |
+| `holo.CamSweep <yawA> <yawB> <sec> [pitch]` | Linear orbit yaw sweep A->B. Pitch optional (default: current). |
+| `holo.CamPose <yaw> <pitch> <sec>` | SmoothStep-eased move to a pose (shortest yaw arc). |
+| `holo.CamWiggle <ampDeg> <periodSec> [cycles] [pitch]` | Parallax yaw oscillation around the current yaw; whole cycles end where they started = seamless GIF loop. cycles 0/omitted = until `holo.CamStop`. |
+| `holo.DepthRamp <from> <to> <sec>` | Animate the 3D depth spread (the [ ] value, 0 = flat) with the status message suppressed. Runs in its own slot, so it composes with a Cam command for the "flat screen unfolds into a diorama" shot. |
+| `holo.CamStop` | Cancel the running camera script and depth ramp (settles in place, no snap). |
+
+After a Cam script finishes, the camera holds the final angles and the normal idle-return eases
+back to the sweep ~5s later - shoot while the script runs, not after. Mouse movement cancels a
+running script (user wins).
+
 Workflow rules learned:
 - Launch is the only focus grab: `UnrealEditor.exe HoloVCS_Flat.uproject -game -windowed -resx=1280 -resy=720 -rom=<partial>`. After that, never foreground the window; the old SendKeys/CopyFromScreen approach is retired (Seth uses the machine while automated work runs).
 - Wait for `harness ready` in `Saved/Automation/ai_log.txt` before sending commands (delete the log first for a clean signal).

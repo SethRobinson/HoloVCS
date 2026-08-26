@@ -439,13 +439,15 @@ void ALibretroManagerActor::ApplyLayerDepth()
 	FitLookingGlassCaptureToLayers(GetWorld());
 }
 
-void ALibretroManagerActor::SetUserDepthScale(float scale)
+void ALibretroManagerActor::SetUserDepthScale(float scale, bool bShowStatus)
 {
 	//0 = completely flat is allowed (Seth request); a hair below 0.05 snaps to true 0 so
 	//the [ key can land exactly on "no 3d at all"
 	m_userDepthScale = FMath::Clamp(scale, 0.0f, 5.0f);
 	if (m_userDepthScale < 0.05f) m_userDepthScale = 0.0f;
 	ApplyLayerDepth();
+
+	if (!bShowStatus) return; //holo.DepthRamp calls per tick - status text would land in every captured frame
 
 	char st[64];
 	snprintf(st, sizeof(st), "3D depth: %d%%", (int)roundf(m_userDepthScale * 100));

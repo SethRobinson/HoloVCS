@@ -86,6 +86,66 @@ protected:
 	UPROPERTY(EditAnywhere)
 	float m_manualPitchLimit = 85.0f;
 
+	//---- Debug fly camera (Start + L-stick click on the pad, or V).  The gamepad flies the
+	//camera while the game keeps running; keyboard input still reaches the game. ----
+
+	//Movement speed at full stick, as a fraction of the layer AABB's largest dimension per
+	//second (each system uses a wildly different world scale: NES ~41 units, Atari ~445, VB ~310)
+	UPROPERTY(EditAnywhere)
+	float m_flyMoveSpeedFactor = 0.5f;
+
+	//Trigger up/down speed, same units
+	UPROPERTY(EditAnywhere)
+	float m_flyVerticalSpeedFactor = 0.3f;
+
+	//Degrees per second at full right-stick deflection
+	UPROPERTY(EditAnywhere)
+	float m_flyLookYawSpeed = 120.0f;
+
+	UPROPERTY(EditAnywhere)
+	float m_flyLookPitchSpeed = 90.0f;
+
+	UPROPERTY(EditAnywhere)
+	float m_flyPitchLimit = 89.0f;
+
+	bool m_bFlyCam = false;
+	FVector m_flyPos = FVector::ZeroVector;
+	float m_flyYaw = 0;
+	float m_flyPitch = 0;
+	float m_flySpeedMult = 1.0f; //runtime speed scale, LB/RB halve/double it while flying
+	//Physical gamepad Start, tracked separately from the game-facing button bit because fly
+	//mode suppresses that bit (the exit chord still has to read "Start is held" somewhere)
+	bool m_bPadStartHeld = false;
+
+	//Gamepad-only mirrors of the merged Move/RMove axes (PadLX..PadRT in DefaultInput.ini,
+	//identical key+scale, bound FIRST so they're fresh): merged - mirror = keyboard exactly,
+	//which is how fly mode hijacks the pad while WASD keeps reaching the game
+	float m_padLX = 0;
+	float m_padLY = 0;
+	float m_padRX = 0;
+	float m_padRY = 0;
+	float m_padLT = 0;
+	float m_padRT = 0;
+
+	//---- Scripted camera moves for GIF capture (holo.CamSweep / CamPose / CamWiggle) ----
+	enum class ECamScript : uint8 { None, Sweep, Wiggle, Pose };
+	ECamScript m_camScript = ECamScript::None;
+	float m_scriptT = 0;        //elapsed seconds
+	float m_scriptDur = 4;      //duration (Sweep/Pose) or period (Wiggle)
+	float m_scriptA = 0;        //Sweep: yawA. Wiggle: amplitude. Pose: target yaw
+	float m_scriptB = 0;        //Sweep: yawB. Pose: target pitch
+	float m_scriptPitch = 0;    //Sweep/Wiggle: pitch held for the whole script
+	float m_scriptCycles = 0;   //Wiggle: whole cycles to run, 0 = until holo.CamStop
+	float m_scriptStartYaw = 0;
+	float m_scriptStartPitch = 0;
+
+	//---- Depth-scale ramp (holo.DepthRamp), independent slot so it can run under a Cam script ----
+	bool m_depthRampActive = false;
+	float m_depthRampFrom = 0;
+	float m_depthRampTo = 1;
+	float m_depthRampDur = 4;
+	float m_depthRampT = 0;
+
 	FBox m_layerBounds = FBox(ForceInit);
 	bool m_bLayerBoundsValid = false;
 	FVector m_camPivot = FVector::ZeroVector;
@@ -108,6 +168,9 @@ protected:
 	float m_dpadAxisY = 0;
 
 	void UpdateFlatCamera(float DeltaTime);
+	void UpdateFlyCamera(float DeltaTime);
+	void UpdateDepthRamp(float DeltaTime);
+	void FinishCamScript(); //hand the camera back to the orbit at the script's final angles
 	float ComputeFlatCameraFitDist(const FRotator& camRot) const;
 
 public:	
@@ -121,6 +184,19 @@ public:
 	//the flat camera to frame whatever is actually there.  Called after InitLayers.  No-op on LG hardware
 	//since the plugin owns the viewport.
 	void FitFlatCameraToLayers();
+
+	//Debug fly camera toggle (Start + L-stick click, V key, or console holo.FlyCam)
+	void SetFlyCamEnabled(bool bEnable);
+	bool IsFlyCamEnabled() const { return m_bFlyCam; }
+
+	//Scripted camera moves for GIF capture (console holo.Cam* / holo.DepthRamp commands).
+	//pitch = CAM_PITCH_KEEP means "hold whatever pitch the camera has right now".
+	static constexpr float CAM_PITCH_KEEP = 9999.0f;
+	void StartCamSweep(float yawA, float yawB, float seconds, float pitch);
+	void StartCamPose(float yaw, float pitch, float seconds);
+	void StartCamWiggle(float amplitude, float period, float cycles, float pitch);
+	void StartDepthRamp(float from, float to, float seconds);
+	void StopCamScripts(); //cancels the camera script AND the depth ramp
 
 	void OnSubtractKey();
 
@@ -142,8 +218,8 @@ public:
 	void JoyPad_B_Released(FKey key);
 	void UpdateTouchMouseLock(); //keeps the OS cursor inside the window while 3DS touch is active
 
-	void JoyPad_A_Pressed();
-	void JoyPad_A_Released();
+	void JoyPad_A_Pressed(FKey key);  //key-aware: fly mode blocks the gamepad button, Space still plays
+	void JoyPad_A_Released(FKey key);
 
 	void JoyPad_Y_Pressed(FKey key); //key-aware: the 3DS maps the gamepad TOP face button to its X (positional)
 	void JoyPad_Y_Released(FKey key);
@@ -151,15 +227,15 @@ public:
 	void JoyPad_X_Pressed(FKey key); //key-aware: the 3DS maps the gamepad LEFT face button to its Y (positional)
 	void JoyPad_X_Released(FKey key);
 
-	void JoyPad_Start_Pressed();
-	void JoyPad_Start_Released();
+	void JoyPad_Start_Pressed(FKey key);  //key-aware: tracks m_bPadStartHeld for the fly-cam chord
+	void JoyPad_Start_Released(FKey key);
 
-	void JoyPad_Select_Pressed();
-	void JoyPad_Select_Released();
+	void JoyPad_Select_Pressed(FKey key);
+	void JoyPad_Select_Released(FKey key);
 
-	void JoyPad_LShoulder_Pressed();
+	void JoyPad_LShoulder_Pressed(FKey key); //key-aware: while flying, gamepad LB/RB set the fly speed
 	void JoyPad_LShoulder_Released();
-	void JoyPad_RShoulder_Pressed();
+	void JoyPad_RShoulder_Pressed(FKey key);
 	void JoyPad_RShoulder_Released();
 	void JoyPad_RTrigger_Pressed();
 	void JoyPad_LTrigger_Pressed();
@@ -192,7 +268,16 @@ public:
 	void OnSemicolonKey();   //hide one more of the nearest layers (debug peel)
 	void OnApostropheKey();  //unhide one
 	void OnNKey();
+	void OnVKey(); //keyboard fly-cam toggle (also makes the mode reachable from the harness `key` command)
 	void OnResetGame();
+
+	//recorders for the gamepad-only mirror axes (see m_padLX comment)
+	void Pad_LX(float v);
+	void Pad_LY(float v);
+	void Pad_RX(float v);
+	void Pad_RY(float v);
+	void Pad_LT(float v);
+	void Pad_RT(float v);
 
 	void OnLeftBracketKey();
 	void OnRightBracketKey();

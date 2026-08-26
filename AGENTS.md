@@ -381,7 +381,8 @@ but burns the 5.6 escape hatch like any other resave.
 - Hotkeys [ and ] scale the 3D depth spread live (m_userDepthScale on ALibretroManagerActor,
   multiplies m_total3dDepth, survives rom switches; ApplyLayerDepth re-spreads the existing
   layer actors absolutely and re-runs both camera/capture fits - no InitLayers hitch). Console
-  twin for the harness: `holo.DepthScale <mult>` (clamped 0.2-5.0). NES Select is Tab now (was
+  twin for the harness: `holo.DepthScale <mult>` (clamped 0.0-5.0; below 0.05 snaps to a true
+  0 = completely flat, and `]` climbs back out of 0). NES Select is Tab now (was
   Backslash), and the old A-key "auto adjust audio" hotkey is REMOVED (it also collided with
   WASD left; per-frame audio stats code went with it).
 - AUDIO (Aug 2026): the libretro batch callback (LibretroManager.cpp) feeds mono float chunks to
@@ -449,6 +450,27 @@ but burns the 5.6 escape hatch like any other resave.
   vertical (plus a hardcoded 16:9) was the old bug that cropped the bottom of tall games like
   Castlevania. When the LG plugin is active it takes over the viewport, so the pawn camera is
   inert on hardware.
+- DEBUG FLY CAMERA (Aug 2026): V key or gamepad Start + L-stick click (console twin
+  `holo.FlyCam`). Left stick moves, right stick looks, analog triggers rise/sink, LB/RB
+  halve/double speed (speed auto-scales by the layer AABB so every system feels the same);
+  mouse also looks on non-3DS. The game KEEPS RUNNING but the pad is withheld from it -
+  keyboard still plays. Mechanism: gamepad-only mirror axes PadLX..PadRT in DefaultInput.ini
+  (identical key+scale to the merged mappings, bound FIRST in SetupPlayerInputComponent) let
+  the Move/RMove handlers subtract the pad's share, and button handlers gate on
+  key.IsGamepadKey(). m_bPadStartHeld on the pawn tracks the physical pad Start because fly
+  mode keeps the game-facing Start bit clear (the exit chord reads the flag).
+  FitFlatCameraToLayers still updates bounds while flying but no longer moves the camera.
+  On the LKG build the fly cam only steers the 2D spectator window; the hologram capture
+  actor is untouched.
+- SCRIPTED CAMERA MOVES for GIF capture (Aug 2026): `holo.CamSweep <yawA> <yawB> <sec>
+  [pitch]`, `holo.CamPose <yaw> <pitch> <sec>`, `holo.CamWiggle <amp> <period> [cycles]
+  [pitch]` (whole cycles = seamless loop), `holo.DepthRamp <from> <to> <sec>` (independent
+  slot, composes with a Cam command for the "unfold" shot; calls SetUserDepthScale with
+  bShowStatus=false so no status text lands in frames), `holo.CamStop`. All log-only
+  feedback, all drivable through the harness `exec` + `video` (see
+  docs/automation_workflow.md). Scripts drive m_dispYaw/Pitch directly in UpdateFlatCamera
+  and share its fit/transform code; completion hands off like a mouse release (idle-return
+  eases back ~5s later), and mouse movement cancels a running script.
 
 ## Emulator cores (all three work, all dynamic DLLs)
 
