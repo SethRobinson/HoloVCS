@@ -113,8 +113,12 @@ Key architecture lessons (all learned the hard way on SM3DL, see the fork commit
     set backing up the lagging register check, right-eye registers included, span from
     the live stride register - the old 240*400*4 constant overlapped the bottom LCD
     buffer). Input-only matching had shipped bottom-screen reuse as the top scene.
-  - The capture gate REOPENS when the scene RT ships to a non-top destination (the
-    bottom-reuse pass is over), so every game frame packs.
+  - The capture gate REOPENS at the top-screen BUFFER SWAP (the frame's true in-stream
+    boundary), so every game frame packs. The intermediate reopen-on-non-top-ship rule
+    leaked bottom content: in-level the game runs a SECOND bottom batch through the
+    shared RT after the first one ships, including the stored-item medallion's
+    full-height depth-tested model draw, which captured into the bands every frame as
+    a giant mushroom standing in the level (fixed Aug 2026).
   - The flat-wipe needs >= 3 packless frames before honoring the composite-cut
     detector (real 2D cuts stop packs entirely; one-frame cadence gaps must not wipe).
   Verified: 2x180-frame band logs at the title show zero flat frames (was 16/180) and
