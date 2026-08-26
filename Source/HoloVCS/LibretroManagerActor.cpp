@@ -122,8 +122,9 @@ bool ALibretroManagerActor::SetupLayer(LayerInfo* pLayer, char* pActorName, int 
 		if (pComp1)
 		{
 			//LogMsg("Setting CSM flag");
-			
+
 			pComp1->bReceiveMobileCSMShadows = !g_pLibretroManager->m_profManager.m_layerSetupInfo[layerID].m_bIgnoreShadows;
+			pComp1->SetCastShadow(g_pLibretroManager->m_profManager.m_layerSetupInfo[layerID].m_bCastShadows);
 		}
 		else
 		{
@@ -383,6 +384,26 @@ void ALibretroManagerActor::InitLayers()
 
 	//and reframe the Looking Glass capture actor if one exists (hardware map only)
 	FitLookingGlassCaptureToLayers(GetWorld());
+
+	//re-apply the debug layer peel (';' and ''' hotkeys) to the freshly spawned actors
+	SetLayersPeeled(m_layersPeeled);
+}
+
+//Debug view: hide the N nearest layers so the back of the diorama is visible on the
+//device.  Layer 0 is the DEEPEST, so peeling hides from the highest index down.  The
+//sprite path skips hidden actors (the show-only gather checks IsHidden), so this works
+//identically in the flat scene and the hologram.  The 3DS bottom-screen quad at index
+//GetLayerCount() is not part of the top stack and stays visible.
+void ALibretroManagerActor::SetLayersPeeled(int count)
+{
+	m_layersPeeled = FMath::Clamp(count, 0, GetLayerCount() - 1);
+	for (int i = 0; i < FMath::Min((int)m_layerInfo.size(), GetLayerCount()); i++)
+	{
+		if (m_layerInfo[i].m_pActor)
+		{
+			m_layerInfo[i].m_pActor->SetActorHiddenInGame(i >= GetLayerCount() - m_layersPeeled);
+		}
+	}
 }
 
 //Re-spread the EXISTING layer actors to the current depth scale.  Positions are set absolutely

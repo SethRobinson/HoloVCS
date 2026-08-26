@@ -24,6 +24,10 @@ public:
 	//shadow stamps on it in one place).  Used for the 3DS backdrop band: it holds the game's
 	//sky/backdrop, and tree silhouettes shadow-stamped onto a sky read as glitch blobs.
 	bool m_bUnlit = false;
+	//Whether this layer's mesh casts sprite/scene shadows.  3DS turns casting off for every
+	//band: 24 dense layers each stamping silhouettes onto the next reads as ugly black
+	//outlines (and a slow scene-wide darkening as layer textures populate).
+	bool m_bCastShadows = true;
 };
 
 #define C_MAX_LAYERS 40 //must exceed the largest m_layerCount plus one (the 3DS bottom screen quad sits at index GetLayerCount())

@@ -800,6 +800,29 @@ void APlayerPawn::OnNum7Key()
 	g_pLibretroManager->m_pLibretroManagedActor->InitLayers();
 }
 
+void APlayerPawn::OnSemicolonKey()
+{
+	if (HelpSwallowedInput()) return;
+	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+	pActor->SetLayersPeeled(pActor->GetLayersPeeled() + 1);
+	ShowStatusMessage(string("Hiding " + toString(pActor->GetLayersPeeled()) + " nearest layer(s)"));
+}
+
+void APlayerPawn::OnApostropheKey()
+{
+	if (HelpSwallowedInput()) return;
+	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+	pActor->SetLayersPeeled(pActor->GetLayersPeeled() - 1);
+	if (pActor->GetLayersPeeled() == 0)
+	{
+		ShowStatusMessage(string("All layers visible"));
+	}
+	else
+	{
+		ShowStatusMessage(string("Hiding " + toString(pActor->GetLayersPeeled()) + " nearest layer(s)"));
+	}
+}
+
 void APlayerPawn::OnNum8Key()
 {
 	if (HelpSwallowedInput()) return;
@@ -946,6 +969,8 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(FKey("L"), IE_Pressed, this, &APlayerPawn::OnLKey);
 	PlayerInputComponent->BindKey(FKey("Comma"), IE_Pressed, this, &APlayerPawn::OnCommaKey);
 	PlayerInputComponent->BindKey(FKey("Period"), IE_Pressed, this, &APlayerPawn::OnPeriodKey);
+	PlayerInputComponent->BindKey(FKey("Semicolon"), IE_Pressed, this, &APlayerPawn::OnSemicolonKey);
+	PlayerInputComponent->BindKey(FKey("Apostrophe"), IE_Pressed, this, &APlayerPawn::OnApostropheKey);
 	PlayerInputComponent->BindKey(FKey("R"), IE_Pressed, this, &APlayerPawn::OnResetGame);
 	PlayerInputComponent->BindKey(FKey("Zero"), IE_Pressed, this, &APlayerPawn::OnNum0Key);
 	PlayerInputComponent->BindKey(FKey("One"), IE_Pressed, this, &APlayerPawn::OnNum1Key);
@@ -987,6 +1012,10 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(EKeys::RightBracket, IE_Pressed, this, &APlayerPawn::OnRightBracketKey);
 	PlayerInputComponent->BindKey(EKeys::RightBracket, IE_Repeat, this, &APlayerPawn::OnRightBracketKey);
 	PlayerInputComponent->BindKey(EKeys::Slash, IE_Pressed, this, &APlayerPawn::OnSlashKey); //Slash also fires with Shift held, so ? works
+	PlayerInputComponent->BindKey(EKeys::Semicolon, IE_Pressed, this, &APlayerPawn::OnSemicolonKey);
+	//the physical ' key reaches UE as Quote on Windows keyboards; Apostrophe stays bound too
+	PlayerInputComponent->BindKey(EKeys::Quote, IE_Pressed, this, &APlayerPawn::OnApostropheKey);
+	PlayerInputComponent->BindKey(EKeys::Apostrophe, IE_Pressed, this, &APlayerPawn::OnApostropheKey);
 	//"press any key to close" for the help screen - keys without a binding of their own land
 	//here.  MUST NOT consume, or it would eat every keypress meant for the game/hotkeys.
 	//(The help's same-frame show/hide guards keep this from fighting the ? toggle.)

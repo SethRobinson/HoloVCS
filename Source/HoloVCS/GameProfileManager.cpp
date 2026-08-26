@@ -691,9 +691,15 @@ void GameProfileManager::ApplyStartingGameSpecificSetup()
 	//3DS (any rom): layer 0 is the farthest depth band, which holds the game's sky/backdrop
 	//(plus far scene geometry).  Shadow silhouettes stamped onto a sky look like glitch
 	//blobs, so it renders unlit and receives no shadows in either renderer.
+	//Shadows are OFF entirely for 3DS (Seth): with 24 dense bands the per-layer silhouette
+	//stamps read as black outline lines, and they compound into a scene-wide darkening.
 	if (m_pLibretroManager->m_emulatorType == EMULATOR_3DS)
 	{
-		m_layerSetupInfo[0].m_bIgnoreShadows = true;
+		for (int i = 0; i < C_MAX_LAYERS; i++)
+		{
+			m_layerSetupInfo[i].m_bIgnoreShadows = true;
+			m_layerSetupInfo[i].m_bCastShadows = false;
+		}
 		m_layerSetupInfo[0].m_bUnlit = true;
 	}
 

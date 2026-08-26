@@ -115,6 +115,9 @@ public:
 	int GetLayerCount() { return m_layerCount; }
 	void SetUserDepthScale(float scale); //clamps, re-spreads the live layers, shows a status message
 	void ApplyLayerDepth(); //reposition existing layer actors to the current depth spread (no respawn)
+	void SetLayersPeeled(int count); //debug: hide the N nearest layers (';' and ''' hotkeys) to see the back
+	int GetLayersPeeled() { return m_layersPeeled; }
+	int m_layersPeeled = 0; //how many of the NEAREST layers are hidden; survives rom switches
 
 	int m_layerCount = 5;
 	float m_total3dDepth = 150;

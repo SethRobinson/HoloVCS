@@ -119,11 +119,43 @@ Key architecture lessons (all learned the hard way on SM3DL, see the fork commit
     detector (real 2D cuts stop packs entirely; one-frame cadence gaps must not wipe).
   Verified: 2x180-frame band logs at the title show zero flat frames (was 16/180) and
   the far band fully populated every frame.
+  THE GRAY SKY (fixed Aug 2026, four stacked core-side capture bugs; the composed frame
+  was always correct): the game fills the RT's sky base color with a GPU MemoryFill
+  (invisible to draw capture; now latched and composited under the farthest band),
+  draws the sky gradient with garbage alpha 0 through a replace blend (band alpha now
+  forced 1 for replace writes), draws full-screen stencil-func-NEVER cards that never
+  pass on hardware but stamped the bands gray (now skipped), and the farthest band's
+  capture depth is primed to the far plane so depth-fail impostors also fail the band
+  test. Details in the fork's AGENTS.md.
   DEBUG TOOLING: drop `holo_band_log_request.txt` in the game process's working
   directory (editor runs: the ENGINE Binaries\Win64 dir) and the core appends 180
   frames of per-band used/nonzero/meanRGB lines to `holo_band_log.txt` there - one
-  line per DELIVERED frame, so 30/60Hz strobes cannot alias. `holo_dump_request.txt`
-  still dumps 10 raw composite+depth frames to holo_dump/.
+  line per DELIVERED frame, so 30/60Hz strobes cannot alias. `holo_draw_log_request.txt`
+  logs ~120 swaps of every draw with capture/skip reasons plus fills/copies/transfers,
+  and probes the far band's pixel (30,30) after every captured draw.
+  `holo_dump_request.txt` still dumps 10 raw composite+depth frames to holo_dump/.
+  LAYER PEEL HOTKEYS: ';' hides one more of the NEAREST layers, ''' shows one again
+  (works on the device too; the sprite path skips hidden actors). For looking behind
+  the front of the diorama while debugging band content. GOTCHAS: PlayerPawn.cpp's
+  SetupPlayerInputComponent has a DEAD `#if PLATFORM_ANDROID` binding list ABOVE the
+  live `#else` list - new hotkeys must go in the EKeys:: styled else-branch (the first
+  peel attempt landed in the Android block and silently did nothing). The engine's
+  default Semicolon=ToggleDebugCamera dev binding is removed in DefaultInput.ini.
+  The physical ' key arrives as EKeys::Quote on Windows, NOT EKeys::Apostrophe -
+  bind both (an Apostrophe-only binding never fires from the real keyboard).
+  Also: on 2D-composed screens (the world map at rest is one flat compose) nearly all
+  content legitimately sits in the 1-2 nearest bands, so peeling there blanks the
+  screen - that is the scene's real depth layout, not a bug; judge peel in-level.
+  SM3DL's save-load darkening (scene dimming over ~3s) was the stencil-masked dim
+  capture bug (see the fork's AGENTS.md); sprite shadows are also OFF for all 3DS
+  layers now (cast and receive) - 24 dense bands of silhouette stamps read as black
+  outline lines and a compounding darkening.
+  IF THE WHOLE SCENE ENDS UP ON ONE LAYER: that is the core's adaptive band range
+  measuring a degenerate depth buffer, not a frontend bug. Arm the band log and read
+  `spread=` / `topshare=` (healthy in-level SM3DL = spread 24, topshare ~0.37; the
+  collapse signature is spread<=2, topshare>=0.5). Note a flat 2D screen like the world
+  map at rest legitimately reads spread=2 - check which screen you measured. Root cause
+  and the reverted dead ends are in the fork's AGENTS.md.
   The LayerBG moon wall is HIDDEN for 3DS (ApplyStartingGameSpecificSetup; the 3DS
   capture has its own backdrop band, the wall only ever showed through capture gaps).
 - Scene cuts drop stale layers immediately (composite-cut detection), which is what

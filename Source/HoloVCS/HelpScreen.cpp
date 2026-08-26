@@ -131,6 +131,7 @@ FString HelpScreen::BuildHelpText() const
 	s += TEXT("Hold Start + LB / RB\tSave / load state (pad)\n");
 	s += TEXT("\n");
 	s += TEXT("[ / ]\tLess / more 3D depth\n");
+	s += TEXT("; / '\tHide / show nearest layers\n");
 	s += TEXT("= / -\tZoom in / out\n");
 	s += TEXT("0\tToggle FPS cap\n");
 	s += TEXT("1-5\tFrameskip\n");

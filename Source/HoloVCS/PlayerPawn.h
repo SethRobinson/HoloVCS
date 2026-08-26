@@ -189,6 +189,8 @@ public:
 
 	void OnCommaKey();
 	void OnPeriodKey();
+	void OnSemicolonKey();   //hide one more of the nearest layers (debug peel)
+	void OnApostropheKey();  //unhide one
 	void OnNKey();
 	void OnResetGame();
 
