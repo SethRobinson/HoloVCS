@@ -231,17 +231,29 @@ legacy CPU slicing automatically.
   from the game - but the MOUSE stays the touch cursor (mouse fly-look is non-3DS only) and
   keyboard WASD still walks. `touch x y` from the harness works as always.
 
-- In-level game shadows (Mario's blob shadow, the W1-1 sign's projected shadow) are
-  MISSING from the layered capture. Deliberate capture skip, not z-fighting: SM3DL draws
-  them exactly like its save-load darkening (shadow silhouettes rasterized into the
-  stencil buffer, then full-screen dst x (1-constant) multiply quads with stencil func
-  NotEqual darkening the marked region), and the capture skips every draw whose stencil
-  func is not Always - the fix that stopped the gray-card / save-dim band corruption,
-  because stencil coverage is data-dependent and the stencil test runs after the
-  fragment shader. The shadows exist in the game's composed frame; they never reach any
-  band. Root cause detail, the in-level draw-log signature (150 "stencil" skips at 3 per
-  game frame), and the stencil-emulation fix direction are in the fork's AGENTS.md
-  (gray-sky item 3).
+- In-level game shadows (Mario's blob shadow, the W1-1 sign's projected shadow) WORK
+  as of Aug 2026 (core-side fix, no frontend change). SM3DL draws them exactly like its
+  save-load darkening (shadow silhouettes rasterized into the stencil buffer, then
+  full-screen dst x (1-constant) multiply quads with stencil func NotEqual darkening
+  the marked region), and the capture used to skip every stencil-func != Always draw
+  (the gray-card / save-dim fix), which erased all real shadows from the bands. The
+  core now emulates the stencil test inside the capture shader against a pre-draw
+  stencil snapshot; the src-factor-Zero dim quads modulate every band's existing
+  pixels where the test passes. Detail in the fork's AGENTS.md (gray-sky item 3).
+  Draw-log signature when armed: the two per-frame dim quads log "CAPs", the
+  stencil-mutating func-Never draw logs "stencil0"; a plain "stencil" skip no longer
+  exists. Verified in W1-1/W1-2 (Mario blob, sign quad, enemy shadows; layer dump
+  shows the blob stamped into the ground band).
+- OPERATIONAL, learned the hard way (Aug 2026): NEVER hard-kill a running 3DS session
+  (Stop-Process) - the core holds live cartridge save data (GameData.bin under
+  saves/Azahar/sdmc/...) and there are no savestates; always use the harness `quit`
+  command. Blind A-presses through SM3DL's boot land on the FILE SELECT whose cursor
+  defaults to the last-used slot and will happily open/create the wrong file
+  ("The file has been created." = you just made a new one) - screenshot before
+  pressing. Driving the SM3DL pause menu through the harness is unreliable (mixed
+  circle-pad/touch acceptance, and after "To Course Selection" Mario stands on the
+  course podium where a nudge re-enters the level); when a specific level must be
+  reached, prefer a fresh boot and map navigation with screenshots between steps.
 - Movement in 3D games needs the circle pad; the frontend is digital-only today, so games
   like Mario 3D Land can navigate menus but not walk. Planned fix is core-side
   (dpad-to-circle-pad option) rather than frontend analog.
