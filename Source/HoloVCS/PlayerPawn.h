@@ -108,6 +108,15 @@ protected:
 	UPROPERTY(EditAnywhere)
 	float m_flyPitchLimit = 89.0f;
 
+	//D-pad up/down magnifier while flying: multiplicative zoom factor per second at full
+	//deflection (see ALibretroManagerActor::SetFlyZoom for why this is a framing crop and
+	//not a fly-closer).  20x lets one tile of an 11x6 multiview quilt about fill the panel.
+	UPROPERTY(EditAnywhere)
+	float m_flyZoomRate = 3.0f;
+
+	UPROPERTY(EditAnywhere)
+	float m_flyZoomMax = 20.0f;
+
 	bool m_bFlyCam = false;
 	FVector m_flyPos = FVector::ZeroVector;
 	float m_flyYaw = 0;
@@ -128,6 +137,16 @@ protected:
 	float m_padRY = 0;
 	float m_padLT = 0;
 	float m_padRT = 0;
+	//Raw gamepad d-pad, recorded before fly mode withholds it from the game.  DPadX/DPadY are
+	//already gamepad-only mappings, so no mirror axis is needed - just the pre-zeroing value.
+	float m_padDX = 0;
+	float m_padDY = 0;
+
+	//---- Fly-cam magnifier state (d-pad up/down; the factor itself lives on the manager actor
+	//because the capture fit has to compose it, so a rebuild mid-flight can't pop it out) ----
+	float m_flyZoom = 1.0f;
+	double m_flyZoomNextStatus = 0;  //throttles the status text; a held d-pad runs every frame
+	float m_flyBaseFOV = 0;          //flat build: the camera FOV to restore when flying ends
 
 	//---- Scripted camera moves for GIF capture (holo.CamSweep / CamPose / CamWiggle) ----
 	enum class ECamScript : uint8 { None, Sweep, Wiggle, Pose };
@@ -189,6 +208,9 @@ public:
 
 	//Debug fly camera toggle (L-stick click + R-stick click, V key, or console holo.FlyCam)
 	void SetFlyCamEnabled(bool bEnable);
+	//Fly-cam magnifier (d-pad up/down, and = / - while flying).  Clamped, throttles its own
+	//status text, drives the LKG capture framing and the flat camera FOV.
+	void ApplyFlyZoom(float zoom, bool bShowStatus);
 	bool IsFlyCamEnabled() const { return m_bFlyCam; }
 
 	//Place the fly camera exactly (console holo.FlyPose - the harness can't move a gamepad
@@ -296,6 +318,6 @@ public:
 	void OnRightBracketKey();
 	void OnBackslashKey(); //instant 2D/3D toggle
 	void OnSlashKey();
-	void OnAnyKey();
+	void OnAnyKey(FKey key); //key-aware: -keydiag logs every key that reaches the pawn
 
 };

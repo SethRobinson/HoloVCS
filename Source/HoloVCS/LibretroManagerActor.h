@@ -154,6 +154,12 @@ public:
 	void SetLKGCaptureFlyTransform(const FVector& pos, const FRotator& rot);
 	bool GetLKGCaptureTransform(FVector& pos, FRotator& rot);
 	void RefitLKGCapture(); //zero the capture's rotation and re-run the layer fit (fly-cam exit)
+	//Fly-cam magnifier (d-pad up/down, holo.FlyZoom): shrinking the capture's Size pulls the
+	//camera in along its own axis while the capture ACTOR - which IS the focal plane center,
+	//the spring arm holds the camera behind it - stays put, so the magnified image stays SHARP
+	//on the panel.  Flying closer instead moves content off the focal plane and it goes fuzzy.
+	//Deliberately cheap: no refit, no logging, safe to call every frame from a held d-pad.
+	void SetFlyZoom(float factor, bool bShowStatus = true);
 	int m_layersPeeled = 0; //how many of the NEAREST layers are hidden; survives rom switches
 
 	int m_layerCount = 5;
@@ -173,6 +179,12 @@ public:
 	//is why zoom appeared to reset on every depth press, rebuild, or R).  Resets to 1 on
 	//every game switch like m_userDepthScale.
 	float m_userZoomFactor = 1.0f;
+	//Fly-cam-only magnifier, composed on top of m_userZoomFactor by the capture fit.  Reset to
+	//1 whenever fly mode is entered or left, so an 8x inspection zoom can never leak into play.
+	float m_flyZoomFactor = 1.0f;
+	//The fitted capture Size BEFORE either zoom divides it, cached by
+	//FitLookingGlassCaptureToLayers so SetFlyZoom can re-derive the size without a whole refit.
+	float m_lastFitCaptureBaseSize = 0.0f;
 	//3DS debug visualization state (HOLO_VIZ_* mask + cutaway plane); session-sticky within
 	//3DS, cleared by SetEmulatorData when switching to another system
 	uint32 m_holoVizFlags = 0;

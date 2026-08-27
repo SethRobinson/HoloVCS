@@ -132,6 +132,7 @@ FString HelpScreen::BuildHelpText() const
 	s += TEXT("Hold L-stick click + Y\tPause (pad)\n");
 	s += TEXT("Hold L-stick click + X\tFrameskip 4 on/off (pad)\n");
 	s += TEXT("V / click both sticks\tFly camera on/off\n");
+	s += TEXT("D-pad while flying\tMagnify / pan left-right\n");
 	s += TEXT("\n");
 	s += TEXT("[ / ]\tLess / more 3D depth\n");
 	s += TEXT("\\\tToggle 2D / 3D\n");

@@ -95,6 +95,25 @@ static FAutoConsoleCommand CCmdHoloZoom(
 		g_pLibretroManager->m_pLibretroManagedActor->SetUserZoom(FCString::Atof(*args[0]));
 	}));
 
+//Console twin of the fly-cam d-pad magnifier.  The harness cannot press a d-pad, and this is
+//how a zoomed quilt inspection shot gets reproduced headlessly (pair it with holo.FlyPose).
+//Only meaningful while the fly camera is out - leaving fly mode resets it to 1.
+static FAutoConsoleCommand CCmdHoloFlyZoom(
+	TEXT("holo.FlyZoom"),
+	TEXT("Fly-camera magnifier: shrinks the capture framing with the focal plane pinned (0.2..20, 1 = off). Usage: holo.FlyZoom 8"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		if (args.Num() < 1 || !g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
+		//route through the pawn when there is one, or its own copy of the factor goes stale and
+		//the next d-pad press snaps back to whatever it last held
+		if (g_pLibretroManager->m_pPlayerPawn)
+		{
+			g_pLibretroManager->m_pPlayerPawn->ApplyFlyZoom(FCString::Atof(*args[0]), true);
+			return;
+		}
+		g_pLibretroManager->m_pLibretroManagedActor->SetFlyZoom(FCString::Atof(*args[0]));
+	}));
+
 //Console twin of the Shift+number debug visualization hotkeys (3DS only)
 static FAutoConsoleCommand CCmdHoloViz(
 	TEXT("holo.Viz"),
@@ -762,6 +781,8 @@ void ALibretroManagerActor::NudgeCutaway(float delta)
 {
 	if (RefusePausedHoloChange(false)) return;
 	m_cutaway01 = FMath::Clamp(m_cutaway01 + delta, 0.0f, 1.0f);
+	//logged (status text is not) so the harness can prove which of ; and ' actually landed
+	LogMsg("NudgeCutaway %+.2f -> %.2f", delta, m_cutaway01);
 	ApplyHoloViz();
 	char st[64];
 	if (m_cutaway01 <= 0.001f)
@@ -845,6 +866,28 @@ static AActor* GetLookingGlassCaptureActor(UWorld* pWorld)
 		if (it->GetClass()->GetName() == TEXT("LookingGlassCapture")) return *it;
 	}
 	return nullptr;
+}
+
+//Push a new capture "Size" (the half-WIDTH of the frame at the focal plane) through the
+//plugin's blueprint setter.  SetSize fires OnLookingGlassObjectChanged, which retargets the
+//actor's spring arm to the new camera distance - so the actor, and therefore the FOCAL PLANE,
+//never moves.  That is what makes the fly-cam magnifier stay sharp on the panel.
+//Returns false when there is no capture actor (flat build).
+static bool ApplyLookingGlassCaptureSize(UWorld* pWorld, float size)
+{
+	AActor* pCapture = GetLookingGlassCaptureActor(pWorld);
+	if (!pCapture) return false;
+	for (UActorComponent* pComp : pCapture->GetComponents())
+	{
+		if (pComp->GetClass()->GetName() != TEXT("LookingGlassSceneCaptureComponent2D")) continue;
+		if (UFunction* pFunc = pComp->FindFunction(TEXT("SetSize")))
+		{
+			struct { float InSize; } params = { size };
+			pComp->ProcessEvent(pFunc, &params);
+			return true;
+		}
+	}
+	return false;
 }
 
 static float GetLookingGlassDeviceAspect(UWorld* pWorld)
@@ -1094,15 +1137,17 @@ void FitLookingGlassCaptureToLayers(UWorld* pWorld)
 			//user zoom (= and - keys) as a framing crop: dividing the capture size zooms in
 			//without touching any world quad.  Scaling the quads instead got normalized right
 			//back out by this very fit, which is why zoom used to revert on every refit.
+			//The fly-cam magnifier composes on top, and the pre-zoom size is cached so
+			//SetFlyZoom can re-derive it live without paying for a whole refit.
 			if (g_pLibretroManager && g_pLibretroManager->m_pLibretroManagedActor)
 			{
-				captureSize /= g_pLibretroManager->m_pLibretroManagedActor->m_userZoomFactor;
+				ALibretroManagerActor* pMgr = g_pLibretroManager->m_pLibretroManagedActor;
+				pMgr->m_lastFitCaptureBaseSize = captureSize;
+				captureSize /= FMath::Max(pMgr->m_userZoomFactor * pMgr->m_flyZoomFactor, 0.01f);
 			}
 
-			if (UFunction* pFunc = pComp->FindFunction(TEXT("SetSize")))
+			if (ApplyLookingGlassCaptureSize(pWorld, captureSize))
 			{
-				struct { float InSize; } params = { captureSize };
-				pComp->ProcessEvent(pFunc, &params);
 				LogMsg("Fit LookingGlass capture: center %.0f,%.0f,%.0f capture size %.1f (aspect %.2f)",
 					box.GetCenter().X, box.GetCenter().Y, box.GetCenter().Z, captureSize, deviceAspect);
 			}
@@ -1131,6 +1176,28 @@ bool ALibretroManagerActor::GetLKGCaptureTransform(FVector& pos, FRotator& rot)
 		return true;
 	}
 	return false;
+}
+
+//Fly-cam magnifier: d-pad up/down while flying (holo.FlyZoom is the harness twin).  Shrinking
+//the capture Size pulls the camera toward the focal plane, which the spring arm keeps pinned to
+//the capture ACTOR - so the picture magnifies without anything leaving the focal plane and the
+//panel stays sharp.  Flying closer with the stick does the opposite: content drifts off the
+//focal plane and the lens reconstructs it blurry, which is what made the raw multiview quilt
+//unreadable when zoomed.  Deliberately does NOT refit: FitLookingGlassCaptureToLayers logs a
+//line per layer actor, which a held d-pad would turn into ~1500 log lines a second at 24 layers.
+void ALibretroManagerActor::SetFlyZoom(float factor, bool bShowStatus)
+{
+	m_flyZoomFactor = FMath::Clamp(factor, 0.2f, 20.0f);
+	if (m_lastFitCaptureBaseSize > 0.0f)
+	{
+		ApplyLookingGlassCaptureSize(GetWorld(),
+			m_lastFitCaptureBaseSize / FMath::Max(m_userZoomFactor * m_flyZoomFactor, 0.01f));
+	}
+
+	if (!bShowStatus) return;
+	char st[64];
+	snprintf(st, sizeof(st), "Fly zoom: %d%%", (int)roundf(m_flyZoomFactor * 100));
+	ShowStatusMessage(st);
 }
 
 //Fly-cam exit: back to the fitted framing.  The fit never touches rotation, and only an

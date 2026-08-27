@@ -272,6 +272,15 @@ identical core work and was rejected.
 - Debug: drop `holo_quilt_request.txt` in the game process working directory (editor
   runs: the ENGINE Binaries\Win64 dir) -> 3 raw-array stitches (holo_quilt_NN.bmp,
   view 0 TOP-left) + 3 packed ABI quilts (holo_quiltpk_NN.bmp, view 0 BOTTOM-left).
+- SEEING THE RAW QUILT ON THE DEVICE (educational, no build flags): pause, then turn on
+  the fly camera (V / L3+R3) and rotate with the right stick. A rotated capture makes the
+  sprite fast path bail to the scene-capture quilt, which renders the real scene - and the
+  scene contains the HoloQuilt carrier quad wearing the core's packed collage, so the whole
+  per-view grid shows up on the panel. D-pad up/down then magnifies it and d-pad left/right
+  pans across it (see the DEBUG FLY CAMERA bullet in AGENTS.md): the magnifier is a framing
+  crop with the focal plane pinned, so tiles stay sharp - flying closer instead pushes the
+  quilt off the focal plane and the lens blurs it. Harness twin for repeatable shots:
+  `exec holo.FlyCam 1`, `exec holo.FlyPose <yaw> <pitch>`, `exec holo.FlyZoom 8`.
 - ROM partial gotcha rediscovered while testing: `-rom=3d` matches the `.3ds`
   EXTENSION (loaded Metroid), and `-rom=Land` matched Virtual Boy Wario Land; use a
   quoted unique fragment like `-rom="3D Land"` (FParse handles quoted values).
@@ -328,6 +337,37 @@ Round 7 (Aug 27 2026): SETTINGS PERSISTENCE FIXES + DEBUG VISUALIZATIONS.
     mostly or entirely on one side of the pinned plane (the title attract's scene
     swaps go fully black at deep cuts) - that is the pin working, not the runaway;
     judge cutaway in-level where the scene is continuous.
+    THE PIN WENT STALE - FIXED Aug 27 2026 (Seth: "; adds to the cutaway but ' no
+    longer removes, it seems to do nothing"). The FRONTEND was innocent and was proven
+    so first: with -keydiag the physical ' logs `KEYDIAG: Quote`, OnApostropheKey runs,
+    and NudgeCutaway logs a clean 0.04 -> 0.08 -> 0.12 up then 0.08 -> 0.04 -> 0.00 back
+    down, ApplyHoloViz pushing each one. The defect was the pin: it held g_smooth_min/max
+    for as long as viz_cut01 > 0.001 and released only at EXACTLY 0, so any scene change
+    while the cut was held left the plane mapped to a dead scene's depth range and cut01
+    stopped meaning anything in the current one. Measured on device before the fix: with
+    a stale pin holo.Cutaway 0.6 left the scene UNCUT while 0.05 cut half of it away -
+    effectively inverted. ' read as dead because each 4% step moved the plane inside a
+    stale range, and the range could not re-sync until you walked all the way to exactly 0.
+    THE FIX (core-side, two files): the cutaway discard now rides the MULTIVIEW MIRROR
+    PASS ONLY. gl_rasterizer.cpp skips the primary assign when holo_mirror is set, and
+    MirrorDrawToMultiview assigns holo_cutaway around its own UseFragmentShader and clears
+    it after so it can never leak into the next primary draw. The mirror pass is what the
+    panel actually shows, so the picture is unchanged, but the primary depth buffer that
+    UpdateBandRange measures is never cut - no runaway, so the freeze is not needed and is
+    now BAND-MODE ONLY (holo_slicer.cpp gates it on `multiview == 0`; band mode has no
+    mirror pass, still cuts the primary, still needs the freeze).
+    VERIFIED on the Go with the core's own view log (holo_view_log_request.txt), which is
+    the scene-robust way to check this - SM3DL's attract loop changes scene every few
+    seconds and makes side-by-side quilt captures useless:
+      - the range stays LIVE under a held cut: at cutaway 0.5, buf=[0.8424..0.9974] crept
+        to [0.8428..0.9974] over 120 frames instead of freezing, and the near end stayed
+        at 0.842 rather than climbing toward the plane (~0.92) as a cut primary would.
+      - the range is INDEPENDENT of cut depth: buf=[0.9894..0.9914] identical at cutaway
+        0.05 and 0.85, i.e. the cut no longer feeds back into the measurement at all.
+    Gotcha found while testing: turning the cut on over shaders that have not been seen
+    yet costs the usual lazy variant compile, so the first frame or two after a scene
+    change can capture UNCUT. Judge the cutaway in-level after it settles, never off a
+    single quilt grabbed right after a scene cut.
   PAUSED CHANGES ARE REFUSED (Aug 27 2026, the end of a four-round saga): the core
   only renders inside retro_run, so a viz/cutaway change (any capture mode) or a
   depth/convergence change (multiview) on a P-paused screen has no frame to show

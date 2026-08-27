@@ -507,6 +507,22 @@ but burns the 5.6 escape hatch like any other resave.
   accepted); exiting zeroes the rotation and refits, restoring the 60fps sprite path.
   FitLookingGlassCaptureToLayers keeps its show-only/size upkeep during flight but skips
   re-centering the actor (layer rebuilds land mid-flight). `holo.FlyPose <yaw> <pitch>
+  D-PAD MAGNIFIER (Aug 27 2026, for reading the raw 3DS multiview quilt on the device):
+  while flying, d-pad up/down magnifies and d-pad left/right pans the camera laterally
+  (pure lateral, no diagonal forward drift; all fly speeds divide by the zoom so a nudge
+  doesn't throw you off a magnified tile). The magnifier is a FRAMING CROP - it divides
+  the capture's Size, which the plugin's spring arm turns into a shorter camera distance
+  while the capture ACTOR, and therefore the FOCAL PLANE, stays put - so the picture
+  magnifies and stays SHARP. Flying closer with the stick instead moves content off the
+  focal plane and the lens reconstructs it fuzzy, which is what made the quilt unreadable
+  when zoomed. Lives in ALibretroManagerActor::SetFlyZoom (composed on top of
+  m_userZoomFactor by the capture fit, so a layer rebuild mid-flight can't pop it out) and
+  APlayerPawn::ApplyFlyZoom (which also narrows the flat camera's FOV, since the flat build
+  has no capture actor). It deliberately does NOT refit: FitLookingGlassCaptureToLayers
+  logs a line per layer actor and a held d-pad would make that ~1500 lines/second at 24
+  layers. Reset to 1 on every fly-mode enter AND exit - an 8x inspection zoom must never
+  leak into gameplay. `=` / `-` drive it too while flying. Console twin `holo.FlyZoom
+  <0.2..20>` (routes through the pawn so the pawn's copy stays in sync).
   [dx dy dz offset from stack center]` places the fly camera exactly (enables fly mode if
   off) - the harness cannot move a pad stick, and it gives repeatable device-angle shots.
 - SCRIPTED CAMERA MOVES for GIF capture (Aug 2026): `holo.CamSweep <yawA> <yawB> <sec>

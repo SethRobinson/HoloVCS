@@ -23,6 +23,9 @@
 #include "UnrealClient.h"
 #include "HAL/IConsoleManager.h"
 
+//File scope: the fly camera reads it well above the input handlers that also use it
+const float C_JOYSTICK_DEAD_ZONE = 0.3f;
+
 // Sets default values
 APlayerPawn::APlayerPawn()
 {
@@ -360,14 +363,26 @@ void APlayerPawn::UpdateFlyCamera(float DeltaTime)
 	m_flyPitch = FMath::Clamp(m_flyPitch + m_padRY * m_flyLookPitchSpeed * DeltaTime + dy * m_mousePitchSensitivity,
 		-m_flyPitchLimit, m_flyPitchLimit);
 
+	//D-pad up/down: magnify. This is a framing crop with the focal plane pinned, NOT a fly-in -
+	//see ALibretroManagerActor::SetFlyZoom.  Exponential so a held press feels linear.
+	if (FMath::Abs(m_padDY) > C_JOYSTICK_DEAD_ZONE)
+	{
+		ApplyFlyZoom(m_flyZoom * FMath::Pow(m_flyZoomRate, -m_padDY * DeltaTime), true);
+	}
+
 	const float boundsMax = m_bLayerBoundsValid ? (float)m_layerBounds.GetSize().GetMax() : 200.0f;
-	const float moveSpeed = m_flyMoveSpeedFactor * boundsMax * m_flySpeedMult;
+	//Everything moves finer as you magnify, or a nudge throws you off a zoomed-in tile
+	const float moveSpeed = m_flyMoveSpeedFactor * boundsMax * m_flySpeedMult / m_flyZoom;
 
 	FRotator camRot(m_flyPitch, m_flyYaw, 0);
 	FRotationMatrix mat(camRot);
 	m_flyPos += mat.GetUnitAxis(EAxis::X) * (-m_padLY) * moveSpeed * DeltaTime; //stick up = forward (LY carries the ini's -1 scale, up = -1 like W)
 	m_flyPos += mat.GetUnitAxis(EAxis::Y) * m_padLX * moveSpeed * DeltaTime;
-	m_flyPos.Z += (m_padRT - m_padLT) * m_flyVerticalSpeedFactor * boundsMax * m_flySpeedMult * DeltaTime;
+	//D-pad left/right: pure lateral pan (the camera moves, so the picture slides the other way).
+	//Same axis as the stick's lateral move, but with no chance of diagonal forward drift - which
+	//matters when panning across a magnified quilt, where any forward drift blurs it.
+	m_flyPos += mat.GetUnitAxis(EAxis::Y) * m_padDX * moveSpeed * DeltaTime;
+	m_flyPos.Z += (m_padRT - m_padLT) * m_flyVerticalSpeedFactor * boundsMax * m_flySpeedMult / m_flyZoom * DeltaTime;
 
 	m_pFlatCamera->SetWorldLocation(m_flyPos);
 	m_pFlatCamera->SetWorldRotation(camRot);
@@ -378,6 +393,35 @@ void APlayerPawn::UpdateFlyCamera(float DeltaTime)
 	if (g_pLibretroManager && g_pLibretroManager->m_pLibretroManagedActor)
 	{
 		g_pLibretroManager->m_pLibretroManagedActor->SetLKGCaptureFlyTransform(m_flyPos, camRot);
+	}
+}
+
+//Set the fly-cam magnifier.  On the LKG build the real work is the capture's framing crop
+//(focal plane pinned = sharp at any magnification); the flat build has no capture actor, so
+//narrow the flat camera's horizontal FOV by the same factor to keep the control alive for dev.
+void APlayerPawn::ApplyFlyZoom(float zoom, bool bShowStatus)
+{
+	m_flyZoom = FMath::Clamp(zoom, 0.2f, m_flyZoomMax);
+
+	if (g_pLibretroManager && g_pLibretroManager->m_pLibretroManagedActor)
+	{
+		//throttled status: a held d-pad runs this every frame and would rewrite the on-quilt
+		//status line 60 times a second
+		bool bStatus = false;
+		if (bShowStatus && FPlatformTime::Seconds() > m_flyZoomNextStatus)
+		{
+			m_flyZoomNextStatus = FPlatformTime::Seconds() + 0.2;
+			bStatus = true;
+		}
+		g_pLibretroManager->m_pLibretroManagedActor->SetFlyZoom(m_flyZoom, bStatus);
+	}
+
+	if (m_pFlatCamera && m_flyBaseFOV > 0)
+	{
+		//FieldOfView is the HORIZONTAL fov; convert through the half-angle tangent so the zoom
+		//factor means the same thing it does on the capture
+		const float halfTan = FMath::Tan(FMath::DegreesToRadians(m_flyBaseFOV * 0.5f)) / m_flyZoom;
+		m_pFlatCamera->SetFieldOfView(FMath::RadiansToDegrees(FMath::Atan(halfTan)) * 2.0f);
 	}
 }
 
@@ -409,6 +453,10 @@ void APlayerPawn::SetFlyCamEnabled(bool bEnable)
 			m_flyPitch = (float)capRot.Pitch;
 		}
 		m_flySpeedMult = 1.0f;
+		//the magnifier always starts at 1:1 (it's a debug inspection knob, not a saved view)
+		m_flyBaseFOV = m_pFlatCamera ? m_pFlatCamera->FieldOfView : 0.0f;
+		m_flyZoomNextStatus = 0;
+		ApplyFlyZoom(1.0f, false);
 		//the pad flies the camera now - release everything it was holding in the game.
 		//(A keyboard BUTTON held across the toggle is lost until re-pressed - acceptable;
 		//keyboard axes re-assert next frame, and harness `press` holds live elsewhere.)
@@ -429,11 +477,20 @@ void APlayerPawn::SetFlyCamEnabled(bool bEnable)
 	else
 	{
 		m_bFlyCam = false;
+		//Drop the magnifier BEFORE the refit below, so the refit restores normal framing.  An
+		//8x inspection zoom must never survive into gameplay - the way back out is not obvious.
+		m_flyZoom = 1.0f;
+		if (m_pFlatCamera && m_flyBaseFOV > 0)
+		{
+			m_pFlatCamera->SetFieldOfView(m_flyBaseFOV);
+		}
+		m_flyBaseFOV = 0;
 		//LKG build: put the hologram capture back on its fitted, unrotated framing (this also
 		//returns the renderer to the 60fps sprite path).  m_bFlyCam is already false so the
 		//fit's fly gate re-centers the actor.
 		if (g_pLibretroManager && g_pLibretroManager->m_pLibretroManagedActor)
 		{
+			g_pLibretroManager->m_pLibretroManagedActor->m_flyZoomFactor = 1.0f;
 			g_pLibretroManager->m_pLibretroManagedActor->RefitLKGCapture();
 		}
 		//hand back to the orbit along the ray we're already on: aim at the pivot from here,
@@ -695,8 +752,6 @@ void APlayerPawn::Tick(float DeltaTime)
 	UpdateTouchMouseLock();
 }
 
-const float C_JOYSTICK_DEAD_ZONE = 0.3f;
-
 //Any input while the help screen is up only dismisses it.  Call this FIRST in every
 //pressed-input handler: true means the help was up (and just closed), so the input is spent
 //and the handler's real action must not run (no accidental save states or rom switches from
@@ -734,6 +789,7 @@ void APlayerPawn::Move_YAxis(float AxisValue)
 void APlayerPawn::DPad_XAxis(float AxisValue)
 {
 	if (!g_pLibretroManager) return;
+	m_padDX = AxisValue; //raw, for the fly-cam pan - record it BEFORE the game's copy is zeroed
 	if (m_bFlyCam) AxisValue = 0; //gamepad-only keys, the game isn't listening to the pad now
 	if (FMath::Abs(AxisValue) > C_JOYSTICK_DEAD_ZONE) HelpSwallowedInput();
 	m_dpadAxisX = AxisValue;
@@ -743,6 +799,7 @@ void APlayerPawn::DPad_XAxis(float AxisValue)
 void APlayerPawn::DPad_YAxis(float AxisValue)
 {
 	if (!g_pLibretroManager) return;
+	m_padDY = AxisValue; //raw, for the fly-cam magnifier (ini scale: up = -1)
 	if (m_bFlyCam) AxisValue = 0;
 	if (FMath::Abs(AxisValue) > C_JOYSTICK_DEAD_ZONE) HelpSwallowedInput();
 	m_dpadAxisY = AxisValue;
@@ -1379,6 +1436,9 @@ void APlayerPawn::OnPKey()
 void APlayerPawn::OnAddKey()
 {
 	if (HelpSwallowedInput()) return;
+	//while flying these drive the fly-cam magnifier instead, so the keyboard and the d-pad
+	//move the same knob and neither quietly edits the persistent gameplay zoom
+	if (m_bFlyCam) { ApplyFlyZoom(m_flyZoom * 1.05f, true); return; }
 	//zoom is a persistent framing factor applied inside the camera/capture fits now -
 	//scaling the quads got normalized right back out by the AABB-driven fits
 	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
@@ -1388,6 +1448,7 @@ void APlayerPawn::OnAddKey()
 void APlayerPawn::OnSubtractKey()
 {
 	if (HelpSwallowedInput()) return;
+	if (m_bFlyCam) { ApplyFlyZoom(m_flyZoom * 0.95f, true); return; }
 	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
 	pActor->SetUserZoom(pActor->m_userZoomFactor * 0.95f);
 }
@@ -1501,9 +1562,18 @@ void APlayerPawn::OnSlashKey()
 	g_pLibretroManager->m_helpScreen.Show(); //...and opens it when it's not up
 }
 
-//AnyKey catch-all so keys with no binding of their own still dismiss the help screen
-void APlayerPawn::OnAnyKey()
+//AnyKey catch-all so keys with no binding of their own still dismiss the help screen.
+//Key-aware because key ROUTING has bitten this project repeatedly (the physical ' arrives as
+//Quote, not Apostrophe; the harness cannot drive Equals at all).  Run with -keydiag and every
+//key reaching the pawn logs its real FKey name - the fastest way to tell "the binding is
+//wrong" apart from "the handler ran and did nothing".
+void APlayerPawn::OnAnyKey(FKey key)
 {
+	static const bool bDiag = FParse::Param(FCommandLine::Get(), TEXT("keydiag"));
+	if (bDiag)
+	{
+		LogMsg("KEYDIAG: %s", TCHAR_TO_ANSI(*key.ToString()));
+	}
 	HelpSwallowedInput();
 }
 
