@@ -314,6 +314,17 @@ Round 7 (Aug 27 2026): SETTINGS PERSISTENCE FIXES + DEBUG VISUALIZATIONS.
     4%/step): an FS discard clips everything nearer than the plane, revealing occluded
     geometry that genuinely re-renders per view (the layer-peel successor; in band
     mode ; ' keep the classic peel).
+    CUTAWAY FREEZE (fix, Aug 27 2026 after Seth's "it keeps cutting by itself"): the
+    plane derives from the smoothed depth range, but the cut removes the near
+    fragments the next readback would measure, so the range crept deeper and the
+    re-derived plane chased it = a runaway that ate the scene in seconds. While the
+    cut is active UpdateBandRange HOLDS the smoothed range (plane, shear convergence,
+    and band split all pin to the scene as it was when the cut began; ; ' nudges
+    still move the plane within that pinned range). Updates resume the moment the cut
+    returns to 0. Side effect to know: a scene CHANGE while a cut is held can land
+    mostly or entirely on one side of the pinned plane (the title attract's scene
+    swaps go fully black at deep cuts) - that is the pin working, not the runaway;
+    judge cutaway in-level where the scene is continuous.
   Plumbing: frontend state on ALibretroManagerActor (m_holoVizFlags/m_cutaway01,
   session-sticky within 3DS, cleared on system switch; ApplyHoloViz pushes, re-pushed
   at InitLayers/reset/1Hz) -> new optional export retro_holo_set_debug(mask, cutaway01)
