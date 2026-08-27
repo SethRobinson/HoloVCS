@@ -92,6 +92,9 @@ public:
 	//Nonstandard optional extension of the patched Azahar core: depth-sliced layer delivery
 	//(v2 of the VB scheme above).  Presence of the export doubles as "holo mode available".
 	void (*retro_set_video_refresh_holo)(retro_video_refresh_holo_t) = nullptr;
+	//ABI v4: live multiview tuning (separation scale = our depth-scale knob, convergence
+	//as a fraction of the scene depth range, negative keeps the core default).
+	retro_holo_set_view_params_t retro_holo_set_view_params = nullptr;
 	void (*retro_set_audio_sample)(retro_audio_sample_t);
 	void (*retro_set_audio_sample_batch)(retro_audio_sample_batch_t);
 	void (*retro_set_input_poll)(retro_input_poll_t);
@@ -204,6 +207,12 @@ public:
 #endif
 	
 	char m_coreRenderFlags[12];
+	//3DS holo capture mode the frontend answered for this core load: 0 legacy CPU
+	//slice, 1 layered bands, 2 multiview quilt (LKG builds default to 2; -holobands /
+	//-hololegacy / -holomultiview force one).
+	int m_holoCaptureMode = 1;
+	//last consumed quilt packSeq, so unchanged quilts skip the 18MB copy+upload
+	int m_lastQuiltPackSeq = -1;
 	int m_maxSaveStateSize = 0;
 	BlitPass m_blitPass[C_MAX_BLITPASS_COUNT];
 	bool m_useAudio = true;

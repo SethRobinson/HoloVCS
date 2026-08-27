@@ -511,9 +511,11 @@ but burns the 5.6 escape hatch like any other resave.
   hand). Read `docs/3ds_azahar.md` before touching EMULATOR_3DS - it differs from the other
   systems (no savestates, path-loaded 512MB roms, per-frame SET_GEOMETRY, and since round 5 a
   GL layered "shadow buffer" capture that records occluded geometry per depth band during the
-  game's own draws; `-hololegacy` reverts to the old single-depth-buffer slicing;
-  `-holomultiview` (round 6) opts into the experimental TRUE per-view render, Phase A
-  dump-only proof - see the doc).
+  game's own draws; `-hololegacy` reverts to the old single-depth-buffer slicing).
+  ROUND 6 (Aug 2026): on LKG builds the 3DS now defaults to TRUE MULTIVIEW (capture
+  mode 2) - the core renders one view per lens tile and delivers a packed quilt the
+  sprite path blits per tile; verified on the Go at 60 fps. `-holobands` forces the
+  band diorama for A/B. Read the doc before touching any of it.
 - `LibretroManager::LoadCore` loads them with LoadLibraryA - bare name first (packaged builds, exe
   sits next to the DLLs), then `<ProjectDir>/Binaries/Win64/` (editor runs).
 - **NEVER statically link the cores into the game module again.** GPL-2.0 and the Unreal Engine

@@ -406,6 +406,100 @@ void ALibretroManagerActor::SetLayersPeeled(int count)
 	}
 }
 
+//3DS multiview (mode 2): the quilt carrier is a layer-like quad at m_layerInfo[count+1]
+//whose texture holds the packed per-view quilt.  It sits AT the layer stack's center
+//depth = the capture's focal plane, so the LKG sprite path projects it with ZERO added
+//parallax (the parallax is baked into the per-view images); tag "HoloQuilt" plus custom
+//primitive data floats 4-6 (viewCount/cols/rows) tell the plugin to blit one view per
+//lens tile from it.  Lazy: the quilt dimensions arrive with the first core delivery.
+LayerInfo* ALibretroManagerActor::EnsureQuiltCarrier(int quiltW, int quiltH, int viewCount, int cols, int rows)
+{
+	const int carrierIdx = GetLayerCount() + 1;
+	if ((int)m_layerInfo.size() <= carrierIdx)
+	{
+		m_layerInfo.resize(carrierIdx + 1);
+	}
+	LayerInfo* pQ = &m_layerInfo[carrierIdx];
+	if (pQ->m_pActor && (int)pQ->m_texWidth == quiltW && (int)pQ->m_texHeight == quiltH)
+	{
+		if (!m_bQuiltCarrierActive)
+		{
+			//re-arm after a dormant spell (SetQuiltCarrierActive(false) zeroed float 4)
+			UMeshComponent* pMesh = (UMeshComponent*)pQ->m_pActor->GetComponentByClass(UMeshComponent::StaticClass());
+			if (pMesh) pMesh->SetCustomPrimitiveDataFloat(4, (float)viewCount);
+			m_bQuiltCarrierActive = true;
+		}
+		return pQ;
+	}
+	if (pQ->m_pActor)
+	{
+		pQ->m_pActor->Destroy();
+		pQ->m_pActor = nullptr;
+		pQ->Cleanup();
+	}
+	if (!SetupLayer(pQ, (char*)"LayerHoloQuilt", quiltW, quiltH, carrierIdx))
+	{
+		LogMsg("EnsureQuiltCarrier: SetupLayer failed");
+		return nullptr;
+	}
+	pQ->m_bIsQuiltCarrier = true;
+
+	AActor* pActor = pQ->m_pActor;
+	FVector vPos = pActor->GetActorLocation();
+	float midX = vPos.X;
+	if (GetLayerCount() > 0 && m_layerInfo[0].m_pActor && m_layerInfo[GetLayerCount() - 1].m_pActor)
+	{
+		midX = 0.5f * (m_layerInfo[0].m_pActor->GetActorLocation().X +
+			m_layerInfo[GetLayerCount() - 1].m_pActor->GetActorLocation().X);
+	}
+	vPos.X = midX;
+	vPos.Y = m_corePosition.X;
+	vPos.Z = m_corePosition.Y;
+	pActor->SetActorLocation(vPos);
+	pActor->Tags.AddUnique(FName(TEXT("HoloQuilt")));
+
+	UMeshComponent* pMesh = (UMeshComponent*)pActor->GetComponentByClass(UMeshComponent::StaticClass());
+	if (pMesh)
+	{
+		//full content rect (floats 0-3, never alpha-scanned) + the quilt metadata
+		pMesh->SetCustomPrimitiveDataFloat(0, 0.0f);
+		pMesh->SetCustomPrimitiveDataFloat(1, 0.0f);
+		pMesh->SetCustomPrimitiveDataFloat(2, 1.0f);
+		pMesh->SetCustomPrimitiveDataFloat(3, 1.0f);
+		pMesh->SetCustomPrimitiveDataFloat(4, (float)viewCount);
+		pMesh->SetCustomPrimitiveDataFloat(5, (float)cols);
+		pMesh->SetCustomPrimitiveDataFloat(6, (float)rows);
+		//keep the raw quilt collage out of the flat/2D-spectator scene render; the
+		//sprite path reads the component directly and ignores this flag
+		pMesh->SetVisibleInSceneCaptureOnly(true);
+		pMesh->SetCastShadow(false);
+		pMesh->bReceiveMobileCSMShadows = false;
+	}
+	m_bQuiltCarrierActive = true;
+
+	//the capture's show-only list was built before this actor existed
+	FitLookingGlassCaptureToLayers(GetWorld());
+	LogMsg("Quilt carrier ready: %dx%d px, %d views (%dx%d tiles) at focal X %.1f",
+		quiltW, quiltH, viewCount, cols, rows, midX);
+	return pQ;
+}
+
+void ALibretroManagerActor::SetQuiltCarrierActive(bool bActive)
+{
+	if (m_bQuiltCarrierActive == bActive) return;
+	const int carrierIdx = GetLayerCount() + 1;
+	if ((int)m_layerInfo.size() <= carrierIdx || !m_layerInfo[carrierIdx].m_pActor) return;
+	m_bQuiltCarrierActive = bActive;
+	if (!bActive)
+	{
+		//float 4 (viewCount) doubles as the plugin's draw enable; 0 = skip the quilt
+		//blit so the flat middle-band composite shows through (2D screens).  The
+		//re-activate path runs through EnsureQuiltCarrier, which restores the value.
+		UMeshComponent* pMesh = (UMeshComponent*)m_layerInfo[carrierIdx].m_pActor->GetComponentByClass(UMeshComponent::StaticClass());
+		if (pMesh) pMesh->SetCustomPrimitiveDataFloat(4, 0.0f);
+	}
+}
+
 //Re-spread the EXISTING layer actors to the current depth scale.  Positions are set absolutely
 //from m_vStartingPos (captured at spawn, before the depth pass) because SetLayerPosZ is relative
 //and only correct on freshly spawned actors.  Unlike InitLayers there's no respawn/texture
@@ -428,6 +522,26 @@ void ALibretroManagerActor::ApplyLayerDepth()
 			m_layerInfo[i].m_pActor->SetActorLocation(vPos);
 		}
 		depth -= step;
+	}
+
+	//multiview quilt carrier: keep it AT the respread stack's center depth (= the focal
+	//plane after the refit below) so its per-view blit stays parallax-free
+	const int carrierIdx = GetLayerCount() + 1;
+	if ((int)m_layerInfo.size() > carrierIdx && m_layerInfo[carrierIdx].m_pActor &&
+		GetLayerCount() > 0 && m_layerInfo[0].m_pActor && m_layerInfo[GetLayerCount() - 1].m_pActor)
+	{
+		FVector vPos = m_layerInfo[carrierIdx].m_pActor->GetActorLocation();
+		vPos.X = 0.5f * (m_layerInfo[0].m_pActor->GetActorLocation().X +
+			m_layerInfo[GetLayerCount() - 1].m_pActor->GetActorLocation().X);
+		m_layerInfo[carrierIdx].m_pActor->SetActorLocation(vPos);
+	}
+
+	//multiview (mode 2): the hologram's parallax lives in the core's per-view shear now -
+	//push the depth knob live through the ABI v4 export (the core ignores repeats)
+	if (g_pLibretroManager && g_pLibretroManager->m_core.retro_holo_set_view_params &&
+		g_pLibretroManager->m_holoCaptureMode == 2)
+	{
+		g_pLibretroManager->m_core.retro_holo_set_view_params(m_userDepthScale, -1.0f);
 	}
 
 	//the spread changed: reframe the flat camera (or it crops a deeper stack) and the Looking
@@ -490,6 +604,61 @@ static float GetLookingGlassDeviceAspect(UWorld* pWorld)
 		}
 	}
 	return 0.0f;
+}
+
+//One-shot: switch the capture component to the plugin's Automatic tiling preset so it
+//matches the connected device (Portrait: 48 views at 3360x3360, aspect 0.75).
+//Re-registering the component is the only reflection-safe way to run the plugin's
+//UpdateTilingProperties.  Pass -lkgmaptiling to keep the tiling saved in the map.
+//Shared by the capture fit AND GetLookingGlassTiling, because on a boot straight into
+//the 3DS the core asks for the tile grid BEFORE the first layer fit ever runs.
+static void EnsureLookingGlassAutoTiling(UActorComponent* pComp)
+{
+	static bool bTilingApplied = false;
+	if (bTilingApplied || FParse::Param(FCommandLine::Get(), TEXT("lkgmaptiling"))) return;
+	bTilingApplied = true;
+	bool bSet = false;
+	if (FProperty* pProp = FindFProperty<FProperty>(pComp->GetClass(), TEXT("TilingQuality")))
+	{
+		if (FEnumProperty* pEnumProp = CastField<FEnumProperty>(pProp))
+		{
+			pEnumProp->GetUnderlyingProperty()->SetIntPropertyValue(pEnumProp->ContainerPtrToValuePtr<void>(pComp), (int64)0); //0 = Q_Automatic
+			bSet = true;
+		}
+		else if (FByteProperty* pByteProp = CastField<FByteProperty>(pProp))
+		{
+			pByteProp->SetPropertyValue_InContainer(pComp, 0);
+			bSet = true;
+		}
+	}
+	if (bSet)
+	{
+		//OnRegister runs the plugin's UpdateTilingProperties, which resolves Automatic via Bridge
+		pComp->UnregisterComponent();
+		pComp->RegisterComponent();
+		LogMsg("LookingGlass tiling set to Automatic (device preset)");
+	}
+}
+
+bool GetLookingGlassTiling(UWorld* pWorld, int& tilesX, int& tilesY)
+{
+	AActor* pCapture = GetLookingGlassCaptureActor(pWorld);
+	if (!pCapture) return false;
+	for (UActorComponent* pComp : pCapture->GetComponents())
+	{
+		if (pComp->GetClass()->GetName() != TEXT("LookingGlassSceneCaptureComponent2D")) continue;
+		EnsureLookingGlassAutoTiling(pComp); //resolve the device preset before reading
+		FStructProperty* pStructProp = FindFProperty<FStructProperty>(pComp->GetClass(), TEXT("TilingValues"));
+		if (!pStructProp) return false;
+		void* pStruct = pStructProp->ContainerPtrToValuePtr<void>(pComp);
+		FIntProperty* pX = FindFProperty<FIntProperty>(pStructProp->Struct, TEXT("TilesX"));
+		FIntProperty* pY = FindFProperty<FIntProperty>(pStructProp->Struct, TEXT("TilesY"));
+		if (!pX || !pY) return false;
+		tilesX = pX->GetPropertyValue_InContainer(pStruct);
+		tilesY = pY->GetPropertyValue_InContainer(pStruct);
+		return tilesX >= 1 && tilesY >= 1;
+	}
+	return false;
 }
 
 void FitLookingGlassCaptureToLayers(UWorld* pWorld)
@@ -598,37 +767,9 @@ void FitLookingGlassCaptureToLayers(UWorld* pWorld)
 		{
 			if (pComp->GetClass()->GetName() != TEXT("LookingGlassSceneCaptureComponent2D")) continue;
 
-			//The map was saved with the 5.6-era "Custom" tiling (11x6, 4092x4092, 16:9-ish aspect).
-			//Switch to the plugin's Automatic preset so it matches whatever device is connected
-			//(Portrait: 48 views at 3360x3360, aspect 0.75 - a third fewer pixels per frame too).
-			//Re-registering the component is the only reflection-safe way to run the plugin's
-			//UpdateTilingProperties.  Pass -lkgmaptiling to keep the tiling saved in the map.
-			static bool bTilingApplied = false;
-			if (!bTilingApplied && !FParse::Param(FCommandLine::Get(), TEXT("lkgmaptiling")))
-			{
-				bTilingApplied = true;
-				bool bSet = false;
-				if (FProperty* pProp = FindFProperty<FProperty>(pComp->GetClass(), TEXT("TilingQuality")))
-				{
-					if (FEnumProperty* pEnumProp = CastField<FEnumProperty>(pProp))
-					{
-						pEnumProp->GetUnderlyingProperty()->SetIntPropertyValue(pEnumProp->ContainerPtrToValuePtr<void>(pComp), (int64)0); //0 = Q_Automatic
-						bSet = true;
-					}
-					else if (FByteProperty* pByteProp = CastField<FByteProperty>(pProp))
-					{
-						pByteProp->SetPropertyValue_InContainer(pComp, 0);
-						bSet = true;
-					}
-				}
-				if (bSet)
-				{
-					//OnRegister runs the plugin's UpdateTilingProperties, which resolves Automatic via Bridge
-					pComp->UnregisterComponent();
-					pComp->RegisterComponent();
-					LogMsg("LookingGlass tiling set to Automatic (device preset)");
-				}
-			}
+			//The map was saved with the 5.6-era "Custom" tiling; switch to the device's
+			//Automatic preset (one-shot, shared with GetLookingGlassTiling below).
+			EnsureLookingGlassAutoTiling(pComp);
 
 			//The hologram should contain exactly the layer diorama plus the in-world status text -
 			//the pawn's fullscreen tint plane and other scene junk live in the same world and the
@@ -1045,7 +1186,9 @@ void ALibretroManagerActor::Tick(float DeltaTime)
 		//Report this layer's populated texel bounds (as UV min/max in custom primitive data) so
 		//the hologram's shadow stamps track actual pixels - the old build's per-pixel shadow
 		//maps did this for free.  Empty layers report a zero rect and cast nothing.
-		if (m_layerInfo[i].m_pActor && m_layerInfo[i].m_pTextData)
+		//The quilt carrier skips the scan (4.6M texels/frame, and its CPD floats carry the
+		//quilt metadata instead of a content rect).
+		if (!m_layerInfo[i].m_bIsQuiltCarrier && m_layerInfo[i].m_pActor && m_layerInfo[i].m_pTextData)
 		{
 			UMeshComponent* pComp = (UMeshComponent*)m_layerInfo[i].m_pActor->GetComponentByClass(UMeshComponent::StaticClass());
 			if (pComp)

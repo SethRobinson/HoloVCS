@@ -183,37 +183,54 @@ empty layers. `-hololegacy` on the command line forces the old CPU slicing for A
 Harness gained `touch <x> <y> [frames]` (bottom-screen pixel tap - the SM3DL "Start
 Game" button needs it; A does not work there).
 
-Round 6 (Aug 2026): TRUE MULTIVIEW, Phase A working (capture mode 2, opt-in with
-`-holomultiview`). The insight: the 3DS has real 3D geometry, so instead of slicing
-into 24 depth bands the core can render the scene once per Looking Glass view with a
-per-view sheared camera - pixel-perfect parallax, no depth quantization, no seams, no
-band routing heuristics. Neither Unreal nor any Looking Glass plugin/SDK can do this
-"directly" (they only render geometry they own or display quilts they are handed), so
-the per-view rendering lives in the core and the frontend stays Unreal; a raw C++
-libretro harness would need the identical core work and was rejected.
+Round 6 (Aug 2026): TRUE MULTIVIEW - WORKING END-TO-END ON DEVICE (capture mode 2,
+the DEFAULT whenever the Looking Glass plugin is active). The insight: the 3DS has
+real 3D geometry, so instead of slicing into 24 depth bands the core renders the
+scene once per Looking Glass view with a per-view sheared camera - pixel-perfect
+parallax, no depth quantization, no seams, no band routing heuristics. Neither Unreal
+nor any Looking Glass plugin/SDK can do this "directly" (they only render geometry
+they own or display quilts they are handed), so the per-view rendering lives in the
+core and the frontend stays Unreal; a raw C++ libretro harness would need the
+identical core work and was rejected.
 - Core side (see the fork's AGENTS.md for mechanics): every scene-scoped draw is
   re-submitted instanced (one instance per view) into a private layered FBO with real
   fixed-function depth/stencil/blend per view; per-view shear is linear in NDC depth
-  and derives from the same smoothed range the bands use; UI/depth-less draws are
+  and derives from the same smoothed range the bands used; UI/depth-less draws are
   screen-locked. The scoping (top-RT address, viewport gate, ship gate) is REUSED
-  unchanged from the band capture; the band emulation itself (blend baking, interlock,
-  stencil emu, seam fill, overlay settle) simply is not needed per view.
-- Frontend answers `holo_capture_mode = "2"` when launched with `-holomultiview` and
-  serves `holo_view_count` (hardcoded 48 until Phase C wires the device tiling); the
-  band path keeps running and delivering, so the app looks identical in Phase A.
-- Proof/verify: drop `holo_quilt_request.txt` in the game process working directory
-  (editor runs: the ENGINE Binaries\Win64 dir) -> the next 3 scene ships write
-  stitched 8x6 quilt BMPs (holo_quilt_NN.bmp) there. SM3DL title: smooth
-  depth-proportional parallax across all 48 views, screen-locked logo, real per-view
-  occlusion. Metroid: Samus Returns title dumps identical views - correct, that
-  screen is a flat 2D compose (all draws depth-less), not a bug.
-- Known Phase A gaps: dump-only output (no ABI delivery yet), plain FS in the mirror
-  pass (gl_FragDepth write = no early-Z), SW-vertex-path draws not mirrored (counted),
-  mid-scene 2D sheets sit at the convergence plane instead of far, view count not yet
-  negotiated from the device. The full phased plan (B: quilt pack + PBO readback +
-  ABI v4; C: frontend quilt blit + tiling negotiation + live depth-scale export, bands
-  off in mode 2; D: fallback ladder + optional stereo-derived calibration) lives in
-  the plan file from the Aug 2026 planning session and in the fork's AGENTS.md notes.
+  unchanged from the band capture. In mode 2 the band capture is OFF entirely; a
+  compute pass packs the views into one quilt (LKG tile order), read back through a
+  PBO ring and delivered via ABI v4 (`HoloLayerInfo.quilt`, packSeq dirty gate).
+- Mode negotiation (LibretroManager.cpp holo_capture_mode): LKG builds default to 2
+  and serve the DEVICE tile grid (`holo_view_count`/`holo_quilt_cols`/`holo_quilt_rows`
+  from the plugin's resolved TilingValues via GetLookingGlassTiling, which also
+  triggers the one-shot Automatic-tiling apply for boot-straight-into-3DS); flat
+  builds serve 1 (band diorama unchanged). Flags: `-holobands` forces 1 for on-device
+  A/B, `-hololegacy` 0, `-holomultiview` forces 2 anywhere (flat-build quilt debug).
+- Frontend display: the quilt lands on a carrier quad ("HoloQuilt"-tagged, created
+  lazily at m_layerInfo[count+1] by EnsureQuiltCarrier) parked AT the layer stack's
+  center depth = the capture focal plane, so RenderSpriteQuilt projects it with zero
+  added parallax and blits each lens tile's own view sub-rect (CPD floats 4-6 carry
+  viewCount/cols/rows; 0 views = dormant). The bottom screen stays the existing
+  sprite quad; help/FPS/status overlays unchanged. The 18MB quilt copy+upload is
+  packSeq-gated; the carrier skips the per-frame alpha scan and is
+  VisibleInSceneCaptureOnly so the raw collage never shows in the flat/2D views.
+- Live depth: `[` `]` / holo.DepthScale push through the ABI v4
+  `retro_holo_set_view_params` export in ApplyLayerDepth (scale 0 = flat; the core
+  ignores repeats). 2D screens: the core parks quilt.used=0 (flat-wipe) and the
+  frontend falls back to the middle-band composite via SetQuiltCarrierActive(false).
+- VERIFIED on the Looking Glass Go (Aug 2026): 66 views negotiated (11x6), the saved
+  device quilt shows a true per-view render in every tile with depth-proportional
+  parallax and screen-locked logo, 60 fps at the SM3DL title, live depth scaling
+  works, NES-on-LKG and flat-build 3DS mode 1 regressions clean.
+- Known gaps: mirror FS still writes gl_FragDepth (no early-Z; in-level perf on
+  weaker GPUs may want the FS variant without it), SW-vertex-path draws not mirrored
+  (counted in holo.mv_sw_skipped), mid-scene 2D sheets sit at the convergence plane
+  instead of far (revisit per-game on device), the scene-capture fallback path
+  (rotated capture / fly cam) draws the raw quilt collage quad. Phase D options
+  (extension-probed VS gl_Layer, stereo-pair auto calibration) in the plan file.
+- Debug: drop `holo_quilt_request.txt` in the game process working directory (editor
+  runs: the ENGINE Binaries\Win64 dir) -> 3 raw-array stitches (holo_quilt_NN.bmp,
+  view 0 TOP-left) + 3 packed ABI quilts (holo_quiltpk_NN.bmp, view 0 BOTTOM-left).
 - ROM partial gotcha rediscovered while testing: `-rom=3d` matches the `.3ds`
   EXTENSION (loaded Metroid), and `-rom=Land` matched Virtual Boy Wario Land; use a
   quoted unique fragment like `-rom="3D Land"` (FParse handles quoted values).

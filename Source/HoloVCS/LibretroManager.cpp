@@ -406,6 +406,8 @@ bool LibretroManager::LoadCore(string fileName)
 	m_core.retro_get_holo_bg_tile_ids = (decltype(m_core.retro_get_holo_bg_tile_ids))GetProcAddress(m_dllHandle, "retro_get_holo_bg_tile_ids");
 	//Optional patched-Azahar extension (3DS depth-sliced layers); absence = flat fallback
 	m_core.retro_set_video_refresh_holo = (decltype(m_core.retro_set_video_refresh_holo))GetProcAddress(m_dllHandle, "retro_set_video_refresh_holo");
+	//ABI v4 sibling: live multiview separation/convergence (see ApplyLayerDepth)
+	m_core.retro_holo_set_view_params = (retro_holo_set_view_params_t)GetProcAddress(m_dllHandle, "retro_holo_set_view_params");
 	m_core.retro_load_game = (decltype(m_core.retro_load_game))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_load_game));
 	m_core.retro_get_system_av_info = (decltype(m_core.retro_get_system_av_info))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_get_system_av_info));
 	m_core.retro_run = (decltype(m_core.retro_run))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_run));
@@ -496,30 +498,61 @@ bool retro_environment_callback(unsigned cmd, void* data)
 			return true;
 		}
 
-		//3DS layered ("shadow buffer") capture: 1 = per-band GPU capture with real
-		//occluded content (default), 0 = the old single-depth-buffer CPU slice.
-		//Launch with -hololegacy to A/B the old path.
-		//-holomultiview asks for mode 2 (Phase A experiment): the core ALSO renders a
-		//true per-view quilt into a layered FBO (proof via holo_quilt_request.txt dump
-		//in the core's working dir); layer delivery stays identical to mode 1.
+		//3DS capture mode: 2 = MULTIVIEW (the core renders a true per-view quilt,
+		//delivered via the ABI v4 quilt member - the default whenever the Looking
+		//Glass plugin is active), 1 = the per-band layered capture (flat builds, and
+		//-holobands for on-device A/B), 0 = the legacy single-depth-buffer CPU slice
+		//(-hololegacy).  -holomultiview forces 2 anywhere (flat-build quilt debugging).
 		if (strcmp(pVar->key, "holo_capture_mode") == 0)
 		{
-			if (FParse::Param(FCommandLine::Get(), TEXT("holomultiview")))
-			{
-				pVar->value = "2";
-			}
+			int mode = 1;
+			if (FParse::Param(FCommandLine::Get(), TEXT("hololegacy"))) mode = 0;
+			else if (FParse::Param(FCommandLine::Get(), TEXT("holobands"))) mode = 1;
+			else if (FParse::Param(FCommandLine::Get(), TEXT("holomultiview"))) mode = 2;
 			else
 			{
-				pVar->value = FParse::Param(FCommandLine::Get(), TEXT("hololegacy")) ? "0" : "1";
+				int tilesX = 0, tilesY = 0;
+				if (g_pLibretroManager->m_pLibretroManagedActor &&
+					GetLookingGlassTiling(g_pLibretroManager->m_pLibretroManagedActor->GetWorld(), tilesX, tilesY))
+				{
+					mode = 2; //LKG plugin present: true multi-view is the default
+				}
 			}
+			g_pLibretroManager->m_holoCaptureMode = mode;
+			static char modeStr[4];
+			snprintf(modeStr, sizeof(modeStr), "%d", mode);
+			pVar->value = modeStr;
+			LogMsg("3DS holo capture mode: %d", mode);
 			return true;
 		}
 
-		//multiview only: how many views the core should render (device tile count).
-		//Not wired to the Looking Glass tiling yet (Phase C); core defaults to 48.
-		if (strcmp(pVar->key, "holo_view_count") == 0)
+		//multiview only: the device tile layout, so the core renders exactly one view
+		//per lens tile.  Falls back to the Portrait 8x6/48 when no device resolves.
+		if (strcmp(pVar->key, "holo_view_count") == 0 ||
+			strcmp(pVar->key, "holo_quilt_cols") == 0 ||
+			strcmp(pVar->key, "holo_quilt_rows") == 0)
 		{
-			pVar->value = "48";
+			int tilesX = 8, tilesY = 6;
+			if (g_pLibretroManager->m_pLibretroManagedActor)
+			{
+				GetLookingGlassTiling(g_pLibretroManager->m_pLibretroManagedActor->GetWorld(), tilesX, tilesY);
+			}
+			static char viewStr[12], colStr[12], rowStr[12];
+			if (pVar->key[strlen("holo_")] == 'v') //holo_view_count
+			{
+				snprintf(viewStr, sizeof(viewStr), "%d", tilesX * tilesY);
+				pVar->value = viewStr;
+			}
+			else if (strcmp(pVar->key, "holo_quilt_cols") == 0)
+			{
+				snprintf(colStr, sizeof(colStr), "%d", tilesX);
+				pVar->value = colStr;
+			}
+			else
+			{
+				snprintf(rowStr, sizeof(rowStr), "%d", tilesY);
+				pVar->value = rowStr;
+			}
 			return true;
 		}
 
@@ -1274,6 +1307,8 @@ void LibretroManager::InitEmulator()
 	if (m_core.retro_set_video_refresh_holo) //nonstandard too, the patched Azahar (3DS) core.
 		m_core.retro_set_video_refresh_holo(retro_video_refresh_callback_holo); //registering opts the core into holo mode
 
+	m_lastQuiltPackSeq = -1; //fresh core load: the first delivered quilt always copies
+
 	m_core.retro_set_audio_sample(retro_audio_sample_callback);
 
 	m_core.retro_set_audio_sample_batch(retro_audio_sample_batch_callback);
@@ -1610,6 +1645,40 @@ void retro_video_refresh_callback_holo(const void* data, unsigned width, unsigne
 			pBottomLayer->m_bHoloContent = true;
 			pBottomLayer->m_bDirty = true;
 		}
+	}
+
+	//ABI v4 quilt (multiview mode 2): the packed per-view quilt goes to the carrier quad
+	//the LKG sprite path blits per-tile (see EnsureQuiltCarrier).  packSeq gates the 18MB
+	//copy so cadence gaps and paused frames cost nothing.
+	const HoloQuiltInfo& quilt = info->quilt;
+	if (quilt.used && quilt.pixels && quilt.viewCount >= 2)
+	{
+		if (quilt.packSeq != g_pLibretroManager->m_lastQuiltPackSeq)
+		{
+			LayerInfo* pQuiltLayer = pActor->EnsureQuiltCarrier(quilt.width, quilt.height,
+				quilt.viewCount, quilt.cols, quilt.rows);
+			if (pQuiltLayer && pQuiltLayer->GetPixelBuffer())
+			{
+				const int rows = FMath::Min<int>((int)quilt.height, (int)pQuiltLayer->m_texHeight);
+				const int rowBytes = FMath::Min<int>((int)quilt.pitchBytes, (int)pQuiltLayer->m_texPitchBytes);
+				for (int y = 0; y < rows; y++)
+				{
+					memcpy(pQuiltLayer->GetPixelBuffer() + (size_t)y * pQuiltLayer->m_texPitchBytes,
+						quilt.pixels + (size_t)y * quilt.pitchBytes, rowBytes);
+				}
+				pQuiltLayer->m_bUsedThisFrame = true;
+				pQuiltLayer->m_bHoloContent = true;
+				pQuiltLayer->m_bDirty = true;
+				g_pLibretroManager->m_lastQuiltPackSeq = quilt.packSeq;
+			}
+		}
+	}
+	else
+	{
+		//quilt dormant (2D screen flat fallback / mode 1): tell the sprite path to skip
+		//the quilt draw so the flat middle-band composite shows instead
+		pActor->SetQuiltCarrierActive(false);
+		g_pLibretroManager->m_lastQuiltPackSeq = -1;
 	}
 }
 

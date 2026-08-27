@@ -17,6 +17,12 @@
 
 void OnWasRestartedInEditor();
 
+//The connected Looking Glass device's quilt tile grid (from the plugin's resolved
+//TilingValues, read by reflection; applies the Automatic preset first if needed).
+//Returns false in the flat build / when the plugin is absent.  Used both for layout
+//and to decide the 3DS holo capture mode (grid present = multiview default).
+bool GetLookingGlassTiling(class UWorld* pWorld, int& tilesX, int& tilesY);
+
 class UMaterial;
 
 enum eLightingMode
@@ -75,6 +81,9 @@ public:
 	//so a used->unused transition clears the texture once instead of showing stale pixels.
 	bool m_bDirty = true;
 	bool m_bHoloContent = false;
+	//multiview quilt carrier (3DS mode 2): the texture holds the packed per-view quilt
+	//the LKG sprite path blits per tile.  Skips the per-frame alpha scan (4.6M texels).
+	bool m_bIsQuiltCarrier = false;
 	//ping-pong staging for UpdateTextureRegions (replaces a 384KB heap alloc per layer
 	//per frame; two buffers because the render thread consumes the copy asynchronously)
 	uint8* m_pUploadBuffer[2] = { 0, 0 };
@@ -117,6 +126,14 @@ public:
 	void ApplyLayerDepth(); //reposition existing layer actors to the current depth spread (no respawn)
 	void SetLayersPeeled(int count); //debug: hide the N nearest layers (';' and ''' hotkeys) to see the back
 	int GetLayersPeeled() { return m_layersPeeled; }
+	//3DS multiview (mode 2): (re)create the quilt carrier quad at m_layerInfo[count+1] -
+	//a layer-like quad parked AT the focal plane whose texture holds the packed per-view
+	//quilt; the LKG sprite path (tag "HoloQuilt") blits one view per lens tile from it.
+	//Returns null on failure.  Lazy because the quilt dims arrive with the first delivery.
+	LayerInfo* EnsureQuiltCarrier(int quiltW, int quiltH, int viewCount, int cols, int rows);
+	//Toggle the carrier's draw without destroying it (quilt dormant on flat/2D screens).
+	void SetQuiltCarrierActive(bool bActive);
+	bool m_bQuiltCarrierActive = false;
 	//Fly-cam support for the LKG build: the fly camera drives the hologram capture actor directly.
 	//All three are no-ops / return false when no capture actor exists (flat build).
 	void SetLKGCaptureFlyTransform(const FVector& pos, const FRotator& rot);

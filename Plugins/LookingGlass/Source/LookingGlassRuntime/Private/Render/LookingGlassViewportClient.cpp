@@ -647,6 +647,15 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 		// Per-layer shadow casting, from the mesh flag (the splash screen and other overlay
 		// primitives get SetCastShadow(false) from the game)
 		bool bCastShadows = true;
+		// HoloVCS multiview quilt carrier ("HoloQuilt"-tagged actor): the texture is a
+		// packed per-view quilt (view 0 = bottom-left tile) rendered by the emulator
+		// itself; each lens tile blits its own view sub-rect instead of a parallax
+		// sprite.  Custom primitive data floats 4-6 carry viewCount/cols/rows; a
+		// viewCount of 0 means the quilt is dormant (2D screen) and nothing draws.
+		bool bQuilt = false;
+		int32 QuiltViews = 0;
+		int32 QuiltCols = 0;
+		int32 QuiltRows = 0;
 		// Diagnostics only
 		FString Name;
 	};
@@ -756,6 +765,13 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 			if (CPD.Data.Num() >= 4)
 			{
 				Layer.ContentUV = FVector4(CPD.Data[0], CPD.Data[1], CPD.Data[2], CPD.Data[3]);
+			}
+			Layer.bQuilt = Actor->ActorHasTag(FName(TEXT("HoloQuilt")));
+			if (Layer.bQuilt && CPD.Data.Num() >= 7)
+			{
+				Layer.QuiltViews = (int32)CPD.Data[4];
+				Layer.QuiltCols = (int32)CPD.Data[5];
+				Layer.QuiltRows = (int32)CPD.Data[6];
 			}
 			Layer.Name = FString::Printf(TEXT("%s(%s matblend=%d castshadow=%d)"),
 				*Actor->GetName(), *Mat->GetName(), (int32)Mat->GetBlendMode(), Mesh->CastShadow ? 1 : 0);
@@ -1336,6 +1352,36 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 			};
 			auto ToTileX = [&](float Ndc) { return TileX + (Ndc * 0.5f + 0.5f) * TileSizeX; };
 			auto ToTileY = [&](float Ndc) { return TileY + (0.5f - Ndc * 0.5f) * TileSizeY; };
+
+			// HoloVCS multiview quilt: blit this lens tile's view sub-rect from the packed
+			// quilt into the carrier quad's projected rect.  The carrier sits AT the focal
+			// plane so the rect is identical in every view - the parallax is baked into the
+			// per-view images.  Drawn opaque, untinted, no shadows (the emulator rendered
+			// the real thing); a dormant quilt (QuiltViews 0) draws nothing at all.
+			if (Layer.bQuilt)
+			{
+				if (Layer.QuiltViews >= 2 && Layer.QuiltCols >= 1 && Layer.QuiltRows >= 1)
+				{
+					const int32 QV = (NumTiles > 1)
+						? FMath::Clamp(FMath::RoundToInt(
+							(float)View * (Layer.QuiltViews - 1) / (float)(NumTiles - 1)),
+							0, Layer.QuiltViews - 1)
+						: 0;
+					const int32 QCol = QV % Layer.QuiltCols;
+					const int32 QRowFromBottom = QV / Layer.QuiltCols;
+					const float U0 = (float)QCol / Layer.QuiltCols;
+					const float U1 = (float)(QCol + 1) / Layer.QuiltCols;
+					const float V0 = (float)(Layer.QuiltRows - 1 - QRowFromBottom) / Layer.QuiltRows;
+					const float V1 = V0 + 1.0f / (float)Layer.QuiltRows;
+					DrawClippedTile(Layer.Tex,
+						ToTileX(NdcX(Layer.Box.Min.Y)),
+						ToTileY(NdcZ(Layer.Box.Max.Z)),
+						ToTileX(NdcX(Layer.Box.Max.Y)),
+						ToTileY(NdcZ(Layer.Box.Min.Z)),
+						TileRect, FLinearColor::White, SE_BLEND_Opaque, U0, V0, U1, V1);
+				}
+				continue;
+			}
 
 			// Unlit layers (the 8-key materials, the emissive backdrop) draw raw like the 2D
 			// view; Layer.Color carries the game's SetTintBG coloring for the backdrop
