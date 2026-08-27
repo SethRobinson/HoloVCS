@@ -131,6 +131,10 @@ public:
 	//The mask + cutaway plane travel to the core through the optional retro_holo_set_debug
 	//export; see cores/holo_abi/holo_layer_abi.h for the HOLO_VIZ_* bits.
 	void ApplyHoloViz(); //push the current mask + cutaway to the core (core dedupes repeats)
+	//3DS: refuse a change that would need a core re-render to show while the emulator is
+	//paused (the core only renders inside retro_run; the savestate-pin refresh was cut as
+	//bad UI).  Shows "Can't change that while paused" and returns true when refused.
+	bool RefusePausedHoloChange(bool bMode2Only);
 	void ToggleHoloViz(uint32 flag, const char* pName); //xor one bit, status text, push
 	void ClearHoloViz(); //Shift+0: all debug views off, cutaway reset
 	void NudgeCutaway(float delta); //';' and ''' in 3DS multiview: slide the cutaway plane
@@ -227,10 +231,6 @@ public:
 	float m_lastPushedSep = -999.0f;
 	float m_lastPushedConv = -999.0f;
 	bool m_bWarnedNoViewParamExport = false;
-	//ApplyHoloViz bookkeeping: change gate for the paused-frame refresh (the 1Hz self-heal
-	//re-pushes identical values and must never step the paused emulator)
-	uint32 m_lastPushedVizMask = 0;
-	float m_lastPushedCut01 = 0.0f;
 	bool m_bShowLKGFPS = false; //fps readout on the in-world status text, on for Looking Glass builds
 	eLightingMode m_curLightingMode = LIGHTING_MODE_NORMAL;
 

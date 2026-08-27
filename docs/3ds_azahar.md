@@ -325,32 +325,22 @@ Round 7 (Aug 27 2026): SETTINGS PERSISTENCE FIXES + DEBUG VISUALIZATIONS.
     mostly or entirely on one side of the pinned plane (the title attract's scene
     swaps go fully black at deep cuts) - that is the pin working, not the runaway;
     judge cutaway in-level where the scene is continuous.
-  PAUSED INSPECTION (Aug 27 2026, three rounds: "Shift hotkeys don't work while
-  paused", "time must NOT advance", then "a rewind per keystroke locks the app for
-  10+ seconds"): the core only renders inside retro_run, so a viz or depth/convergence
-  change on a P-paused screen had nothing to redraw. A change while paused runs
-  LibretroManager::RefreshPausedFrame() -> the core's retro_holo_refresh_paused(int
-  settle) export, split into a FAST and a SETTLE mode because a full state rewind per
-  keystroke (decompress + deserialize the whole ~16MB system state) stacked up into
-  multi-second lockups when a key was hammered:
-  - FAST (settle 0, per keystroke): pin the state once per paused stretch
-    (System::SaveStateBuffer), then just run FOUR frames so the new look renders and
-    delivers (four, not two: games render internally at 30Hz and the holo delivery is
-    one present behind through the PBO rings). ~tens of ms, so sweeping feels live;
-    the emulated state runs ahead of the pin and the display creeps 4/60s per press.
-  - SETTLE (settle 1, fired ONCE from Update's paused branch ~0.35s after the last
-    change, deadline in m_pausedRefreshSettleTime): rewind to the pin, re-render four
-    frames so the display shows the PINNED moment wearing the final settings, rewind
-    again - display and emulated state both end exactly on the pin.
-  Unpausing before the settle fires is covered core-side: the first normal retro_run
-  rewinds a dirty pin before running (SetGamePaused(false) also clears the pending
-  settle). Any normal retro_run drops the pin afterward; retro_reset and
-  retro_unserialize invalidate it. m_useAudio trashes the refresh frames' audio (the
-  multi-pass profiles' trick). Fallback: export missing (old DLL) = four real frames,
-  4/60s per change. Change-gated at the push sites (PushHoloViewParams / ApplyHoloViz
-  memos) so the 1Hz self-heal can never step a paused emulator. The first change in a
-  paused stretch pays the state save and the settle pays two state loads (brief
-  hitches); every keystroke in between is render-only.
+  PAUSED CHANGES ARE REFUSED (Aug 27 2026, the end of a four-round saga): the core
+  only renders inside retro_run, so a viz/cutaway change (any capture mode) or a
+  depth/convergence change (multiview) on a P-paused screen has no frame to show
+  itself on. A savestate-pin re-render was built for this (pin the state, render,
+  rewind; then split into a fast per-keystroke path plus a debounced settle when the
+  per-keystroke rewinds locked the app for 10+ seconds), and Seth CUT the whole thing
+  as bad UI - the state round-trips are seconds-long hitches no matter how they are
+  scheduled. Rule now: ALibretroManagerActor::RefusePausedHoloChange(bMode2Only) sits
+  at the top of every such setter (ToggleHoloViz/ClearHoloViz/NudgeCutaway any-mode;
+  SetUserDepthScale/NudgeConvergence and the holo.Convergence cvar mode-2-only, since
+  band-mode depth respreads engine-side and works fine paused) and shows "Can't
+  change that while paused" (plus a "Refused holo change while paused" log line).
+  The core-side export was removed again; the serialize round-trip stays for the F/G
+  savestates, and Load3DSStateFromFile still runs four muted frames after a load
+  while paused so the frozen screen shows the loaded state (that one is not a state
+  trick - you just loaded, the 4/60s shift is meaningless).
   Plumbing: frontend state on ALibretroManagerActor (m_holoVizFlags/m_cutaway01,
   session-sticky within 3DS, cleared on system switch; ApplyHoloViz pushes, re-pushed
   at InitLayers/reset/1Hz) -> new optional export retro_holo_set_debug(mask, cutaway01)

@@ -410,8 +410,6 @@ bool LibretroManager::LoadCore(string fileName)
 	m_core.retro_holo_set_view_params = (retro_holo_set_view_params_t)GetProcAddress(m_dllHandle, "retro_holo_set_view_params");
 	//ABI v4 sibling: debug visualization mask + cutaway plane (see ApplyHoloViz)
 	m_core.retro_holo_set_debug = (retro_holo_set_debug_t)GetProcAddress(m_dllHandle, "retro_holo_set_debug");
-	//ABI v4 sibling: zero-time-advance paused refresh (see RefreshPausedFrame)
-	m_core.retro_holo_refresh_paused = (retro_holo_refresh_paused_t)GetProcAddress(m_dllHandle, "retro_holo_refresh_paused");
 	m_core.retro_load_game = (decltype(m_core.retro_load_game))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_load_game));
 	m_core.retro_get_system_av_info = (decltype(m_core.retro_get_system_av_info))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_get_system_av_info));
 	m_core.retro_run = (decltype(m_core.retro_run))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_run));
@@ -1193,12 +1191,6 @@ void LibretroManager::SetGamePaused(bool bNew)
 	if (!bNew && m_helpScreen.IsVisible())
 	{
 		m_helpScreen.NotifyExternallyUnpaused();
-	}
-	if (!bNew)
-	{
-		//pending paused-refresh settle is moot once the game runs again: the core's first
-		//normal frame rewinds the dirty pin itself
-		m_pausedRefreshSettleTime = 0;
 	}
 	m_bGamePaused = bNew;
 }
@@ -2030,46 +2022,12 @@ void LibretroManager::RenderFrame(const char* pRenderFlags)
 	m_core.retro_run(); 
 }
 
-//3DS debug views / depth changes while PAUSED: the core only renders inside retro_run,
-//so a visualization or view-param change on a frozen screen has nothing to redraw until
-//unpause (the Shift hotkeys looked dead while paused).  Preferred path: the core's
-//retro_holo_refresh_paused export.  Per keystroke it runs the FAST mode (settle 0):
-//pin-once + render-only, ~4 frames of work, so sweeping a slider feels live (a full
-//state rewind per keystroke deserialized the whole system each press and locked the app
-//for seconds when Seth hammered a key).  The expensive rewind runs ONCE as a debounced
-//SETTLE (~0.35s after the last change, fired from Update's paused branch): the display
-//snaps back to the pinned moment wearing the final settings and the emulated state ends
-//exactly on the pin.  Unpausing before the settle is covered core-side (the first
-//normal frame rewinds the dirty pin).  Fallback for a core without the export: four
-//real frames (advances 4/60s per change).  Audio is muted via m_useAudio throughout,
-//the same trash-the-audio trick the multi-pass profiles use for extra visual renders.
-void LibretroManager::RefreshPausedFrame()
-{
-	if (!IsCoreLoaded() || !m_bGamePaused) return;
-	if (m_emulatorType != EMULATOR_3DS) return;
-	const bool bAudioWas = m_useAudio;
-	m_useAudio = false;
-	bool bRendered = false;
-	if (m_core.retro_holo_refresh_paused)
-	{
-		bRendered = m_core.retro_holo_refresh_paused(0) != 0;
-		if (bRendered)
-		{
-			m_pausedRefreshSettleTime = FPlatformTime::Seconds() + 0.35;
-		}
-	}
-	if (!bRendered)
-	{
-		//four frames, matching the core-side refresh: games render internally at 30Hz
-		//and the delivery ring is one present behind, so two frames could leave the new
-		//look stranded in the ring
-		for (int i = 0; i < 4; i++)
-		{
-			RenderFrame("11");
-		}
-	}
-	m_useAudio = bAudioWas;
-}
+//NOTE: a RefreshPausedFrame mechanism lived here briefly (Aug 27 2026): it re-rendered
+//the frozen 3DS screen after a paused viz/depth change via a core-side savestate pin.
+//Seth cut it - even with a fast render path plus a debounced rewind, the state
+//round-trips were seconds-long hitches and felt like bad UI.  Paused changes that would
+//need a core re-render are now refused outright with a status message instead
+//(ALibretroManagerActor::RefusePausedHoloChange).
 
 bool LibretroManager::RenderFrameWithNesBackgroundTileFilter(const char* pRenderFlags, const byte* pKeepList, int keepListSize, byte replacementTile)
 {
@@ -2258,9 +2216,19 @@ void LibretroManager::Load3DSStateFromFile()
 	if (m_core.retro_unserialize(data.GetData(), (size_t)data.Num()))
 	{
 		ShowStatusMessage("Loaded state.");
-		//while paused, regenerate the frozen screen so the loaded state shows right away
-		//(this also re-pins the paused-refresh state to the LOADED moment)
-		RefreshPausedFrame();
+		//while paused, run a few muted frames so the frozen screen shows the LOADED
+		//state instead of the stale pre-load frame (no savestate tricks here - you just
+		//loaded, so a 4/60s position shift is meaningless)
+		if (m_bGamePaused)
+		{
+			const bool bAudioWas = m_useAudio;
+			m_useAudio = false;
+			for (int i = 0; i < 4; i++)
+			{
+				RenderFrame("11");
+			}
+			m_useAudio = bAudioWas;
+		}
 	}
 	else
 	{
@@ -2275,23 +2243,7 @@ void LibretroManager::Update()
 
 	if (!m_core.m_bActive) { m_timeOfLastFrame = 0; return; }
 
-	if (m_bGamePaused)
-	{
-		//debounced paused-refresh SETTLE: ~0.35s after the last paused viz/depth change,
-		//pay the one expensive state rewind so the frozen screen snaps back to the
-		//pinned moment wearing the final settings (see RefreshPausedFrame)
-		if (m_pausedRefreshSettleTime != 0 && FPlatformTime::Seconds() >= m_pausedRefreshSettleTime &&
-			m_core.retro_holo_refresh_paused)
-		{
-			m_pausedRefreshSettleTime = 0;
-			const bool bAudioWas = m_useAudio;
-			m_useAudio = false;
-			m_core.retro_holo_refresh_paused(1);
-			m_useAudio = bAudioWas;
-		}
-		m_timeOfLastFrame = 0;
-		return;
-	}
+	if (m_bGamePaused) { m_timeOfLastFrame = 0; return; }
 
 	m_helpScreen.TickAutoShow(); //after the early-outs so the diorama has frames behind the panel
 

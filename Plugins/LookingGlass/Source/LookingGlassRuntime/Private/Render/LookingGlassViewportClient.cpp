@@ -1473,22 +1473,58 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 			Canvas.DrawItem(FPSItem);
 		}
 
-		// Status text (rom names etc): bottom of the tile, scaled down if it would spill into
-		// the neighboring tile
+		// Status text (rom names, errors): bottom of the tile.  WORD-WRAPPED onto up to
+		// three lines at full size instead of shrinking one line to fit - long messages
+		// (load-state errors etc) used to shrink into illegibility on the panel (Seth
+		// could not read them).  Only if even three wrapped lines cannot hold the text
+		// does the scale drop, and never below a readable floor.
 		if (!OverlayText.IsEmpty() && GEngine != nullptr)
 		{
-			float TextScale = 2.0f;
-			const float ApproxWidth = OverlayText.Len() * 10.0f * TextScale;
 			const float MaxWidth = TileSizeX * 0.92f;
-			if (ApproxWidth > MaxWidth)
+			const int32 MaxLines = 3;
+			float TextScale = 2.0f;
+			TArray<FString> WrapLines;
+			auto WrapAt = [&](float Scale) -> bool
 			{
-				TextScale *= MaxWidth / ApproxWidth;
+				WrapLines.Reset();
+				const int32 MaxChars = FMath::Max(4, (int32)(MaxWidth / (10.0f * Scale)));
+				FString Remaining = OverlayText;
+				while (!Remaining.IsEmpty() && WrapLines.Num() < MaxLines)
+				{
+					if (Remaining.Len() <= MaxChars)
+					{
+						WrapLines.Add(Remaining);
+						Remaining.Empty();
+						break;
+					}
+					int32 BreakAt = -1;
+					for (int32 c = MaxChars; c > 0; c--)
+					{
+						if (Remaining[c] == TEXT(' ')) { BreakAt = c; break; }
+					}
+					if (BreakAt <= 0) BreakAt = MaxChars;
+					WrapLines.Add(Remaining.Left(BreakAt));
+					Remaining = Remaining.Mid(BreakAt).TrimStart();
+				}
+				return Remaining.IsEmpty();
+			};
+			if (!WrapAt(TextScale))
+			{
+				// pathological length: shrink just enough for three lines, floor at 1.2
+				TextScale = FMath::Max(1.2f, MaxWidth / ((OverlayText.Len() / (float)MaxLines + 2.0f) * 10.0f));
+				WrapAt(TextScale);
 			}
-			FCanvasTextItem TextItem(FVector2D(TileX + TileSizeX * 0.04f, TileY + TileSizeY * 0.9f),
-				FText::FromString(OverlayText), GEngine->GetLargeFont(), FLinearColor::White);
-			TextItem.Scale = FVector2D(TextScale, TextScale);
-			TextItem.EnableShadow(FLinearColor::Black);
-			Canvas.DrawItem(TextItem);
+			const float LineH = 18.0f * TextScale;
+			float TextY = TileY + TileSizeY * 0.94f - LineH * WrapLines.Num();
+			for (const FString& WrapLine : WrapLines)
+			{
+				FCanvasTextItem TextItem(FVector2D(TileX + TileSizeX * 0.04f, TextY),
+					FText::FromString(WrapLine), GEngine->GetLargeFont(), FLinearColor::White);
+				TextItem.Scale = FVector2D(TextScale, TextScale);
+				TextItem.EnableShadow(FLinearColor::Black);
+				Canvas.DrawItem(TextItem);
+				TextY += LineH;
+			}
 		}
 	}
 

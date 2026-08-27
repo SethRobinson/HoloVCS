@@ -98,9 +98,6 @@ public:
 	//ABI v4 addition: debug visualization mask + cutaway plane (Shift+number hotkeys /
 	//holo.Viz / holo.Cutaway).  Optional; old core DLLs simply lack the export.
 	retro_holo_set_debug_t retro_holo_set_debug = nullptr;
-	//ABI v4 addition: zero-time-advance paused refresh (state pin + rewind inside the
-	//core).  Optional; without it RefreshPausedFrame advances 2/60s per change instead.
-	retro_holo_refresh_paused_t retro_holo_refresh_paused = nullptr;
 	void (*retro_set_audio_sample)(retro_audio_sample_t);
 	void (*retro_set_audio_sample_batch)(retro_audio_sample_batch_t);
 	void (*retro_set_input_poll)(retro_input_poll_t);
@@ -201,7 +198,6 @@ public:
 	string GetSaveStateDir(); //saves/<romdir>/, keeps the top-level folder clean and avoids cross-system name collisions
 	string GetSaveStatePath(); //full path of the current rom's .sav0 in GetSaveStateDir()
 	void ResetRom();
-	void RefreshPausedFrame(); //3DS: re-render the frozen screen after a viz/depth change while paused (muted, no-op otherwise)
 	void DisableAllBlitPasses();
 	bool GetGamePaused() { return m_bGamePaused; }
 	void SetGamePaused(bool bNew);
@@ -223,9 +219,6 @@ public:
 	//slice, 1 layered bands, 2 multiview quilt (LKG builds default to 2; -holobands /
 	//-hololegacy / -holomultiview force one).
 	int m_holoCaptureMode = 1;
-	//paused-refresh settle deadline (0 = none pending): set by RefreshPausedFrame's fast
-	//path, fired from Update's paused branch ~0.35s after the last change
-	double m_pausedRefreshSettleTime = 0;
 	//last consumed quilt packSeq, so unchanged quilts skip the 18MB copy+upload
 	int m_lastQuiltPackSeq = -1;
 	int m_maxSaveStateSize = 0;

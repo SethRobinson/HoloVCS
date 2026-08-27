@@ -79,6 +79,7 @@ static FAutoConsoleCommand CCmdHoloConvergence(
 	{
 		if (args.Num() < 1 || !g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
 		ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+		if (pActor->RefusePausedHoloChange(true)) return;
 		pActor->m_userConv01 = FCString::Atof(*args[0]);
 		pActor->ApplyLayerDepth(); //pushes retro_holo_set_view_params with the new value
 	}));
@@ -113,6 +114,7 @@ static FAutoConsoleCommand CCmdHoloViz(
 		else if (s == TEXT("xray")) pActor->ToggleHoloViz(HOLO_VIZ_XRAY, "X-ray (multiview only)");
 		else
 		{
+			if (pActor->RefusePausedHoloChange(false)) return;
 			pActor->m_holoVizFlags = (uint32)FCString::Atoi(*args[0]);
 			pActor->ApplyHoloViz();
 		}
@@ -127,6 +129,7 @@ static FAutoConsoleCommand CCmdHoloCutaway(
 	{
 		if (args.Num() < 1 || !g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
 		ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+		if (pActor->RefusePausedHoloChange(false)) return;
 		pActor->m_cutaway01 = FMath::Clamp(FCString::Atof(*args[0]), 0.0f, 1.0f);
 		pActor->ApplyHoloViz();
 	}));
@@ -638,11 +641,21 @@ bool ALibretroManagerActor::PushHoloViewParams()
 		m_lastPushedConv = m_userConv01;
 		LogMsg("Multiview view params pushed: depth scale %.2f, convergence %.2f",
 			m_userDepthScale, m_userConv01);
-		//while paused there is no core frame to show the change on - regenerate the
-		//frozen screen (no-op unless 3DS and paused; change-gated so the 1Hz self-heal
-		//never steps the emulator)
-		g_pLibretroManager->RefreshPausedFrame();
 	}
+	return true;
+}
+
+//3DS while PAUSED: the core only renders inside retro_run, so a viz/cutaway change (any
+//capture mode) or a depth/convergence change (multiview, where the parallax lives in the
+//core) has no frame to show itself on.  The savestate-pin re-render tried for this was
+//cut by Seth as bad UI (seconds-long hitches), so the change is refused outright.
+bool ALibretroManagerActor::RefusePausedHoloChange(bool bMode2Only)
+{
+	if (!g_pLibretroManager || g_pLibretroManager->m_emulatorType != EMULATOR_3DS) return false;
+	if (bMode2Only && g_pLibretroManager->m_holoCaptureMode != 2) return false;
+	if (!g_pLibretroManager->GetGamePaused()) return false;
+	LogMsg("Refused holo change while paused");
+	ShowStatusMessage("Can't change that while paused");
 	return true;
 }
 
@@ -710,15 +723,6 @@ void ALibretroManagerActor::ApplyHoloViz()
 	uint32 mask = m_holoVizFlags;
 	if (m_cutaway01 > 0.001f) mask |= HOLO_VIZ_CUTAWAY;
 	g_pLibretroManager->m_core.retro_holo_set_debug(mask, m_cutaway01);
-	if (mask != m_lastPushedVizMask || m_cutaway01 != m_lastPushedCut01)
-	{
-		m_lastPushedVizMask = mask;
-		m_lastPushedCut01 = m_cutaway01;
-		//paused inspection: regenerate the frozen screen with the new debug view
-		//(no-op unless 3DS and paused; change-gated so the 1Hz self-heal never
-		//steps the emulator)
-		g_pLibretroManager->RefreshPausedFrame();
-	}
 }
 
 void ALibretroManagerActor::ToggleHoloViz(uint32 flag, const char* pName)
@@ -729,6 +733,7 @@ void ALibretroManagerActor::ToggleHoloViz(uint32 flag, const char* pName)
 		ShowStatusMessage("Debug views are 3DS-only");
 		return;
 	}
+	if (RefusePausedHoloChange(false)) return;
 	if (!g_pLibretroManager->m_core.retro_holo_set_debug)
 	{
 		ShowStatusMessage("This 3DS core DLL has no debug views (update azahar_libretro.dll)");
@@ -746,6 +751,7 @@ void ALibretroManagerActor::ToggleHoloViz(uint32 flag, const char* pName)
 
 void ALibretroManagerActor::ClearHoloViz()
 {
+	if (RefusePausedHoloChange(false)) return;
 	m_holoVizFlags = 0;
 	m_cutaway01 = 0.0f;
 	ApplyHoloViz();
@@ -754,6 +760,7 @@ void ALibretroManagerActor::ClearHoloViz()
 
 void ALibretroManagerActor::NudgeCutaway(float delta)
 {
+	if (RefusePausedHoloChange(false)) return;
 	m_cutaway01 = FMath::Clamp(m_cutaway01 + delta, 0.0f, 1.0f);
 	ApplyHoloViz();
 	char st[64];
@@ -770,6 +777,8 @@ void ALibretroManagerActor::NudgeCutaway(float delta)
 
 void ALibretroManagerActor::SetUserDepthScale(float scale, bool bShowStatus)
 {
+	//in multiview the depth lives in the core, which cannot re-render while paused
+	if (RefusePausedHoloChange(true)) return;
 	//0 = completely flat is allowed (Seth request); a hair below 0.05 snaps to true 0 so
 	//the [ key can land exactly on "no 3d at all"
 	m_bUserDepthScaleTouched = true;
@@ -790,6 +799,7 @@ void ALibretroManagerActor::SetUserDepthScale(float scale, bool bShowStatus)
 //from there).  holo.Convergence remains the console twin (-1 restores the default).
 void ALibretroManagerActor::NudgeConvergence(float delta)
 {
+	if (RefusePausedHoloChange(true)) return;
 	const float cur = (m_userConv01 >= 0.0f) ? m_userConv01 : 0.35f;
 	m_userConv01 = FMath::Clamp(cur + delta, 0.0f, 1.0f);
 	ApplyLayerDepth(); //pushes the new value (and refreshes a paused screen)

@@ -275,7 +275,8 @@ but burns the 5.6 escape hatch like any other resave.
   reads as "too wide" on the device).
 - On-quilt text renders identically in every tile, which the lens reconstructs as ONE crisp
   screen-locked overlay - use this trick for any HUD text. FPS counter (`lkg.ShowFPS`, default 1)
-  draws top-left; status messages draw at the tile bottom, auto-shrunk to fit the tile width.
+  draws top-left; status messages draw at the tile bottom, WORD-WRAPPED onto up to three
+  full-size lines (Aug 27 2026: the old shrink-one-line-to-fit made long errors unreadable).
 - The Bridge window steals keyboard focus whenever it opens or is clicked (users naturally click
   the hologram), killing all pawn hotkeys and game controls (everything routes through UE input).
   KeepGameWindowFocused() in LibretroManagerActor::Tick polls every 0.3s and bounces focus back
@@ -393,9 +394,9 @@ but burns the 5.6 escape hatch like any other resave.
   behind the screen; 5% per step, `holo.Convergence` stays the console twin, -1 restores
   the 0.35 core default). A "view width" knob was tried on those keys first and removed:
   in the shear model adjacent-view difference IS the depth quantity, so it duplicated
-  [ ]. A viz/depth change while PAUSED
-  re-renders the frozen 3DS screen with zero time advance via the core's
-  retro_holo_refresh_paused state pin (fallback on old DLLs: 4/60s per change). 3DS
+  [ ]. Viz/cutaway/depth/convergence changes that would need a core re-render are
+  REFUSED while the 3DS is paused ("Can't change that while paused" - a savestate-pin
+  re-render was built and cut as bad UI; see docs/3ds_azahar.md round 7). 3DS
   SAVESTATES WORK now (F/G/L + harness): Save3DSStateToFile/Load3DSStateFromFile
   serialize fresh per save (variable-size zstd state, tens of MB) - the fixed-slot
   rewind machinery stays disabled for 3DS (m_maxSaveStateSize 0). USER ZOOM

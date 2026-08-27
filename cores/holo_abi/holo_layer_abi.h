@@ -91,17 +91,6 @@ typedef void (*retro_holo_set_view_params_t)(float separation_scale, float conve
 #define HOLO_VIZ_CUTAWAY       (1u << 7) /* discard fragments nearer than the cutaway plane */
 typedef void (*retro_holo_set_debug_t)(unsigned viz_flags, float cutaway01);
 
-/* v4 addition (additive): optional export `int retro_holo_refresh_paused(int settle)` -
-   regenerate the current frame's holo output with the latest debug/view params while the
-   frontend's emulation is paused. settle=0 is the FAST per-keystroke mode: the core pins
-   its state once per paused stretch and just renders a few frames (the state runs ahead
-   of the pin; the display creeps a few frames per call). settle=1 (call once, debounced
-   after the last change) rewinds to the pin, re-renders it with the final settings, and
-   rewinds again, so display and state both end exactly on the pinned moment. The first
-   normal retro_run also rewinds a dirty pin (unpause before the settle fired).
-   Returns 1 when frames were rendered; 0 = could not render, run real frames instead. */
-typedef int (*retro_holo_refresh_paused_t)(int settle);
-
 #ifdef __cplusplus
 }
 #endif
