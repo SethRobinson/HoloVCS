@@ -573,6 +573,7 @@ void ALibretroManagerActor::SetQuiltCarrierActive(bool bActive)
 	const int carrierIdx = GetLayerCount() + 1;
 	if ((int)m_layerInfo.size() <= carrierIdx || !m_layerInfo[carrierIdx].m_pActor) return;
 	m_bQuiltCarrierActive = bActive;
+	LogMsg("Quilt carrier -> %s", bActive ? "ACTIVE" : "dormant (flat middle-band fallback)");
 	if (!bActive)
 	{
 		//float 4 (viewCount) doubles as the plugin's draw enable; 0 = skip the quilt
@@ -741,6 +742,13 @@ void ALibretroManagerActor::ApplyHoloViz()
 	if (g_pLibretroManager->m_emulatorType != EMULATOR_3DS) return;
 	uint32 mask = m_holoVizFlags;
 	if (m_cutaway01 > 0.001f) mask |= HOLO_VIZ_CUTAWAY;
+	//change-gated: the 1Hz self-heal re-push would spam the log otherwise
+	if (mask != m_lastAppliedVizMask || m_cutaway01 != m_lastAppliedCutaway)
+	{
+		LogMsg("Holo viz push: mask=0x%02x cutaway=%.2f", mask, m_cutaway01);
+		m_lastAppliedVizMask = mask;
+		m_lastAppliedCutaway = m_cutaway01;
+	}
 	g_pLibretroManager->m_core.retro_holo_set_debug(mask, m_cutaway01);
 }
 

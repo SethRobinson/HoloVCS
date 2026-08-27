@@ -1672,8 +1672,16 @@ void retro_video_refresh_callback_holo(const void* data, unsigned width, unsigne
 	//the LKG sprite path blits per-tile (see EnsureQuiltCarrier).  packSeq gates the 18MB
 	//copy so cadence gaps and paused frames cost nothing.
 	const HoloQuiltInfo& quilt = info->quilt;
+	static int s_quiltDormantFrames = 0;
 	if (quilt.used && quilt.pixels && quilt.viewCount >= 2)
 	{
+		if (s_quiltDormantFrames > 0 || g_pLibretroManager->m_lastQuiltPackSeq == -1)
+		{
+			LogMsg("3DS quilt live: %dx%d, %d views (%dx%d), packSeq %d", (int)quilt.width,
+				(int)quilt.height, (int)quilt.viewCount, (int)quilt.cols, (int)quilt.rows,
+				(int)quilt.packSeq);
+		}
+		s_quiltDormantFrames = 0;
 		if (quilt.packSeq != g_pLibretroManager->m_lastQuiltPackSeq)
 		{
 			LayerInfo* pQuiltLayer = pActor->EnsureQuiltCarrier(quilt.width, quilt.height,
@@ -1697,7 +1705,17 @@ void retro_video_refresh_callback_holo(const void* data, unsigned width, unsigne
 	else
 	{
 		//quilt dormant (2D screen flat fallback / mode 1): tell the sprite path to skip
-		//the quilt draw so the flat middle-band composite shows instead
+		//the quilt draw so the flat middle-band composite shows instead.  Logged on the
+		//transition and every ~5s: a quilt that NEVER goes live is the "no 3D at all"
+		//signature (core mirrored zero draws), which used to be completely silent here.
+		if (g_pLibretroManager->m_holoCaptureMode == 2 &&
+			(s_quiltDormantFrames == 0 || (s_quiltDormantFrames % 300) == 0))
+		{
+			LogMsg("3DS quilt dormant %d frames (used=%d views=%d packSeq=%d mode=%d)",
+				s_quiltDormantFrames, (int)quilt.used, (int)quilt.viewCount,
+				(int)quilt.packSeq, g_pLibretroManager->m_holoCaptureMode);
+		}
+		s_quiltDormantFrames++;
 		pActor->SetQuiltCarrierActive(false);
 		g_pLibretroManager->m_lastQuiltPackSeq = -1;
 	}

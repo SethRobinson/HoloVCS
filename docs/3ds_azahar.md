@@ -398,6 +398,57 @@ Round 7 (Aug 27 2026): SETTINGS PERSISTENCE FIXES + DEBUG VISUALIZATIONS.
   mode costs a one-time lazy shader-variant compile hitch on first use; toggling back
   is free.
 
+Round 8 (Aug 27 2026, late): METROID: SAMUS RETURNS MULTIVIEW FIXED (was totally flat
+with x-ray/cutaway dead; Seth's report). TWO stacked core-side causes, pinned in ONE
+armed run by the new mirror-gate diagnostics (below). Neither was the suspected
+SW-vertex-path gap: MSR hardware-accelerates everything (skip sw=0).
+- POST-PROCESS FEEDBACK STAMPS: MSR renders the scene INTO the shipped RT (BOTH eyes,
+  ~95 depth-tested draws/frame each - it really stereo-renders and ships both), copies
+  both eyes out, builds bloom pyramids through display-transfer downscale chains, then
+  stamps the post-processed MONO composite back over the scene RT with depth-less
+  full-screen draws (a replace-blend one plus friends), EVERY frame. The mirror
+  re-drew those screen-locked over every view = byte-identical tiles regardless of
+  what the 91 sheared draws did underneath; x-ray/cutaway only alter sheared draws,
+  so they were invisible too. FIX: HoloHook tracks "scene-derived" buffers per frame
+  (texture copies + non-LCD display transfers whose INPUT is the scene RT, a scene
+  PARTNER, or an already-derived buffer - transitive, covers the mip chains).
+  Partners = inputs of top-LCD-destined transfers, i.e. every RT presented on the top
+  screen INCLUDING the right eye - needed because MSR's left-eye stamps sample the
+  RIGHT eye's bloom copies and top_sources only ever learns the left scan-out chain.
+  The mirror gate skips depth-less post-scene draws that SAMPLE any of these (log
+  reason "stamp"); pre-scene draws and genuine overlays (MSR's VRAM scanline texture)
+  still mirror screen-locked. SM3DL: stamp=0 every frame - its fog compose reads
+  DESTINATION alpha via blending and samples no scene texture, so its verified look
+  is untouched.
+- W-BUFFER SHEAR DEGENERACY: MSR W-buffers (recorded mapping scale=-5.7e-5 off=0
+  wbuf=1); its z_ndc is degenerate and the real depth lives in W, so the z-linear
+  shear produced identical views even where unobstructed. FIX: the shear runs in
+  BUFFER-depth space end to end - UpdateViewShearParams feeds conv/sep straight from
+  the smoothed buffer range plus the recorded viewport mapping, and HoloViewShear
+  reproduces each vertex's buffer depth exactly as the hardware computes it
+  (division-free clip-space forms; glsl_shader_gen.cpp). For the common z-buffer
+  mapping (SM3DL scale=-1/off=0, buffer == z/w) this is ALGEBRAICALLY IDENTICAL to
+  the old (z - conv*w) form; the regression run reproduces the recorded title numbers
+  (far sky up to +74px RIGHT, near room LEFT, logo 0, DepthScale 5 views 0->13).
+  VERIFIED in-level (gunship-arrival savestate, flat build -holomultiview, 175%
+  default, views 0->24 measured with quilt_patch_shift.py): far sky +69px RIGHT,
+  near gunship -36px LEFT, depth-ordered spread between; x-ray now floods visibly
+  (MSR's overdraw at the constant-alpha 0.28 washes very bright - per-game tuning
+  knob if it bothers anyone). Band mode (-holobands) untouched by both fixes.
+- MIRROR-GATE DIAGNOSTICS (landed first; found all of the above in one run): the
+  armed draw log now carries V lines (one per top-sized draw: addr, dt, acc,
+  t0=first sampled texture addr, verdict CAP/fb/vp/gate/addr/stamp, shear mode),
+  an M line per ship (cap/mv/sheared/locked/skip[sw fail fb vp gate addr stamp]/
+  gadget/srcs/depth_addr/sep/conv/mvtex) and an MP line per present (live counters,
+  transfer_ever/has_src/quilt_ever/packseq). The old mv counters only printed from
+  the quilt dump, which early-outs when mv_color_tex==0 - unreachable EXACTLY when
+  every draw skipped and the numbers mattered. holo_view_log gained mvtex=/swtot=
+  and prints the mapping at full precision (the old %.4f showed MSR's scale as
+  -0.0000). Frontend log lines (Saved/Logs / log.txt): "3DS quilt live/dormant ..."
+  from the video callback (a quilt that never goes live IS the flat-hologram
+  signature), "Quilt carrier -> ACTIVE/dormant", and change-gated "Holo viz push:
+  mask=0x.. cutaway=..".
+
 NOT yet done: per-game depth-band profiles, near-band HUD routing knob, sound
 verification, release-bat/core-build integration, non-uniform bands via depth01.
 Fallbacks: no interlock extension -> packed RGB565 opaque capture; no GL4.3 compute ->

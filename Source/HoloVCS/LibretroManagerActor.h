@@ -189,6 +189,9 @@ public:
 	//3DS, cleared by SetEmulatorData when switching to another system
 	uint32 m_holoVizFlags = 0;
 	float m_cutaway01 = 0.0f;
+	//ApplyHoloViz change-gated logging (the 1Hz self-heal re-pushes the same mask)
+	uint32 m_lastAppliedVizMask = 0xFFFFFFFF;
+	float m_lastAppliedCutaway = -1.0f;
 	float m_depthOffsetForAllLayers = 0;
 	bool m_setTextureSmoothing = false;
 	int m_layerWidth = 256;
