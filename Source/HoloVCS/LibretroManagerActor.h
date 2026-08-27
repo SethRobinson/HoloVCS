@@ -123,6 +123,7 @@ public:
 	int GetUnusedLayerID(); //returns -1 for none
 	int GetLayerCount() { return m_layerCount; }
 	void SetUserDepthScale(float scale, bool bShowStatus = true); //clamps, re-spreads the live layers; bShowStatus=false for per-tick ramps (no text in GIF frames)
+	void Toggle2D3D(); //'\' hotkey: 0% depth <-> the depth you were at (all systems)
 	void ApplyLayerDepth(); //reposition existing layer actors to the current depth spread (no respawn)
 	bool PushHoloViewParams(); //push depth/conv to the 3DS multiview core; warns ONCE if the export is missing (stale DLL)
 	void SetUserZoom(float factor, bool bShowStatus = true); //user zoom as a persistent framing factor (= and - hotkeys, holo.Zoom)
@@ -158,6 +159,7 @@ public:
 	int m_layerCount = 5;
 	float m_total3dDepth = 150;
 	float m_userDepthScale = 1.0f; //user multiplier on m_total3dDepth ([ and ] hotkeys); survives rom switches
+	float m_stashed3DDepth = 0.0f; //what the '\' 2D/3D toggle restores (the depth before it zeroed)
 	bool m_bUserDepthScaleTouched = false; //true once the user sets a depth scale (hotkeys/console/harness); per-system defaults in SetEmulatorData only apply while false
 	//'{' and '}' hotkeys: nudge the multiview convergence (m_userConv01 below) - the
 	//depth knob's true sibling: it moves the zero-parallax plane instead of scaling the

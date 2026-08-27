@@ -1154,13 +1154,13 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 		m_pLibretroManagedActor->m_coreLayerScale = FVector2D(3.5f, 2.2f);
 		m_pLibretroManagedActor->m_corePosition = FVector2D(0, 0);
 		m_pLibretroManagedActor->m_bgAllowShadows = false;
-		//Seth's preferred 3DS depth (Aug 27 2026: 90% read too flat once multiview was
-		//dialed in, he asked for 155%); direct assign (not SetUserDepthScale) so no
-		//status text fires and InitLayers just picks it up
+		//Seth's preferred 3DS depth (Aug 27 2026: 90% -> 155% -> 175% as multiview got
+		//dialed in); direct assign (not SetUserDepthScale) so no status text fires and
+		//InitLayers just picks it up
 		if (!m_pLibretroManagedActor->m_bUserDepthScaleTouched)
 		{
-			m_pLibretroManagedActor->m_userDepthScale = 1.55f;
-			LogMsg("3DS: depth scale defaulting to 155%%");
+			m_pLibretroManagedActor->m_userDepthScale = 1.75f;
+			LogMsg("3DS: depth scale defaulting to 175%%");
 		}
 		m_targetFPS = 59.8331; //real 3DS refresh; audio rate comes from retro_get_system_av_info
 		m_touchCursorShownOnce = false; //re-arm the "show the cursor briefly at boot" hint
@@ -2215,6 +2215,7 @@ void LibretroManager::Load3DSStateFromFile()
 	LogMsg("Loading 3DS state from %s (%d KB)", fileName.c_str(), data.Num() / 1024);
 	if (m_core.retro_unserialize(data.GetData(), (size_t)data.Num()))
 	{
+		LogMsg("3DS state load OK");
 		ShowStatusMessage("Loaded state.");
 		//while paused, run a few muted frames so the frozen screen shows the LOADED
 		//state instead of the stale pre-load frame (no savestate tricks here - you just
@@ -2232,7 +2233,8 @@ void LibretroManager::Load3DSStateFromFile()
 	}
 	else
 	{
-		//covers the legacy bogus 0-byte-era .sav0 files and cross-version states alike
+		//covers the legacy bogus 0-byte-era .sav0 files and truly incompatible states
+		LogMsg("3DS state load REJECTED by the core");
 		ShowStatusMessage("Load state failed (state from another game or core version?)");
 	}
 }

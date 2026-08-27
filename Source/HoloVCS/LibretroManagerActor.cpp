@@ -809,6 +809,25 @@ void ALibretroManagerActor::NudgeConvergence(float delta)
 	ShowStatusMessage(st);
 }
 
+//'\' hotkey: instant 2D/3D toggle.  Zeroing stashes the current depth so the next press
+//restores exactly where you were; falls back to 100% if there is nothing to restore.
+//Works for every system; on 3DS multiview it is refused while paused like the other
+//depth keys (the core cannot re-render a paused frame).
+void ALibretroManagerActor::Toggle2D3D()
+{
+	if (RefusePausedHoloChange(true)) return;
+	if (m_userDepthScale > 0.0f)
+	{
+		m_stashed3DDepth = m_userDepthScale;
+		SetUserDepthScale(0.0f, false);
+		ShowStatusMessage("2D mode");
+	}
+	else
+	{
+		SetUserDepthScale(m_stashed3DDepth > 0.0f ? m_stashed3DDepth : 1.0f);
+	}
+}
+
 //The LookingGlassCapture actor in the map was placed/sized for the old 5.6-era world scale, and each
 //emulator uses a wildly different scale now (NES ~41 units, Atari ~445, VB ~310), so a static capture
 //can never frame them all.  Refit it to the current layer AABB whenever the layers rebuild.  The

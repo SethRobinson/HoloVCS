@@ -1474,6 +1474,13 @@ void APlayerPawn::OnRightBracketKey()
 	pActor->SetUserDepthScale(FMath::Max(pActor->m_userDepthScale * 1.15f, pActor->m_userDepthScale + 0.06f));
 }
 
+void APlayerPawn::OnBackslashKey()
+{
+	if (!g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
+	if (HelpSwallowedInput()) return;
+	g_pLibretroManager->m_pLibretroManagedActor->Toggle2D3D();
+}
+
 void APlayerPawn::OnSlashKey()
 {
 	if (!g_pLibretroManager) return;
@@ -1546,6 +1553,7 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(EKeys::LeftBracket, IE_Repeat, this, &APlayerPawn::OnLeftBracketKey);
 	PlayerInputComponent->BindKey(EKeys::RightBracket, IE_Pressed, this, &APlayerPawn::OnRightBracketKey);
 	PlayerInputComponent->BindKey(EKeys::RightBracket, IE_Repeat, this, &APlayerPawn::OnRightBracketKey);
+	PlayerInputComponent->BindKey(EKeys::Backslash, IE_Pressed, this, &APlayerPawn::OnBackslashKey); //2D/3D toggle (Backslash freed when NES Select moved to Tab)
 	PlayerInputComponent->BindKey(EKeys::Slash, IE_Pressed, this, &APlayerPawn::OnSlashKey); //Slash also fires with Shift held, so ? works
 	//; and ' repeat so holding a key sweeps the 3DS multiview cutaway plane (band-mode
 	//peel just steps faster, harmless)

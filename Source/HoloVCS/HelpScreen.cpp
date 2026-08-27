@@ -133,6 +133,7 @@ FString HelpScreen::BuildHelpText() const
 	s += TEXT("V / click both sticks\tFly camera on/off\n");
 	s += TEXT("\n");
 	s += TEXT("[ / ]\tLess / more 3D depth\n");
+	s += TEXT("\\\tToggle 2D / 3D\n");
 	s += TEXT("{ / }\tConvergence: pop-out amount (3DS)\n");
 	s += TEXT("; / '\tPeel layers (3DS multiview: cutaway)\n");
 	s += TEXT("= / -\tZoom in / out\n");

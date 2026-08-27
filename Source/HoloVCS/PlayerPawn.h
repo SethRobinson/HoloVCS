@@ -294,6 +294,7 @@ public:
 
 	void OnLeftBracketKey();
 	void OnRightBracketKey();
+	void OnBackslashKey(); //instant 2D/3D toggle
 	void OnSlashKey();
 	void OnAnyKey();
 

@@ -382,11 +382,13 @@ but burns the 5.6 escape hatch like any other resave.
 - Hotkeys [ and ] scale the 3D depth spread live (m_userDepthScale on ALibretroManagerActor,
   multiplies m_total3dDepth, survives rom switches; ApplyLayerDepth re-spreads the existing
   layer actors absolutely and re-runs both camera/capture fits - no InitLayers hitch).
-  Per-system DEFAULT: 155% for 3DS (Seth request Aug 27 2026; was 90%), 100% otherwise,
-  applied in SetEmulatorData only until
+  Per-system DEFAULT: 175% for 3DS (Seth request Aug 27 2026; was 90%, then 155%), 100%
+  otherwise, applied in SetEmulatorData only until
   the user touches the scale (m_bUserDepthScaleTouched latch set by SetUserDepthScale). Console
   twin for the harness: `holo.DepthScale <mult>` (clamped 0.0-5.0; below 0.05 snaps to a true
-  0 = completely flat, and `]` climbs back out of 0). On 3DS multiview the value reaches the
+  0 = completely flat, and `]` climbs back out of 0). `\` is an instant 2D/3D toggle
+  (Toggle2D3D: zeroing stashes the current depth, the next press restores it; Backslash
+  was freed when NES Select moved to Tab). On 3DS multiview the value reaches the
   core through PushHoloViewParams (called from every InitLayers, ResetRom, and a 1Hz Tick
   self-heal - it used to be pushed only on a keypress, so the default never arrived; a
   missing export = stale core DLL now warns once instead of failing silently). { and }

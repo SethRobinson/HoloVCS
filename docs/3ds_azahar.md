@@ -304,7 +304,10 @@ Round 7 (Aug 27 2026): SETTINGS PERSISTENCE FIXES + DEBUG VISUALIZATIONS.
   - Shift+3 unlit: lighting forced full-bright (UserConfig FS variant)
   - Shift+4 depth B&W: per-pixel scene depth as grayscale, near = white
   - Shift+5 depth heatmap: same normalized depth through an orange->yellow->blue ramp
-    (4/5 are mutually exclusive, frontend-enforced)
+    (4/5 are mutually exclusive, frontend-enforced). While either depth view is on,
+    modulate-only draws (blend src RGB factor Zero: the stencil-masked shadow/dim
+    quads) are SKIPPED core-side - they deposit no color of their own and only
+    stamped dark blotches over the depth color coding (Seth's report).
   - Shift+6 slice rainbow: band mode tints each depth band a hue (THE shadow-buffer
     showpiece); multiview tints each VIEW a hue, so head movement sweeps the rainbow
     on device (pack compute uniform, zero shader recompile)
@@ -393,9 +396,14 @@ requirements are missing).
   Save3DSStateToFile/Load3DSStateFromFile (fresh serialize through a temporary buffer
   into the normal saves/3ds/<rom>.sav0 path; loading while paused auto-refreshes the
   frozen screen and re-pins the paused-refresh state). Old bogus 0-byte .sav0 files
-  fail the load with a clear message. The 3DS depth scale DEFAULTS to 155%
-  (SetEmulatorData; was 90% until Seth's Aug 27 request; a user [ ] / holo.DepthScale
-  adjustment overrides it for the session).
+  fail the load with a clear message. CROSS-BUILD LOADS (fixed Aug 27 2026): the stock
+  LoadStateBuffer hard-failed when the state's git revision differed from the running
+  core, so every core rebuild invalidated every existing .sav0 ("works in the session I
+  saved it, fails after restart" = a restage had swapped the DLL in between). The fork
+  now WARNS and attempts the load; a genuinely incompatible archive still throws and
+  fails with the frontend's message. The 3DS depth scale DEFAULTS to 175%
+  (SetEmulatorData; 90% then 155% until Seth's Aug 27 requests; a user [ ] /
+  holo.DepthScale adjustment overrides it for the session).
 - ROMs are huge (512MB): LoadRom does NOT read the file into RAM for 3DS; it hashes the
   first 1MB for the GameProfileManager key and passes only ginfo.path (the core loads the
   file itself, need_fullpath).
