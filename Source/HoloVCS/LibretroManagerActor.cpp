@@ -463,21 +463,30 @@ void ALibretroManagerActor::SetUserDepthScale(float scale, bool bShowStatus)
 //Device aspect (width/height) of the connected Looking Glass panel, or 0 when no capture
 //actor exists (flat build / no plugin).  Lets layout adapt per panel: the portrait Go
 //(~0.56) has spare vertical room that squarer panels don't.
-static float GetLookingGlassDeviceAspect(UWorld* pWorld)
+//The hologram capture actor, resolved by class name (zero compile-time plugin dependency).
+//nullptr in the flat build / when the plugin is disabled.
+static AActor* GetLookingGlassCaptureActor(UWorld* pWorld)
 {
-	if (!pWorld) return 0.0f;
+	if (!pWorld) return nullptr;
 	for (TActorIterator<AActor> it(pWorld); it; ++it)
 	{
-		if (it->GetClass()->GetName() != TEXT("LookingGlassCapture")) continue;
-		for (UActorComponent* pComp : it->GetComponents())
+		if (it->GetClass()->GetName() == TEXT("LookingGlassCapture")) return *it;
+	}
+	return nullptr;
+}
+
+static float GetLookingGlassDeviceAspect(UWorld* pWorld)
+{
+	AActor* pCapture = GetLookingGlassCaptureActor(pWorld);
+	if (!pCapture) return 0.0f;
+	for (UActorComponent* pComp : pCapture->GetComponents())
+	{
+		if (pComp->GetClass()->GetName() != TEXT("LookingGlassSceneCaptureComponent2D")) continue;
+		if (UFunction* pAspectFunc = pComp->FindFunction(TEXT("GetAspectRatio")))
 		{
-			if (pComp->GetClass()->GetName() != TEXT("LookingGlassSceneCaptureComponent2D")) continue;
-			if (UFunction* pAspectFunc = pComp->FindFunction(TEXT("GetAspectRatio")))
-			{
-				struct { float ReturnValue; } aspectParams = { 0.0f };
-				pComp->ProcessEvent(pAspectFunc, &aspectParams);
-				if (aspectParams.ReturnValue > 0.05f) return aspectParams.ReturnValue;
-			}
+			struct { float ReturnValue; } aspectParams = { 0.0f };
+			pComp->ProcessEvent(pAspectFunc, &aspectParams);
+			if (aspectParams.ReturnValue > 0.05f) return aspectParams.ReturnValue;
 		}
 	}
 	return 0.0f;
@@ -569,11 +578,19 @@ void FitLookingGlassCaptureToLayers(UWorld* pWorld)
 			vWallPos.X, vWallPos.Y, vWallPos.Z, box.Max.X);
 	}
 
+	//While the fly cam is driving the capture, keep the list/size upkeep below but don't yank
+	//the actor back to center (layer rebuilds - rom switches, depth ramps - land here mid-flight)
+	const bool bFlyCamOut = g_pLibretroManager && g_pLibretroManager->m_pPlayerPawn &&
+		g_pLibretroManager->m_pPlayerPawn->IsFlyCamEnabled();
+
 	for (TActorIterator<AActor> it(pWorld); it; ++it)
 	{
 		if (it->GetClass()->GetName() != TEXT("LookingGlassCapture")) continue;
 
-		it->SetActorLocation(box.GetCenter());
+		if (!bFlyCamOut)
+		{
+			it->SetActorLocation(box.GetCenter());
+		}
 
 		FVector vSize = box.GetSize();
 
@@ -681,6 +698,40 @@ void FitLookingGlassCaptureToLayers(UWorld* pWorld)
 			}
 		}
 	}
+}
+
+//While the fly cam is out on the LKG build it drives the hologram capture directly.  A rotated
+//capture makes the sprite fast path bail to the scene-capture quilt (~13fps, accepted - this is
+//a debug/exploration mode), so the device shows the diorama from any angle.
+void ALibretroManagerActor::SetLKGCaptureFlyTransform(const FVector& pos, const FRotator& rot)
+{
+	if (AActor* pCapture = GetLookingGlassCaptureActor(GetWorld()))
+	{
+		pCapture->SetActorLocation(pos);
+		pCapture->SetActorRotation(rot);
+	}
+}
+
+bool ALibretroManagerActor::GetLKGCaptureTransform(FVector& pos, FRotator& rot)
+{
+	if (AActor* pCapture = GetLookingGlassCaptureActor(GetWorld()))
+	{
+		pos = pCapture->GetActorLocation();
+		rot = pCapture->GetActorRotation();
+		return true;
+	}
+	return false;
+}
+
+//Fly-cam exit: back to the fitted framing.  The fit never touches rotation, and only an
+//unrotated capture qualifies for the 60fps sprite path, so zero it explicitly.
+void ALibretroManagerActor::RefitLKGCapture()
+{
+	if (AActor* pCapture = GetLookingGlassCaptureActor(GetWorld()))
+	{
+		pCapture->SetActorRotation(FRotator::ZeroRotator);
+	}
+	FitLookingGlassCaptureToLayers(GetWorld());
 }
 
 int ALibretroManagerActor::GetActiveLayerIDByDistanceMod(float mod)

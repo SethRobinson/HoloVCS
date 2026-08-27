@@ -364,6 +364,14 @@ void APlayerPawn::UpdateFlyCamera(float DeltaTime)
 
 	m_pFlatCamera->SetWorldLocation(m_flyPos);
 	m_pFlatCamera->SetWorldRotation(camRot);
+
+	//LKG build: the fly cam flies the HOLOGRAM - drive the capture actor with the same transform.
+	//Rotation kicks the renderer off the sprite fast path onto the scene-capture quilt (~13fps
+	//while flying, restored on exit).  No-op on the flat build, where no capture actor exists.
+	if (g_pLibretroManager && g_pLibretroManager->m_pLibretroManagedActor)
+	{
+		g_pLibretroManager->m_pLibretroManagedActor->SetLKGCaptureFlyTransform(m_flyPos, camRot);
+	}
 }
 
 void APlayerPawn::SetFlyCamEnabled(bool bEnable)
@@ -380,6 +388,19 @@ void APlayerPawn::SetFlyCamEnabled(bool bEnable)
 		}
 		m_flyYaw = m_dispYaw;
 		m_flyPitch = m_dispPitch;
+		//LKG build: the fly cam flies the hologram, so seed at the CAPTURE actor instead - the
+		//layer stack center.  The device view starts framed where it already is, and the focal
+		//plane stays on the layers (which is where the panel is sharp).  Right stick then spins
+		//the diorama in place; left stick pans; triggers rise/sink.
+		FVector capPos;
+		FRotator capRot;
+		if (g_pLibretroManager && g_pLibretroManager->m_pLibretroManagedActor &&
+			g_pLibretroManager->m_pLibretroManagedActor->GetLKGCaptureTransform(capPos, capRot))
+		{
+			m_flyPos = capPos;
+			m_flyYaw = (float)capRot.Yaw;     //normally 0 - the fit keeps the capture unrotated
+			m_flyPitch = (float)capRot.Pitch;
+		}
 		m_flySpeedMult = 1.0f;
 		//the pad flies the camera now - release everything it was holding in the game.
 		//(A keyboard BUTTON held across the toggle is lost until re-pressed - acceptable;
@@ -396,11 +417,18 @@ void APlayerPawn::SetFlyCamEnabled(bool bEnable)
 			g_pLibretroManager->m_joyPad.m_axisRY = 0;
 		}
 		m_bFlyCam = true;
-		ShowStatusMessage("Fly camera ON (Start+L-stick click or V to exit)");
+		ShowStatusMessage("Fly camera ON (click both sticks or V to exit)");
 	}
 	else
 	{
 		m_bFlyCam = false;
+		//LKG build: put the hologram capture back on its fitted, unrotated framing (this also
+		//returns the renderer to the 60fps sprite path).  m_bFlyCam is already false so the
+		//fit's fly gate re-centers the actor.
+		if (g_pLibretroManager && g_pLibretroManager->m_pLibretroManagedActor)
+		{
+			g_pLibretroManager->m_pLibretroManagedActor->RefitLKGCapture();
+		}
 		//hand back to the orbit along the ray we're already on: aim at the pivot from here,
 		//keep the current distance, and the fit logic walks it to whatever it needs
 		FVector toPivot = m_camPivot - m_flyPos;
@@ -416,6 +444,21 @@ void APlayerPawn::SetFlyCamEnabled(bool bEnable)
 		ShowStatusMessage("Fly camera OFF");
 	}
 	LogMsg("Fly camera %s", m_bFlyCam ? "ON" : "OFF");
+}
+
+//holo.FlyPose - place the fly camera exactly (the harness can exec but can't move a gamepad
+//stick; also handy for repeatable angle shots on the device).  Turns fly mode on if needed.
+void APlayerPawn::SetFlyPose(float yaw, float pitch, bool bHasPos, const FVector& posOffset)
+{
+	SetFlyCamEnabled(true); //no-op when already flying
+	m_flyYaw = FRotator::NormalizeAxis(yaw);
+	m_flyPitch = FMath::Clamp(pitch, -m_flyPitchLimit, m_flyPitchLimit);
+	if (bHasPos)
+	{
+		m_flyPos = m_camPivot + posOffset;
+	}
+	LogMsg("holo.FlyPose: yaw %.1f pitch %.1f at %.0f,%.0f,%.0f",
+		m_flyYaw, m_flyPitch, m_flyPos.X, m_flyPos.Y, m_flyPos.Z);
 }
 
 //---- Scripted camera moves for GIF capture.  Feedback is log-only on purpose: a status
@@ -524,13 +567,29 @@ static APlayerPawn* GetHoloPawn()
 //The harness can `exec` but cannot press a gamepad chord.
 static FAutoConsoleCommand CCmdHoloFlyCam(
 	TEXT("holo.FlyCam"),
-	TEXT("Toggle the debug fly camera (same as V / Start+L-stick click). Usage: holo.FlyCam [0|1]"),
+	TEXT("Toggle the debug fly camera (same as V / clicking both sticks). Usage: holo.FlyCam [0|1]"),
 	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
 	{
 		APlayerPawn* pPawn = GetHoloPawn();
 		if (!pPawn) return;
 		bool bEnable = args.Num() > 0 ? (FCString::Atoi(*args[0]) != 0) : !pPawn->IsFlyCamEnabled();
 		pPawn->SetFlyCamEnabled(bEnable);
+	}));
+
+static FAutoConsoleCommand CCmdHoloFlyPose(
+	TEXT("holo.FlyPose"),
+	TEXT("Place the fly camera exactly (enables fly mode if off). Usage: holo.FlyPose <yaw> <pitch> [dx dy dz offset from the layer-stack center]"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		APlayerPawn* pPawn = GetHoloPawn();
+		if (!pPawn || args.Num() < 2) return;
+		const bool bHasPos = args.Num() >= 5;
+		FVector off = FVector::ZeroVector;
+		if (bHasPos)
+		{
+			off = FVector(FCString::Atof(*args[2]), FCString::Atof(*args[3]), FCString::Atof(*args[4]));
+		}
+		pPawn->SetFlyPose(FCString::Atof(*args[0]), FCString::Atof(*args[1]), bHasPos, off);
 	}));
 
 static FAutoConsoleCommand CCmdHoloCamSweep(
@@ -852,6 +911,13 @@ void APlayerPawn::JoyPad_A_Released(FKey key)
 void APlayerPawn::JoyPad_Y_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
+	//L-stick click + Y = pause toggle (the pad twin of P).  Checked before the fly gate on
+	//purpose: pausing while flying freezes the game so the diorama can be inspected mid-frame.
+	if (m_bPadL3Held && key.IsGamepadKey())
+	{
+		OnPKey();
+		return;
+	}
 	if (m_bFlyCam && key.IsGamepadKey()) return;
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::Gamepad_FaceButton_Top)
 	{
@@ -898,21 +964,12 @@ void APlayerPawn::JoyPad_X_Released(FKey key)
 void APlayerPawn::JoyPad_Start_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
-	if (key.IsGamepadKey())
-	{
-		//the fly-cam chord reads this flag, NOT the game bit, which fly mode keeps clear
-		m_bPadStartHeld = true;
-		if (m_bFlyCam) return; //pad Start must not pause/menu the game while flying
-	}
+	if (m_bFlyCam && key.IsGamepadKey()) return; //pad Start must not pause/menu the game while flying
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START] = true;
 }
 
 void APlayerPawn::JoyPad_Start_Released(FKey key)
 {
-	if (key.IsGamepadKey())
-	{
-		m_bPadStartHeld = false;
-	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START] = false;
 }
 
@@ -940,10 +997,11 @@ void APlayerPawn::JoyPad_LShoulder_Pressed(FKey key)
 		ShowStatusMessage(st);
 		return;
 	}
-	//gamepad system hotkeys all require HOLDING START (Seth: bare buttons kept triggering
-	//them by accident).  With START held the press is a pure hotkey - the game does not see
-	//the button id.  Without START, shoulders/triggers are ordinary L/R/ZL/ZR buttons.
-	if (g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START])
+	//gamepad system hotkeys all require HOLDING THE LEFT-STICK CLICK (bare buttons kept
+	//triggering them by accident, and the previous modifier - Start - popped the game's
+	//Start menu on every chord).  With L3 held the press is a pure hotkey - the game does
+	//not see the button id.  Without it, shoulders/triggers are ordinary L/R/ZL/ZR buttons.
+	if (m_bPadL3Held)
 	{
 		g_pLibretroManager->SaveStateToFile();
 		return;
@@ -967,7 +1025,7 @@ void APlayerPawn::JoyPad_RShoulder_Pressed(FKey key)
 		ShowStatusMessage(st);
 		return;
 	}
-	if (g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START])
+	if (m_bPadL3Held)
 	{
 		g_pLibretroManager->LoadStateFromFile();
 		return;
@@ -979,25 +1037,28 @@ void APlayerPawn::JoyPad_RShoulder_Pressed(FKey key)
 void APlayerPawn::JoyPad_LeftStick_Pressed()
 {
 	if (HelpSwallowedInput()) return;
-	//START + L-stick click toggles the debug fly camera (same chord family as the
-	//shoulder/trigger hotkeys above).  m_bPadStartHeld covers the EXIT press, when fly
-	//mode is keeping the game-facing Start bit clear.
-	if (m_bPadStartHeld || g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START])
-	{
-		SetFlyCamEnabled(!m_bFlyCam);
-		return;
-	}
-	if (m_bFlyCam) return; //bare L3 is a game button; the game isn't listening to the pad now
-	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L3] = true;
+	//The left-stick click is the pad hotkey chord MODIFIER (L3+RB = load state, L3+R3 =
+	//fly camera, etc - see the shoulder/trigger/Y handlers).  It is deliberately NEVER
+	//forwarded to the core: Start used to be the modifier and every chord also popped the
+	//game's Start menu.  No supported core uses a stick click anyway (the L3/L2 bits some
+	//cores read come from the right-stick AXIS in RMove_YAxis).
+	m_bPadL3Held = true;
 }
 void APlayerPawn::JoyPad_LeftStick_Released()
 {
-	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L3] = false;
+	m_bPadL3Held = false;
 }
 
 void APlayerPawn::JoyPad_RightStick_Pressed()
 {
 	if (HelpSwallowedInput()) return;
+	//L-stick click + R-stick click toggles the debug fly camera (works to EXIT too - fly
+	//mode withholds the pad from the game but these handlers still run)
+	if (m_bPadL3Held)
+	{
+		SetFlyCamEnabled(!m_bFlyCam);
+		return;
+	}
 	if (m_bFlyCam) return; //gamepad-only binding
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS)
 	{
@@ -1020,9 +1081,9 @@ void APlayerPawn::JoyPad_RTrigger_Pressed()
 {
 	if (HelpSwallowedInput()) return;
 	if (m_bFlyCam) return; //gamepad-only binding; the analog trigger axes fly the camera up/down
-	if (g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START])
+	if (m_bPadL3Held)
 	{
-		g_pLibretroManager->ModRom(1); //START + right trigger = next game
+		g_pLibretroManager->ModRom(1); //L-stick click + right trigger = next game
 		return;
 	}
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS)
@@ -1038,9 +1099,9 @@ void APlayerPawn::JoyPad_LTrigger_Pressed()
 {
 	if (HelpSwallowedInput()) return;
 	if (m_bFlyCam) return; //gamepad-only binding; the analog trigger axes fly the camera up/down
-	if (g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_START])
+	if (m_bPadL3Held)
 	{
-		OnResetGame(); //START + left trigger = reset game
+		OnResetGame(); //L-stick click + left trigger = reset game
 		return;
 	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L2] = true;
@@ -1407,7 +1468,7 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(EKeys::Eight, IE_Pressed, this, &APlayerPawn::OnNum8Key);
 	PlayerInputComponent->BindKey(EKeys::P, IE_Pressed, this, &APlayerPawn::OnPKey);
 	PlayerInputComponent->BindKey(EKeys::N, IE_Pressed, this, &APlayerPawn::OnNKey);
-	PlayerInputComponent->BindKey(EKeys::V, IE_Pressed, this, &APlayerPawn::OnVKey); //fly camera toggle (pad chord: Start + L-stick click)
+	PlayerInputComponent->BindKey(EKeys::V, IE_Pressed, this, &APlayerPawn::OnVKey); //fly camera toggle (pad chord: L-stick click + R-stick click)
 	PlayerInputComponent->BindKey(EKeys::LeftBracket, IE_Pressed, this, &APlayerPawn::OnLeftBracketKey);
 	PlayerInputComponent->BindKey(EKeys::LeftBracket, IE_Repeat, this, &APlayerPawn::OnLeftBracketKey);
 	PlayerInputComponent->BindKey(EKeys::RightBracket, IE_Pressed, this, &APlayerPawn::OnRightBracketKey);

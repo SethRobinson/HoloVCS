@@ -54,7 +54,8 @@ The core is based on [Azahar](https://github.com/azahar-emu/azahar), the open-so
 - 3DS dumps that are merely flagged as encrypted (common with dumping tools) now load automatically; only genuinely encrypted dumps are refused, with a clear on-screen message.
 - The F and G keys now save and load state directly as documented, and the savestate hotkeys say so on systems without savestate support instead of failing silently.
 - The 3D depth defaults to 90% on the 3DS for better framing on the device; manual depth adjustments still stick for the session.
-- Added a debug fly camera (V key or Start + left stick click) and scripted camera moves for capturing footage.
+- Added a debug fly camera (V key, or hold the left stick click and press the right stick click) and scripted camera moves for capturing footage. On a Looking Glass, the fly camera flies the hologram itself so you can view the diorama layers from any angle (the frame rate drops while flying and recovers on exit).
+- Gamepad system hotkeys now chord off the left stick click instead of Start, so using them no longer opens the game's Start menu: hold the left stick click and press LB/RB for save/load state, LT/RT for reset/next game, or Y to pause.
 
 ### Version 1.4 - August 20, 2026
 

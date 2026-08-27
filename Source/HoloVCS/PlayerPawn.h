@@ -86,8 +86,8 @@ protected:
 	UPROPERTY(EditAnywhere)
 	float m_manualPitchLimit = 85.0f;
 
-	//---- Debug fly camera (Start + L-stick click on the pad, or V).  The gamepad flies the
-	//camera while the game keeps running; keyboard input still reaches the game. ----
+	//---- Debug fly camera (L-stick click + R-stick click on the pad, or V).  The gamepad
+	//flies the camera while the game keeps running; keyboard input still reaches the game. ----
 
 	//Movement speed at full stick, as a fraction of the layer AABB's largest dimension per
 	//second (each system uses a wildly different world scale: NES ~41 units, Atari ~445, VB ~310)
@@ -113,9 +113,11 @@ protected:
 	float m_flyYaw = 0;
 	float m_flyPitch = 0;
 	float m_flySpeedMult = 1.0f; //runtime speed scale, LB/RB halve/double it while flying
-	//Physical gamepad Start, tracked separately from the game-facing button bit because fly
-	//mode suppresses that bit (the exit chord still has to read "Start is held" somewhere)
-	bool m_bPadStartHeld = false;
+	//Physical gamepad left-stick click: the chord MODIFIER for all pad system hotkeys
+	//(L3+RB = load state etc).  It is a pure modifier - never forwarded to the core - so
+	//chording can't leak a button into the game (Start used to be the modifier and every
+	//chord popped the game's Start menu).
+	bool m_bPadL3Held = false;
 
 	//Gamepad-only mirrors of the merged Move/RMove axes (PadLX..PadRT in DefaultInput.ini,
 	//identical key+scale, bound FIRST so they're fresh): merged - mirror = keyboard exactly,
@@ -185,9 +187,13 @@ public:
 	//since the plugin owns the viewport.
 	void FitFlatCameraToLayers();
 
-	//Debug fly camera toggle (Start + L-stick click, V key, or console holo.FlyCam)
+	//Debug fly camera toggle (L-stick click + R-stick click, V key, or console holo.FlyCam)
 	void SetFlyCamEnabled(bool bEnable);
 	bool IsFlyCamEnabled() const { return m_bFlyCam; }
+
+	//Place the fly camera exactly (console holo.FlyPose - the harness can't move a gamepad
+	//stick).  Enables fly mode if off; posOffset is relative to the layer-stack center.
+	void SetFlyPose(float yaw, float pitch, bool bHasPos, const FVector& posOffset);
 
 	//Scripted camera moves for GIF capture (console holo.Cam* / holo.DepthRamp commands).
 	//pitch = CAM_PITCH_KEEP means "hold whatever pitch the camera has right now".
@@ -221,13 +227,13 @@ public:
 	void JoyPad_A_Pressed(FKey key);  //key-aware: fly mode blocks the gamepad button, Space still plays
 	void JoyPad_A_Released(FKey key);
 
-	void JoyPad_Y_Pressed(FKey key); //key-aware: the 3DS maps the gamepad TOP face button to its X (positional)
+	void JoyPad_Y_Pressed(FKey key); //key-aware: L3+Y chord = pause; the 3DS maps the gamepad TOP face button to its X (positional)
 	void JoyPad_Y_Released(FKey key);
 
 	void JoyPad_X_Pressed(FKey key); //key-aware: the 3DS maps the gamepad LEFT face button to its Y (positional)
 	void JoyPad_X_Released(FKey key);
 
-	void JoyPad_Start_Pressed(FKey key);  //key-aware: tracks m_bPadStartHeld for the fly-cam chord
+	void JoyPad_Start_Pressed(FKey key);  //key-aware: fly mode blocks the gamepad Start, Enter still works
 	void JoyPad_Start_Released(FKey key);
 
 	void JoyPad_Select_Pressed(FKey key);
@@ -242,10 +248,10 @@ public:
 	void JoyPad_RTrigger_Released();
 	void JoyPad_LTrigger_Released();
 
-	void JoyPad_LeftStick_Pressed();
+	void JoyPad_LeftStick_Pressed();  //the pad hotkey chord modifier (see m_bPadL3Held)
 	void JoyPad_LeftStick_Released();
 
-	void JoyPad_RightStick_Pressed();
+	void JoyPad_RightStick_Pressed(); //L3+R3 chord = fly camera toggle
 	void JoyPad_RightStick_Released();
 
 

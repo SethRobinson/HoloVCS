@@ -452,18 +452,34 @@ but burns the 5.6 escape hatch like any other resave.
   vertical (plus a hardcoded 16:9) was the old bug that cropped the bottom of tall games like
   Castlevania. When the LG plugin is active it takes over the viewport, so the pawn camera is
   inert on hardware.
-- DEBUG FLY CAMERA (Aug 2026): V key or gamepad Start + L-stick click (console twin
-  `holo.FlyCam`). Left stick moves, right stick looks, analog triggers rise/sink, LB/RB
-  halve/double speed (speed auto-scales by the layer AABB so every system feels the same);
-  mouse also looks on non-3DS. The game KEEPS RUNNING but the pad is withheld from it -
-  keyboard still plays. Mechanism: gamepad-only mirror axes PadLX..PadRT in DefaultInput.ini
+- PAD HOTKEY CHORDS (reworked Aug 27 2026): the LEFT-STICK CLICK (L3) is the chord modifier
+  for every gamepad system hotkey - L3+LB/RB = save/load state, L3+LT/RT = reset/next game,
+  L3+Y = pause, L3+R3 = fly camera. m_bPadL3Held on the pawn tracks it, and L3 is a PURE
+  modifier, never forwarded to the core (Start was the old modifier and every chord also
+  popped the game's Start menu; no supported core uses a stick click - the L3/L2 bits some
+  cores read come from the right-stick AXIS in RMove_YAxis, untouched). Bare R3 keeps its
+  game role (3DS touch tap / R3 bit).
+- DEBUG FLY CAMERA (Aug 2026): V key or clicking both sticks (hold L-stick click, press
+  R-stick click; console twin `holo.FlyCam`). Left stick moves, right stick looks, analog
+  triggers rise/sink, LB/RB halve/double speed (speed auto-scales by the layer AABB so every
+  system feels the same); mouse also looks on non-3DS. The game KEEPS RUNNING but the pad is
+  withheld from it - keyboard still plays, and L3+Y can pause it for frozen-frame inspection.
+  Mechanism: gamepad-only mirror axes PadLX..PadRT in DefaultInput.ini
   (identical key+scale to the merged mappings, bound FIRST in SetupPlayerInputComponent) let
   the Move/RMove handlers subtract the pad's share, and button handlers gate on
-  key.IsGamepadKey(). m_bPadStartHeld on the pawn tracks the physical pad Start because fly
-  mode keeps the game-facing Start bit clear (the exit chord reads the flag).
+  key.IsGamepadKey().
   FitFlatCameraToLayers still updates bounds while flying but no longer moves the camera.
-  On the LKG build the fly cam only steers the 2D spectator window; the hologram capture
-  actor is untouched.
+  On the LKG build the fly cam FLIES THE HOLOGRAM (Seth request, Aug 27 2026): it drives the
+  LookingGlassCapture actor directly, seeded at the layer-stack center, so the right stick
+  spins the diorama in place (focal plane stays on the layers = sharp on the panel), left
+  stick pans, triggers rise/sink. A rotated capture makes the sprite fast path bail by
+  design, so the hologram renders on the scene-capture quilt path while flying (~13fps,
+  scene-lit look instead of the calibrated sprite tint/shadows, audio may underrun -
+  accepted); exiting zeroes the rotation and refits, restoring the 60fps sprite path.
+  FitLookingGlassCaptureToLayers keeps its show-only/size upkeep during flight but skips
+  re-centering the actor (layer rebuilds land mid-flight). `holo.FlyPose <yaw> <pitch>
+  [dx dy dz offset from stack center]` places the fly camera exactly (enables fly mode if
+  off) - the harness cannot move a pad stick, and it gives repeatable device-angle shots.
 - SCRIPTED CAMERA MOVES for GIF capture (Aug 2026): `holo.CamSweep <yawA> <yawB> <sec>
   [pitch]`, `holo.CamPose <yaw> <pitch> <sec>`, `holo.CamWiggle <amp> <period> [cycles]
   [pitch]` (whole cycles = seamless loop), `holo.DepthRamp <from> <to> <sec>` (independent

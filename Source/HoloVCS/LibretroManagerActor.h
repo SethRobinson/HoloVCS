@@ -117,6 +117,11 @@ public:
 	void ApplyLayerDepth(); //reposition existing layer actors to the current depth spread (no respawn)
 	void SetLayersPeeled(int count); //debug: hide the N nearest layers (';' and ''' hotkeys) to see the back
 	int GetLayersPeeled() { return m_layersPeeled; }
+	//Fly-cam support for the LKG build: the fly camera drives the hologram capture actor directly.
+	//All three are no-ops / return false when no capture actor exists (flat build).
+	void SetLKGCaptureFlyTransform(const FVector& pos, const FRotator& rot);
+	bool GetLKGCaptureTransform(FVector& pos, FRotator& rot);
+	void RefitLKGCapture(); //zero the capture's rotation and re-run the layer fit (fly-cam exit)
 	int m_layersPeeled = 0; //how many of the NEAREST layers are hidden; survives rom switches
 
 	int m_layerCount = 5;

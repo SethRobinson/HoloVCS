@@ -127,9 +127,10 @@ FString HelpScreen::BuildHelpText() const
 	s += TEXT("R\tReset game\n");
 	s += TEXT("P\tPause\n");
 	s += TEXT("F / G\tSave / load state\n");
-	s += TEXT("Hold Start + LT / RT\tReset / next game (pad)\n");
-	s += TEXT("Hold Start + LB / RB\tSave / load state (pad)\n");
-	s += TEXT("V / Start + L-stick click\tFly camera on/off\n");
+	s += TEXT("Hold L-stick click + LT / RT\tReset / next game (pad)\n");
+	s += TEXT("Hold L-stick click + LB / RB\tSave / load state (pad)\n");
+	s += TEXT("Hold L-stick click + Y\tPause (pad)\n");
+	s += TEXT("V / click both sticks\tFly camera on/off\n");
 	s += TEXT("\n");
 	s += TEXT("[ / ]\tLess / more 3D depth\n");
 	s += TEXT("; / '\tHide / show nearest layers\n");
