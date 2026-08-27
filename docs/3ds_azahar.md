@@ -183,10 +183,46 @@ empty layers. `-hololegacy` on the command line forces the old CPU slicing for A
 Harness gained `touch <x> <y> [frames]` (bottom-screen pixel tap - the SM3DL "Start
 Game" button needs it; A does not work there).
 
+Round 6 (Aug 2026): TRUE MULTIVIEW, Phase A working (capture mode 2, opt-in with
+`-holomultiview`). The insight: the 3DS has real 3D geometry, so instead of slicing
+into 24 depth bands the core can render the scene once per Looking Glass view with a
+per-view sheared camera - pixel-perfect parallax, no depth quantization, no seams, no
+band routing heuristics. Neither Unreal nor any Looking Glass plugin/SDK can do this
+"directly" (they only render geometry they own or display quilts they are handed), so
+the per-view rendering lives in the core and the frontend stays Unreal; a raw C++
+libretro harness would need the identical core work and was rejected.
+- Core side (see the fork's AGENTS.md for mechanics): every scene-scoped draw is
+  re-submitted instanced (one instance per view) into a private layered FBO with real
+  fixed-function depth/stencil/blend per view; per-view shear is linear in NDC depth
+  and derives from the same smoothed range the bands use; UI/depth-less draws are
+  screen-locked. The scoping (top-RT address, viewport gate, ship gate) is REUSED
+  unchanged from the band capture; the band emulation itself (blend baking, interlock,
+  stencil emu, seam fill, overlay settle) simply is not needed per view.
+- Frontend answers `holo_capture_mode = "2"` when launched with `-holomultiview` and
+  serves `holo_view_count` (hardcoded 48 until Phase C wires the device tiling); the
+  band path keeps running and delivering, so the app looks identical in Phase A.
+- Proof/verify: drop `holo_quilt_request.txt` in the game process working directory
+  (editor runs: the ENGINE Binaries\Win64 dir) -> the next 3 scene ships write
+  stitched 8x6 quilt BMPs (holo_quilt_NN.bmp) there. SM3DL title: smooth
+  depth-proportional parallax across all 48 views, screen-locked logo, real per-view
+  occlusion. Metroid: Samus Returns title dumps identical views - correct, that
+  screen is a flat 2D compose (all draws depth-less), not a bug.
+- Known Phase A gaps: dump-only output (no ABI delivery yet), plain FS in the mirror
+  pass (gl_FragDepth write = no early-Z), SW-vertex-path draws not mirrored (counted),
+  mid-scene 2D sheets sit at the convergence plane instead of far, view count not yet
+  negotiated from the device. The full phased plan (B: quilt pack + PBO readback +
+  ABI v4; C: frontend quilt blit + tiling negotiation + live depth-scale export, bands
+  off in mode 2; D: fallback ladder + optional stereo-derived calibration) lives in
+  the plan file from the Aug 2026 planning session and in the fork's AGENTS.md notes.
+- ROM partial gotcha rediscovered while testing: `-rom=3d` matches the `.3ds`
+  EXTENSION (loaded Metroid), and `-rom=Land` matched Virtual Boy Wario Land; use a
+  quoted unique fragment like `-rom="3D Land"` (FParse handles quoted values).
+
 NOT yet done: per-game depth-band profiles, near-band HUD routing knob, sound
 verification, release-bat/core-build integration, non-uniform bands via depth01.
 Fallbacks: no interlock extension -> packed RGB565 opaque capture; no GL4.3 compute ->
-legacy CPU slicing automatically.
+legacy CPU slicing automatically (multiview mode falls back to band mode when its GL
+requirements are missing).
 
 ## Where things live
 

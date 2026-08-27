@@ -499,9 +499,27 @@ bool retro_environment_callback(unsigned cmd, void* data)
 		//3DS layered ("shadow buffer") capture: 1 = per-band GPU capture with real
 		//occluded content (default), 0 = the old single-depth-buffer CPU slice.
 		//Launch with -hololegacy to A/B the old path.
+		//-holomultiview asks for mode 2 (Phase A experiment): the core ALSO renders a
+		//true per-view quilt into a layered FBO (proof via holo_quilt_request.txt dump
+		//in the core's working dir); layer delivery stays identical to mode 1.
 		if (strcmp(pVar->key, "holo_capture_mode") == 0)
 		{
-			pVar->value = FParse::Param(FCommandLine::Get(), TEXT("hololegacy")) ? "0" : "1";
+			if (FParse::Param(FCommandLine::Get(), TEXT("holomultiview")))
+			{
+				pVar->value = "2";
+			}
+			else
+			{
+				pVar->value = FParse::Param(FCommandLine::Get(), TEXT("hololegacy")) ? "0" : "1";
+			}
+			return true;
+		}
+
+		//multiview only: how many views the core should render (device tile count).
+		//Not wired to the Looking Glass tiling yet (Phase C); core defaults to 48.
+		if (strcmp(pVar->key, "holo_view_count") == 0)
+		{
+			pVar->value = "48";
 			return true;
 		}
 
