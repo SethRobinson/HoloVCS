@@ -122,6 +122,7 @@ public:
 	int m_layerCount = 5;
 	float m_total3dDepth = 150;
 	float m_userDepthScale = 1.0f; //user multiplier on m_total3dDepth ([ and ] hotkeys); survives rom switches
+	bool m_bUserDepthScaleTouched = false; //true once the user sets a depth scale (hotkeys/console/harness); per-system defaults in SetEmulatorData only apply while false
 	float m_depthOffsetForAllLayers = 0;
 	bool m_setTextureSmoothing = false;
 	int m_layerWidth = 256;

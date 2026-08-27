@@ -443,6 +443,7 @@ void ALibretroManagerActor::SetUserDepthScale(float scale, bool bShowStatus)
 {
 	//0 = completely flat is allowed (Seth request); a hair below 0.05 snaps to true 0 so
 	//the [ key can land exactly on "no 3d at all"
+	m_bUserDepthScaleTouched = true;
 	m_userDepthScale = FMath::Clamp(scale, 0.0f, 5.0f);
 	if (m_userDepthScale < 0.05f) m_userDepthScale = 0.0f;
 	ApplyLayerDepth();
@@ -933,13 +934,17 @@ void ALibretroManagerActor::Tick(float DeltaTime)
 
 	m_framesRendered++;
 
+	//Update() must run even with no core loaded: its first line serves the automation
+	//harness (quit/rom switch/shots), and it early-outs internally right after. Gating it
+	//behind IsCoreLoaded left the harness dead whenever a rom failed to load (e.g. the
+	//3DS "really is encrypted" refusal), so only the frame/texture work below stays gated.
+	m_libretroManager.Update();
+
 	if (!m_libretroManager.IsCoreLoaded())
 	{
 		//LogMsg("Core not loaded!");
 		return;
 	}
-
-	m_libretroManager.Update();
 
 	//3DS holo mode maintains per-layer dirty flags in the layer callback, so unchanged
 	//layers (and the many empty ones) skip both the GPU upload and the alpha scan below.

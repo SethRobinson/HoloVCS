@@ -1,7 +1,7 @@
-HoloVCS v1.4 - Looking Glass Windows release
+HoloVCS v1.5 - Looking Glass Windows release
 ================================================
 
-HoloVCS runs Atari 2600, NES, and Virtual Boy games as layered 3D dioramas on Looking Glass holographic displays.
+HoloVCS runs Atari 2600, NES, Virtual Boy, and Nintendo 3DS games as layered 3D dioramas on Looking Glass holographic displays.
 
 Requirements
 ------------
@@ -17,10 +17,11 @@ Put ROMs in these folders:
 - Atari 2600 `.a26` files: atari2600
 - NES `.nes` files: nes
 - Virtual Boy `.vb` files: vb
+- Nintendo 3DS `.3ds` / `.cci` files (decrypted dumps): 3ds
 
-The exact filenames do not matter. HoloVCS recognizes hand-tuned profiles by ROM checksum. Unsupported Atari 2600 and NES games use default layering. Virtual Boy games use the core's native split-layer data.
+The exact filenames do not matter. HoloVCS recognizes hand-tuned profiles by ROM checksum. Unsupported Atari 2600 and NES games use default layering. Virtual Boy and Nintendo 3DS games get real depth from their customized cores, so every game works without a profile.
 
-Hand-tuned profiles in v1.4
+Hand-tuned profiles in v1.5
 ---------------------------
 
 - Pitfall! (Atari 2600)
@@ -43,14 +44,14 @@ Tab                 Select
 , / .               Previous / next game
 R                   Reset game
 P                   Pause
-S / L               Save / load state
+F / G               Save / load state (L also loads)
 [ / ]               Less / more 3D depth
 = / -               Zoom in / out
 0                   Toggle FPS cap
 1 through 5         Frameskip
 6 / 7 / 8           Smoothing / shadows / lighting
 
-Gamepads are supported. Virtual Boy controls also use the additional gamepad buttons, shoulders, triggers, and sticks.
+Gamepads are supported. Virtual Boy controls also use the additional gamepad buttons, shoulders, triggers, and sticks. On the 3DS the sticks are the circle pad and C-stick, and the mouse (or right stick) moves a bottom-screen touch cursor; click (or right trigger) taps.
 
 Troubleshooting
 ---------------
@@ -71,9 +72,13 @@ Troubleshooting
 Source code and licenses
 ------------------------
 
-The corresponding HoloVCS source, the modified source for all three GPL-2.0 emulator cores, and the UE 5.8 Looking Glass plugin port are available at:
+The corresponding HoloVCS source, the modified source for the GPL-2.0 emulator cores, and the UE 5.8 Looking Glass plugin port are available at:
 
 https://github.com/SethRobinson/HoloVCS
+
+The Nintendo 3DS core is maintained separately at:
+
+https://github.com/SethRobinson/azahar (branch holo)
 
 License copies are included in the licenses folder. The emulator cores are separate DLLs loaded at runtime and are not linked into the Unreal executable.
 

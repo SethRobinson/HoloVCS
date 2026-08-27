@@ -112,7 +112,7 @@ void HoloConfineMouseToGameWindow(bool) {}
 
 const unsigned short ASYNC_BUTTON_DOWN_MSB = 0x8000;
 
-string G_VERSION_STRING = "HoloVCS V1.4";
+string G_VERSION_STRING = "HoloVCS V1.5";
 
 LibretroManager* g_pLibretroManager = NULL; //I don't want to fool with caring how to get Unreal globals correctly
 void retro_video_refresh_callback(const void* data, unsigned width, unsigned height, size_t pitch);
@@ -621,6 +621,33 @@ bool retro_environment_callback(unsigned cmd, void* data)
 		break;
 	}
 
+	case RETRO_ENVIRONMENT_SET_MESSAGE:
+	{
+		retro_message* pMsg = (retro_message*)data;
+		if (!pMsg || !pMsg->msg) return false;
+		LogMsg("Core message: %s", pMsg->msg);
+		float seconds = pMsg->frames / 60.0f;
+		if (seconds < 4) seconds = 4; //keep short errors readable
+		g_pLibretroManager->m_lastCoreMessage = pMsg->msg;
+		ShowStatusMessage(pMsg->msg, seconds);
+		break;
+	}
+
+	case RETRO_ENVIRONMENT_SET_MESSAGE_EXT:
+	{
+		retro_message_ext* pMsg = (retro_message_ext*)data;
+		if (!pMsg || !pMsg->msg) return false;
+		LogMsg("Core message: %s", pMsg->msg);
+		if (pMsg->target != RETRO_MESSAGE_TARGET_LOG) //log-only messages stay off the OSD
+		{
+			float seconds = pMsg->duration / 1000.0f;
+			if (seconds < 4) seconds = 4;
+			g_pLibretroManager->m_lastCoreMessage = pMsg->msg;
+			ShowStatusMessage(pMsg->msg, seconds);
+		}
+		break;
+	}
+
 	default:
 
 		LogMsg("Got unhandled cmd %u", cmd);
@@ -725,9 +752,11 @@ void LibretroManager::LoadRomList()
 
 bool LibretroManager::LoadRom(string fileName)
 {
+	m_lastCoreMessage.clear(); //so InitEmulator's failure branch only sees a message from THIS load
+
 	retro_game_info ginfo;
 	memset(&ginfo, 0, sizeof(ginfo));
-	
+
 	m_romDataArray.Empty();
 
 	if (m_emulatorType == EMULATOR_3DS)
@@ -987,8 +1016,10 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 	m_pLibretroManagedActor->m_bg_color = FVector(0, 0, 0);
 	m_pLibretroManagedActor->m_bg_color_strength = 1;
 	m_pLibretroManagedActor->m_bgAllowShadows = true;
+	//per-system depth default (3DS overrides below); a user adjustment sticks for the session
+	if (!m_pLibretroManagedActor->m_bUserDepthScaleTouched) m_pLibretroManagedActor->m_userDepthScale = 1.0f;
 	m_bGamePaused = false;
-	m_targetFPS = 60; 
+	m_targetFPS = 60;
 	
 	switch (emu)
 	{
@@ -1064,6 +1095,13 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 		m_pLibretroManagedActor->m_coreLayerScale = FVector2D(3.5f, 2.2f);
 		m_pLibretroManagedActor->m_corePosition = FVector2D(0, 0);
 		m_pLibretroManagedActor->m_bgAllowShadows = false;
+		//full spread reads too deep on the device for 3DS scenes; direct assign (not
+		//SetUserDepthScale) so no status text fires and InitLayers just picks it up
+		if (!m_pLibretroManagedActor->m_bUserDepthScaleTouched)
+		{
+			m_pLibretroManagedActor->m_userDepthScale = 0.9f;
+			LogMsg("3DS: depth scale defaulting to 90%%");
+		}
 		m_targetFPS = 59.8331; //real 3DS refresh; audio rate comes from retro_get_system_av_info
 		m_touchCursorShownOnce = false; //re-arm the "show the cursor briefly at boot" hint
 		break;
@@ -1230,10 +1268,27 @@ void LibretroManager::InitEmulator()
 
 	if (!LoadRom(m_romPath + m_curRomName))
 	{
-		string msg = "ERROR: Place rom (";
-		msg += m_romFileExtension1 + ") in " + m_romPath + " dir!";
-		ShowStatusMessage(msg.c_str(), 100);
-		LogMsg(msg.c_str());
+		string romFullPath = m_romPath + m_curRomName;
+		if (!m_lastCoreMessage.empty())
+		{
+			//the core already explained the failure (e.g. "really is encrypted"); re-show it
+			//sticky rather than stomping it - its own 10 second display would fade to nothing
+			ShowStatusMessage(m_lastCoreMessage, 100);
+			LogMsg("Core refused rom %s: %s", romFullPath.c_str(), m_lastCoreMessage.c_str());
+		}
+		else if (FPaths::FileExists(FString(romFullPath.c_str())))
+		{
+			string msg = "ERROR: Core could not load " + m_curRomName + " (see log)";
+			ShowStatusMessage(msg.c_str(), 100);
+			LogMsg(msg.c_str());
+		}
+		else
+		{
+			string msg = "ERROR: Place rom (";
+			msg += m_romFileExtension1 + ") in " + m_romPath + " dir!";
+			ShowStatusMessage(msg.c_str(), 100);
+			LogMsg(msg.c_str());
+		}
 		return;
 	}
 	m_nesHacker.Reset();
@@ -1242,6 +1297,15 @@ void LibretroManager::InitEmulator()
 	ShowStatusMessage(G_VERSION_STRING + " Loaded " + m_curRomName, 4);
 
 	m_maxSaveStateSize = m_core.retro_serialize_size();
+	if (m_emulatorType == EMULATOR_3DS)
+	{
+		//the Azahar core's core-info claims savestates and retro_serialize_size can return
+		//nonzero, but retro_serialize always fails ("Core does not support save states").
+		//Force the no-savestate path so the hotkeys report "not supported" instead of
+		//writing garbage .sav0 files (verified live Aug 2026: without this, "Error saving
+		//state 2" followed by a bogus save file).
+		m_maxSaveStateSize = 0;
+	}
 	if (m_maxSaveStateSize > 0)
 	{
 		if (m_emulatorType == EMULATOR_ATARI)
@@ -1282,7 +1346,9 @@ void LibretroManager::InitEmulator()
 	if (g_loadStateOnFirstLoad)
 	{
 		g_loadStateOnFirstLoad = false;
-		LoadStateFromFile();
+		//skip on systems without savestates (3DS) so boot doesn't show the
+		//"doesn't support save states" message unprompted
+		if (m_maxSaveStateSize > 0) LoadStateFromFile();
 	}
 
 	m_core.retro_run();
@@ -1897,6 +1963,14 @@ void LibretroManager::SaveStateToFile()
 		return;
 	}
 
+	if (m_maxSaveStateSize <= 0)
+	{
+		//3DS: the core has no savestate support, and without this guard we'd write a
+		//0-byte .sav0 and claim "Saved state."
+		ShowStatusMessage("This system doesn't support save states");
+		return;
+	}
+
 	SaveState(C_SAVE_STATE_USER_SLOT);
 
 	//well, we have the data but now we need to save it to disk
@@ -1914,6 +1988,12 @@ void LibretroManager::LoadStateFromFile()
 	if (!m_core.m_bActive)
 	{
 		ShowStatusMessage("No rom loaded");
+		return;
+	}
+
+	if (m_maxSaveStateSize <= 0)
+	{
+		ShowStatusMessage("This system doesn't support save states");
 		return;
 	}
 

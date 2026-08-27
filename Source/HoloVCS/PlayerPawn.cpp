@@ -933,7 +933,7 @@ void APlayerPawn::JoyPad_LShoulder_Pressed(FKey key)
 	if (HelpSwallowedInput()) return;
 	if (m_bFlyCam && key.IsGamepadKey())
 	{
-		//while flying LB/RB halve/double the camera speed; keyboard F/Q still save state etc
+		//while flying LB/RB halve/double the camera speed; keyboard Q/E stay the L/R buttons
 		m_flySpeedMult = FMath::Max(0.125f, m_flySpeedMult * 0.5f);
 		char st[48];
 		snprintf(st, sizeof(st), "Fly speed x%.2f", m_flySpeedMult);
@@ -1257,9 +1257,23 @@ void APlayerPawn::OnSubtractKey()
 	ShowStatusMessage("Zooming out");
 }
 
-//Load state alias (L).  Save state is F only (the JoyPad_LShoulder action, with G / the
-//right shoulder loading) - S used to save too, but S is also WASD "down", so every walk
-//downward overwrote the save.
+//Save/load state keys.  F saves, G loads, L is a load alias.  These are direct key
+//bindings now: F/G used to ride the JoyPad_LShoulder/RShoulder actions, whose handlers
+//require START held (a gamepad-accident guard), so bare keyboard F/G silently acted as
+//L/R buttons instead of saving - while the help screen claimed otherwise.  S used to
+//save too, but S is also WASD "down", so every walk downward overwrote the save.
+
+void APlayerPawn::OnFKey()
+{
+	if (HelpSwallowedInput()) return;
+	g_pLibretroManager->SaveStateToFile();
+}
+
+void APlayerPawn::OnGKey()
+{
+	if (HelpSwallowedInput()) return;
+	g_pLibretroManager->LoadStateFromFile();
+}
 
 void APlayerPawn::OnLKey()
 {
@@ -1376,6 +1390,8 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 #else
 	PlayerInputComponent->BindKey(EKeys::Equals, IE_Pressed, this, &APlayerPawn::OnAddKey);
 	PlayerInputComponent->BindKey(EKeys::Hyphen, IE_Pressed, this, &APlayerPawn::OnSubtractKey);
+	PlayerInputComponent->BindKey(EKeys::F, IE_Pressed, this, &APlayerPawn::OnFKey); //save state
+	PlayerInputComponent->BindKey(EKeys::G, IE_Pressed, this, &APlayerPawn::OnGKey); //load state
 	PlayerInputComponent->BindKey(EKeys::L, IE_Pressed, this, &APlayerPawn::OnLKey);
 	PlayerInputComponent->BindKey(EKeys::Comma, IE_Pressed, this, &APlayerPawn::OnCommaKey);
 	PlayerInputComponent->BindKey(EKeys::Period, IE_Pressed, this, &APlayerPawn::OnPeriodKey);

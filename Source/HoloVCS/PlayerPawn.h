@@ -261,6 +261,8 @@ public:
 
 	void OnPKey();
 	void OnAddKey();
+	void OnFKey(); //save state
+	void OnGKey(); //load state
 	void OnLKey();
 
 	void OnCommaKey();

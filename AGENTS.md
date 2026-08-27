@@ -380,7 +380,9 @@ but burns the 5.6 escape hatch like any other resave.
 - Hotkey 0 toggles the fps cap (vsync + t.MaxFPS) to measure true throughput; 1-5 set frameskip.
 - Hotkeys [ and ] scale the 3D depth spread live (m_userDepthScale on ALibretroManagerActor,
   multiplies m_total3dDepth, survives rom switches; ApplyLayerDepth re-spreads the existing
-  layer actors absolutely and re-runs both camera/capture fits - no InitLayers hitch). Console
+  layer actors absolutely and re-runs both camera/capture fits - no InitLayers hitch).
+  Per-system DEFAULT: 90% for 3DS, 100% otherwise, applied in SetEmulatorData only until
+  the user touches the scale (m_bUserDepthScaleTouched latch set by SetUserDepthScale). Console
   twin for the harness: `holo.DepthScale <mult>` (clamped 0.0-5.0; below 0.05 snaps to a true
   0 = completely flat, and `]` climbs back out of 0). NES Select is Tab now (was
   Backslash), and the old A-key "auto adjust audio" hotkey is REMOVED (it also collided with
@@ -532,6 +534,13 @@ Feature docs (read before working on these):
   split: with the subscreen closed, PASS1 was skipped and the PASS2 ground/sprite blits
   vanished). Use a running `pass++` index when passes are conditional.
 
+- When a rom FAILS to load (missing file, refused by the core), the flat build's viewport
+  shows unlit noise and NO error text: the status message IS set (log-proven; check
+  log.txt / HoloVCS_Flat.log) but the pawn camera was never fit (InitLayers didn't run)
+  so the StatusDisplayActor sits out of frame. Pre-existing for all load errors; judge
+  error UX from the log or the LKG on-quilt text, not the flat window. The automation
+  harness DOES keep working in that state (Tick calls LibretroManager::Update before the
+  IsCoreLoaded gate since Aug 2026 - it used to go dead, which looked like a hang).
 - `g_pLibretroManager` is a raw global set in `LibretroManager::Init` and cleared in the destructor.
   The destructor must only clear it when it is the owner (`if (g_pLibretroManager == this)`), because
   stale LibretroManager instances inside actor CDOs get GC-purged (first purge is ~61s in) and used

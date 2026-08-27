@@ -220,6 +220,9 @@ public:
 	JoyPadButtonStates m_joyPad;
 	bool m_bGamePaused = false;
 	bool m_bNesDumpRequested = false; //set by the N hotkey; UpdateNES writes Saved/nes_state_dump.txt next frame
+	string m_lastCoreMessage; //last OSD text a core sent via RETRO_ENVIRONMENT_SET_MESSAGE(_EXT).
+	//Cleared by LoadRom; lets InitEmulator keep a core-explained load failure (e.g. the 3DS
+	//core's "really is encrypted") on screen instead of stomping it with the generic rom-missing text
 
 	string m_rootPath;
 	string m_romPath;

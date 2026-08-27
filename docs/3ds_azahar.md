@@ -197,16 +197,26 @@ legacy CPU slicing automatically.
   `Binaries\Win64` (BuildCores.bat integration pending). `f:\Unreal\azahar\holo_tools\` has
   a RetroArch-based automation harness (UDP input/screenshots) and the depth-slice analysis
   scripts from the proof of concept.
-- ROMs: `3ds/` in the project root, extensions `.3ds`/`.cci`, DECRYPTED dumps only (the
-  core refuses encrypted ones; some "decrypted" dumps still need the NCCH NoCrypto flag set,
-  see holo_tools/AGENTS.md).
+- ROMs: `3ds/` in the project root, extensions `.3ds`/`.cci`, DECRYPTED dumps only. The
+  core does NOT trust the NCCH crypto flags anymore (they are often stale on decrypted
+  dumps): flagged-encrypted dumps load anyway and the contents are verified instead
+  (exheader jump ID, ExeFS section names, RomFS IVFC magic - NCCHContainer::Load in the
+  fork). A REALLY encrypted dump is refused with the core's "really is encrypted"
+  message, which the frontend now shows on the status display (the env callback forwards
+  RETRO_ENVIRONMENT_SET_MESSAGE / _EXT, and InitEmulator re-shows a core-explained load
+  failure sticky instead of the generic "Place rom" text).
 
 ## How the integration differs from the other cores
 
-- The core has NO savestates (`retro_serialize_size()==0`): InitEmulator skips the state
-  buffers (a hard error for other systems), SaveState/LoadState no-op, and the profile
-  update (`UpdateDefault3DS`) is a single RenderFrame per frame, no rewind multi-pass.
-  Harness `savestate`/`loadstate` and the F/G/L hotkeys do nothing for 3DS.
+- The core has NO savestates. GOTCHA: `retro_serialize_size()` can return NONZERO (the
+  core-info lies; `retro_serialize` itself always fails), so InitEmulator FORCES
+  `m_maxSaveStateSize = 0` for 3DS and skips the state buffers (a hard error for other
+  systems); SaveState/LoadState no-op, and the profile update (`UpdateDefault3DS`) is a
+  single RenderFrame per frame, no rewind multi-pass.
+  Harness `savestate`/`loadstate` and the F/G/L hotkeys show "This system doesn't
+  support save states" on 3DS (Aug 2026; they used to silently write a bogus 0-byte
+  .sav0 and claim success). The 3DS depth scale also DEFAULTS to 90% (SetEmulatorData;
+  a user [ ] / holo.DepthScale adjustment overrides it for the session).
 - ROMs are huge (512MB): LoadRom does NOT read the file into RAM for 3DS; it hashes the
   first 1MB for the GameProfileManager key and passes only ginfo.path (the core loads the
   file itself, need_fullpath).
