@@ -67,6 +67,20 @@ static FAutoConsoleCommand CCmdHoloDepthScale(
 		g_pLibretroManager->m_pLibretroManagedActor->SetUserDepthScale(FCString::Atof(*args[0]));
 	}));
 
+//3DS multiview convergence: where the zero-parallax (screen) plane sits within the scene's
+//depth range.  0 = nearest content AT the screen (everything sinks behind), 1 = farthest
+//content at the screen (everything pops out), core default 0.35.  -1 returns to the default.
+static FAutoConsoleCommand CCmdHoloConvergence(
+	TEXT("holo.Convergence"),
+	TEXT("3DS multiview zero-parallax plane as a fraction of scene depth (0..1, -1 = core default 0.35). Usage: holo.Convergence 0.5"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		if (args.Num() < 1 || !g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
+		ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+		pActor->m_userConv01 = FCString::Atof(*args[0]);
+		pActor->ApplyLayerDepth(); //pushes retro_holo_set_view_params with the new value
+	}));
+
 EPixelFormat TEX_PIXEL_FORMAT = EPixelFormat::PF_B8G8R8A8;
 // Sets default values
 ALibretroManagerActor::ALibretroManagerActor()
@@ -541,7 +555,7 @@ void ALibretroManagerActor::ApplyLayerDepth()
 	if (g_pLibretroManager && g_pLibretroManager->m_core.retro_holo_set_view_params &&
 		g_pLibretroManager->m_holoCaptureMode == 2)
 	{
-		g_pLibretroManager->m_core.retro_holo_set_view_params(m_userDepthScale, -1.0f);
+		g_pLibretroManager->m_core.retro_holo_set_view_params(m_userDepthScale, m_userConv01);
 	}
 
 	//the spread changed: reframe the flat camera (or it crops a deeper stack) and the Looking

@@ -228,6 +228,43 @@ identical core work and was rejected.
   instead of far (revisit per-game on device), the scene-capture fallback path
   (rotated capture / fly cam) draws the raw quilt collage quad. Phase D options
   (extension-probed VS gl_Layer, stereo-pair auto calibration) in the plan file.
+- THE WRONG-DEPTH BUG (Aug 27 2026, Seth: "wrong depths, hurts my eyes"): FOUND AND
+  FIXED, uncommitted pending Seth's eye sign-off (DO NOT COMMIT either repo until
+  then). Root cause was suspect 1: the VIEW SWEEP WAS PSEUDOSCOPIC. The shear sign
+  (g_view_strength positive) had been picked from a dump that "showed parallax" but
+  swept the views backwards. KEY CONVENTION FACT (proven by the band path, where
+  band 0 = lowest buffer value displays nearest on device): gl_Position.z/w ASCENDS
+  with distance (PICA vertex ndc z: 0 = near plane, -1 = far plane), and SM3DL's
+  recorded PICA depth mapping is scale=-1/offset=0, i.e. buffer == z/w exactly. The
+  handoff notes' premise "z/w = +1 at the near plane" was backwards, which is how
+  the wrong sign originally looked plausible on paper. Suspect 2 (space mismatch)
+  was real but SECONDARY for SM3DL (identity mapping); the conversion now exists
+  anyway: the rasterizer records viewport_depth_range/near_plane + WBuffering with
+  the scene depth record (holo_hook depth_scale_rec/depth_offset_rec) and
+  UpdateViewShearParams converts the smoothed buffer range into z/w space through
+  them (W-buffer falls back to -1/0). Also fixed while in there: conv comes from the
+  RAW span so the zero-parallax plane always lands inside the scene (the old 0.02
+  range floor pushed it outside on shallow scenes = wholesale drift), and sep
+  normalizes by the raw span like the bands (the floor made shallow scenes nearly
+  flat); g_view_strength recalibrated 0.12 -> 0.20 to approximate the band
+  diorama's parallax on the same scene/knob.
+  OBJECTIVE EVIDENCE (SM3DL title screen, quilts at holo.DepthScale 5, patch
+  cross-correlation view 0 -> view 13, scratchpad quilt_patch_shift.py): band mode
+  (ground truth): far sky +73..84px RIGHT, near room LEFT, FPS text 0. Multiview
+  BEFORE: whole scene -16..-22px LEFT (floating far in front of the panel) and far
+  sky MORE left than near blocks = depth-inverted. Multiview AFTER: sky +2..+4
+  RIGHT, near content at/below 0, no wholesale drift - matches the band direction
+  and convergence. Numeric check: `holo_view_log_request.txt` in the game process
+  working dir -> 120 frames of buf-range/mapping/conv/sep lines in
+  holo_view_log.txt (conv must sit inside z=[near..far]; sep is NEGATIVE now by
+  design).
+  Live knobs for Seth: holo.DepthScale (parallax strength, [ ] hotkeys) and NEW
+  holo.Convergence <0..1|-1> (zero-parallax plane as a fraction of scene depth;
+  core default 0.35 = 35% of the range pops out; 0.5 matches the band diorama's
+  focal-plane framing; -1 returns to default).
+  Suspect 3 (native factor_3d stereo-pair calibration) was NOT needed - direction
+  and convergence are objectively matched to the proven band path; keep it in the
+  back pocket for absolute-magnitude calibration if Seth still dislikes the feel.
 - Debug: drop `holo_quilt_request.txt` in the game process working directory (editor
   runs: the ENGINE Binaries\Win64 dir) -> 3 raw-array stitches (holo_quilt_NN.bmp,
   view 0 TOP-left) + 3 packed ABI quilts (holo_quiltpk_NN.bmp, view 0 BOTTOM-left).

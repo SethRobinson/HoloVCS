@@ -145,6 +145,10 @@ public:
 	float m_total3dDepth = 150;
 	float m_userDepthScale = 1.0f; //user multiplier on m_total3dDepth ([ and ] hotkeys); survives rom switches
 	bool m_bUserDepthScaleTouched = false; //true once the user sets a depth scale (hotkeys/console/harness); per-system defaults in SetEmulatorData only apply while false
+	//3DS multiview zero-parallax plane as a fraction of the scene depth range (0 = nearest
+	//content at the screen plane, 1 = farthest).  -1 keeps the core default (0.35).  Pushed
+	//through retro_holo_set_view_params by ApplyLayerDepth; holo.Convergence sets it live.
+	float m_userConv01 = -1.0f;
 	float m_depthOffsetForAllLayers = 0;
 	bool m_setTextureSmoothing = false;
 	int m_layerWidth = 256;
