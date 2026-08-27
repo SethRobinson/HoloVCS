@@ -2021,6 +2021,24 @@ void LibretroManager::RenderFrame(const char* pRenderFlags)
 	m_core.retro_run(); 
 }
 
+//3DS debug views / depth changes while PAUSED: the core only renders inside retro_run and
+//has no savestates to replay, so a visualization or view-param change on a frozen screen
+//had nothing to redraw until unpause (the Shift hotkeys looked dead while paused).  Run
+//TWO muted emulator frames: the holo delivery rides one-present-behind PBO rings, so the
+//first frame renders with the new settings and the second present delivers it.  The game
+//advances 2/60s per change - invisible for inspection use; m_useAudio is the same
+//trash-the-audio trick the multi-pass profiles use for extra visual renders.
+void LibretroManager::RefreshPausedFrame()
+{
+	if (!IsCoreLoaded() || !m_bGamePaused) return;
+	if (m_emulatorType != EMULATOR_3DS) return;
+	const bool bAudioWas = m_useAudio;
+	m_useAudio = false;
+	RenderFrame("11");
+	RenderFrame("11");
+	m_useAudio = bAudioWas;
+}
+
 bool LibretroManager::RenderFrameWithNesBackgroundTileFilter(const char* pRenderFlags, const byte* pKeepList, int keepListSize, byte replacementTile)
 {
 	if (!m_core.retro_set_holo_bg_tile_filter || !pKeepList || keepListSize <= 0)

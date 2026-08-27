@@ -637,6 +637,10 @@ bool ALibretroManagerActor::PushHoloViewParams()
 		m_lastPushedSep = m_userDepthScale;
 		m_lastPushedConv = m_userConv01;
 		LogMsg("Multiview view params pushed: depth scale %.2f, convergence %.2f", m_userDepthScale, m_userConv01);
+		//while paused there is no core frame to show the change on - regenerate the
+		//frozen screen (no-op unless 3DS and paused; change-gated so the 1Hz self-heal
+		//never steps the emulator)
+		g_pLibretroManager->RefreshPausedFrame();
 	}
 	return true;
 }
@@ -705,6 +709,15 @@ void ALibretroManagerActor::ApplyHoloViz()
 	uint32 mask = m_holoVizFlags;
 	if (m_cutaway01 > 0.001f) mask |= HOLO_VIZ_CUTAWAY;
 	g_pLibretroManager->m_core.retro_holo_set_debug(mask, m_cutaway01);
+	if (mask != m_lastPushedVizMask || m_cutaway01 != m_lastPushedCut01)
+	{
+		m_lastPushedVizMask = mask;
+		m_lastPushedCut01 = m_cutaway01;
+		//paused inspection: regenerate the frozen screen with the new debug view
+		//(no-op unless 3DS and paused; change-gated so the 1Hz self-heal never
+		//steps the emulator)
+		g_pLibretroManager->RefreshPausedFrame();
+	}
 }
 
 void ALibretroManagerActor::ToggleHoloViz(uint32 flag, const char* pName)

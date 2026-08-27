@@ -325,6 +325,15 @@ Round 7 (Aug 27 2026): SETTINGS PERSISTENCE FIXES + DEBUG VISUALIZATIONS.
     mostly or entirely on one side of the pinned plane (the title attract's scene
     swaps go fully black at deep cuts) - that is the pin working, not the runaway;
     judge cutaway in-level where the scene is continuous.
+  PAUSED INSPECTION (fix, Aug 27 2026 after Seth's "Shift hotkeys don't work while
+  paused"): the core only renders inside retro_run and has no savestates, so a viz or
+  depth/convergence change on a P-paused screen had nothing to redraw. A change while
+  paused now runs LibretroManager::RefreshPausedFrame(): TWO muted core frames (the
+  holo delivery is one present behind through the PBO rings, so frame 1 renders the
+  new look and frame 2 delivers it; m_useAudio trashes the audio, the same trick the
+  multi-pass profiles use). The game advances 2/60s per change. Change-gated at the
+  push sites (PushHoloViewParams / ApplyHoloViz memos) so the 1Hz self-heal can never
+  step a paused emulator.
   Plumbing: frontend state on ALibretroManagerActor (m_holoVizFlags/m_cutaway01,
   session-sticky within 3DS, cleared on system switch; ApplyHoloViz pushes, re-pushed
   at InitLayers/reset/1Hz) -> new optional export retro_holo_set_debug(mask, cutaway01)

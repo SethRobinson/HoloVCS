@@ -223,6 +223,10 @@ public:
 	float m_lastPushedSep = -999.0f;
 	float m_lastPushedConv = -999.0f;
 	bool m_bWarnedNoViewParamExport = false;
+	//ApplyHoloViz bookkeeping: change gate for the paused-frame refresh (the 1Hz self-heal
+	//re-pushes identical values and must never step the paused emulator)
+	uint32 m_lastPushedVizMask = 0;
+	float m_lastPushedCut01 = 0.0f;
 	bool m_bShowLKGFPS = false; //fps readout on the in-world status text, on for Looking Glass builds
 	eLightingMode m_curLightingMode = LIGHTING_MODE_NORMAL;
 

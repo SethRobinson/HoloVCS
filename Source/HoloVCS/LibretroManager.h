@@ -193,6 +193,7 @@ public:
 	string GetSaveStateDir(); //saves/<romdir>/, keeps the top-level folder clean and avoids cross-system name collisions
 	string GetSaveStatePath(); //full path of the current rom's .sav0 in GetSaveStateDir()
 	void ResetRom();
+	void RefreshPausedFrame(); //3DS: re-render the frozen screen after a viz/depth change while paused (muted, no-op otherwise)
 	void DisableAllBlitPasses();
 	bool GetGamePaused() { return m_bGamePaused; }
 	void SetGamePaused(bool bNew);
