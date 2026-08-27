@@ -223,6 +223,9 @@ public:
 	//slice, 1 layered bands, 2 multiview quilt (LKG builds default to 2; -holobands /
 	//-hololegacy / -holomultiview force one).
 	int m_holoCaptureMode = 1;
+	//paused-refresh settle deadline (0 = none pending): set by RefreshPausedFrame's fast
+	//path, fired from Update's paused branch ~0.35s after the last change
+	double m_pausedRefreshSettleTime = 0;
 	//last consumed quilt packSeq, so unchanged quilts skip the 18MB copy+upload
 	int m_lastQuiltPackSeq = -1;
 	int m_maxSaveStateSize = 0;

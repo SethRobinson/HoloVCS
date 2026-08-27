@@ -1194,6 +1194,12 @@ void LibretroManager::SetGamePaused(bool bNew)
 	{
 		m_helpScreen.NotifyExternallyUnpaused();
 	}
+	if (!bNew)
+	{
+		//pending paused-refresh settle is moot once the game runs again: the core's first
+		//normal frame rewinds the dirty pin itself
+		m_pausedRefreshSettleTime = 0;
+	}
 	m_bGamePaused = bNew;
 }
 
@@ -2027,12 +2033,16 @@ void LibretroManager::RenderFrame(const char* pRenderFlags)
 //3DS debug views / depth changes while PAUSED: the core only renders inside retro_run,
 //so a visualization or view-param change on a frozen screen has nothing to redraw until
 //unpause (the Shift hotkeys looked dead while paused).  Preferred path: the core's
-//retro_holo_refresh_paused export renders two internal frames and REWINDS its state (an
-//in-memory pin held for the whole paused stretch), so emulated time does not advance at
-//all - Seth wants the paused moment inspectable without it drifting.  Fallback for a
-//core without the export: run two real frames (advances 2/60s per change).  Either way
-//the audio is muted via m_useAudio, the same trash-the-audio trick the multi-pass
-//profiles use for extra visual renders.
+//retro_holo_refresh_paused export.  Per keystroke it runs the FAST mode (settle 0):
+//pin-once + render-only, ~4 frames of work, so sweeping a slider feels live (a full
+//state rewind per keystroke deserialized the whole system each press and locked the app
+//for seconds when Seth hammered a key).  The expensive rewind runs ONCE as a debounced
+//SETTLE (~0.35s after the last change, fired from Update's paused branch): the display
+//snaps back to the pinned moment wearing the final settings and the emulated state ends
+//exactly on the pin.  Unpausing before the settle is covered core-side (the first
+//normal frame rewinds the dirty pin).  Fallback for a core without the export: four
+//real frames (advances 4/60s per change).  Audio is muted via m_useAudio throughout,
+//the same trash-the-audio trick the multi-pass profiles use for extra visual renders.
 void LibretroManager::RefreshPausedFrame()
 {
 	if (!IsCoreLoaded() || !m_bGamePaused) return;
@@ -2042,7 +2052,11 @@ void LibretroManager::RefreshPausedFrame()
 	bool bRendered = false;
 	if (m_core.retro_holo_refresh_paused)
 	{
-		bRendered = m_core.retro_holo_refresh_paused() != 0;
+		bRendered = m_core.retro_holo_refresh_paused(0) != 0;
+		if (bRendered)
+		{
+			m_pausedRefreshSettleTime = FPlatformTime::Seconds() + 0.35;
+		}
 	}
 	if (!bRendered)
 	{
@@ -2261,7 +2275,23 @@ void LibretroManager::Update()
 
 	if (!m_core.m_bActive) { m_timeOfLastFrame = 0; return; }
 
-	if (m_bGamePaused) { m_timeOfLastFrame = 0; return; }
+	if (m_bGamePaused)
+	{
+		//debounced paused-refresh SETTLE: ~0.35s after the last paused viz/depth change,
+		//pay the one expensive state rewind so the frozen screen snaps back to the
+		//pinned moment wearing the final settings (see RefreshPausedFrame)
+		if (m_pausedRefreshSettleTime != 0 && FPlatformTime::Seconds() >= m_pausedRefreshSettleTime &&
+			m_core.retro_holo_refresh_paused)
+		{
+			m_pausedRefreshSettleTime = 0;
+			const bool bAudioWas = m_useAudio;
+			m_useAudio = false;
+			m_core.retro_holo_refresh_paused(1);
+			m_useAudio = bAudioWas;
+		}
+		m_timeOfLastFrame = 0;
+		return;
+	}
 
 	m_helpScreen.TickAutoShow(); //after the early-outs so the diorama has frames behind the panel
 
