@@ -422,14 +422,23 @@ SW-vertex-path gap: MSR hardware-accelerates everything (skip sw=0).
   is untouched.
 - W-BUFFER SHEAR DEGENERACY: MSR W-buffers (recorded mapping scale=-5.7e-5 off=0
   wbuf=1); its z_ndc is degenerate and the real depth lives in W, so the z-linear
-  shear produced identical views even where unobstructed. FIX: the shear runs in
-  BUFFER-depth space end to end - UpdateViewShearParams feeds conv/sep straight from
-  the smoothed buffer range plus the recorded viewport mapping, and HoloViewShear
-  reproduces each vertex's buffer depth exactly as the hardware computes it
-  (division-free clip-space forms; glsl_shader_gen.cpp). For the common z-buffer
-  mapping (SM3DL scale=-1/off=0, buffer == z/w) this is ALGEBRAICALLY IDENTICAL to
-  the old (z - conv*w) form; the regression run reproduces the recorded title numbers
-  (far sky up to +74px RIGHT, near room LEFT, logo 0, DepthScale 5 views 0->13).
+  shear produced identical views even where unobstructed. FIX: the shear is
+  DISPARITY-LINEAR for every game (the physical camera-shift model, parallax
+  proportional to 1/distance). HoloViewShear reproduces each vertex's buffer depth
+  through the recorded viewport mapping exactly as the hardware computes it, then:
+  z-buffer values (SM3DL scale=-1/off=0, buffer == z/w) are ALREADY affine in 1/w
+  and pass through - ALGEBRAICALLY IDENTICAL to the old (z - conv*w) form, the
+  regression run reproduces the recorded title numbers (far sky up to +74px RIGHT,
+  near room LEFT, logo 0, DepthScale 5 views 0->13). W-buffer values are linear in
+  DISTANCE and convert to p = -1/buffer in both the shader and UpdateViewShearParams
+  (conv/sep live in the same p space; the view log prints shear=[..] conv= in it).
+  An intermediate buffer-LINEAR attempt looked depth-reversed on the MSR title
+  (Seth: "the planet is in front instead of behind"): a distant starfield stretches
+  the linear range so 35% conv landed beyond the WHOLE planet (all of it popped in
+  front of the screen-locked logo) while the far field ate the parallax budget. In
+  disparity space the same 35% lands just past the planet's face: body and stars
+  sink behind the logo, parallax decays naturally with distance. { } / 
+  holo.Convergence still move the plane when a scene wants a different split.
   VERIFIED in-level (gunship-arrival savestate, flat build -holomultiview, 175%
   default, views 0->24 measured with quilt_patch_shift.py): far sky +69px RIGHT,
   near gunship -36px LEFT, depth-ordered spread between; x-ray now floods visibly
