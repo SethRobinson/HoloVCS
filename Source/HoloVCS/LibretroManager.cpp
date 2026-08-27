@@ -2103,10 +2103,18 @@ void LibretroManager::SaveStateToFile()
 		return;
 	}
 
+	if (m_emulatorType == EMULATOR_3DS)
+	{
+		//the azahar core's serialize round-trip works (the paused-refresh pin runs on
+		//it); only the fixed-slot machinery is unsuitable (variable state size), so 3DS
+		//gets its own fresh-serialize file path
+		Save3DSStateToFile();
+		return;
+	}
+
 	if (m_maxSaveStateSize <= 0)
 	{
-		//3DS: the core has no savestate support, and without this guard we'd write a
-		//0-byte .sav0 and claim "Saved state."
+		//without this guard we'd write a 0-byte .sav0 and claim "Saved state."
 		ShowStatusMessage("This system doesn't support save states");
 		return;
 	}
@@ -2128,6 +2136,12 @@ void LibretroManager::LoadStateFromFile()
 	if (!m_core.m_bActive)
 	{
 		ShowStatusMessage("No rom loaded");
+		return;
+	}
+
+	if (m_emulatorType == EMULATOR_3DS)
+	{
+		Load3DSStateFromFile();
 		return;
 	}
 
@@ -2176,6 +2190,69 @@ void LibretroManager::LoadStateFromFile()
 	m_nesHacker.Reset();
 	LoadState(C_SAVE_STATE_USER_SLOT);
 	SaveState(0); //we load from state 0 every frame to reset the gamelogic we've broken due to multiple renderings for the layers
+}
+
+//3DS file savestates (Aug 27 2026, Seth request): the azahar libretro layer implements a
+//real serialize round-trip (System::SaveStateBuffer behind retro_serialize, with async
+//draining) - the old "always fails" verdict came from a boot-time probe that failed
+//before the game ran.  The state is a variable-size zstd blob (tens of MB), so it flows
+//through a fresh temporary buffer per save instead of the fixed slot buffers;
+//m_maxSaveStateSize stays 0 for 3DS so the per-frame rewind machinery keeps no-oping.
+void LibretroManager::Save3DSStateToFile()
+{
+	const size_t stateSize = m_core.retro_serialize_size();
+	if (stateSize == 0)
+	{
+		ShowStatusMessage("Save state failed (core busy, try again)");
+		return;
+	}
+	TArray<uint8> data;
+	data.SetNumUninitialized((int64)stateSize);
+	if (!m_core.retro_serialize(data.GetData(), stateSize))
+	{
+		ShowStatusMessage("Save state failed");
+		return;
+	}
+	IFileManager::Get().MakeDirectory(ANSI_TO_TCHAR(GetSaveStateDir().c_str()), true);
+	string fileName = GetSaveStatePath();
+	LogMsg("Saving 3DS state to %s (%d KB)", fileName.c_str(), (int)(stateSize / 1024));
+	if (FFileHelper::SaveArrayToFile(data, ANSI_TO_TCHAR(fileName.c_str())))
+	{
+		ShowStatusMessage("Saved state.");
+	}
+	else
+	{
+		ShowStatusMessage("Save state failed (couldn't write file)");
+	}
+}
+
+void LibretroManager::Load3DSStateFromFile()
+{
+	string fileName = GetSaveStatePath();
+	if (!FPaths::FileExists(FString(fileName.c_str())))
+	{
+		ShowStatusMessage("No state save exists yet for this rom");
+		return;
+	}
+	TArray<uint8> data;
+	if (!FFileHelper::LoadFileToArray(data, ANSI_TO_TCHAR(fileName.c_str())) || data.Num() == 0)
+	{
+		ShowStatusMessage("Load state failed (couldn't read file)");
+		return;
+	}
+	LogMsg("Loading 3DS state from %s (%d KB)", fileName.c_str(), data.Num() / 1024);
+	if (m_core.retro_unserialize(data.GetData(), (size_t)data.Num()))
+	{
+		ShowStatusMessage("Loaded state.");
+		//while paused, regenerate the frozen screen so the loaded state shows right away
+		//(this also re-pins the paused-refresh state to the LOADED moment)
+		RefreshPausedFrame();
+	}
+	else
+	{
+		//covers the legacy bogus 0-byte-era .sav0 files and cross-version states alike
+		ShowStatusMessage("Load state failed (state from another game or core version?)");
+	}
 }
 
 void LibretroManager::Update()

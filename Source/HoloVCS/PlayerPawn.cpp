@@ -1448,10 +1448,10 @@ void APlayerPawn::OnLeftBracketKey()
 	if (!g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
 	if (HelpSwallowedInput()) return;
 	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
-	//'{' (Shift+[) = less 3D width (multiview view-separation gain, stacks with depth)
+	//'{' (Shift+[) = less convergence: the scene sinks back behind the screen plane
 	if (IsShiftDown())
 	{
-		pActor->SetUserViewWidth((pActor->m_userViewWidth / 1.15f) - 0.01f);
+		pActor->NudgeConvergence(-0.05f);
 		return;
 	}
 	//subtract-with-divide hybrid so repeated presses actually REACH 0 instead of only
@@ -1464,10 +1464,10 @@ void APlayerPawn::OnRightBracketKey()
 	if (!g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
 	if (HelpSwallowedInput()) return;
 	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
-	//'}' (Shift+]) = more 3D width; the additive floor climbs back out of a true 0
+	//'}' (Shift+]) = more convergence: more of the scene pops out in front of the screen
 	if (IsShiftDown())
 	{
-		pActor->SetUserViewWidth(FMath::Max(pActor->m_userViewWidth * 1.15f, pActor->m_userViewWidth + 0.06f));
+		pActor->NudgeConvergence(0.05f);
 		return;
 	}
 	//the additive floor lets ] climb back out of a true-0 flat setting

@@ -382,18 +382,19 @@ requirements are missing).
 
 ## How the integration differs from the other cores
 
-- The core has NO savestates. GOTCHA: `retro_serialize_size()` can return NONZERO (the
-  core-info lies; `retro_serialize` itself always fails), so InitEmulator FORCES
-  `m_maxSaveStateSize = 0` for 3DS and skips the state buffers (a hard error for other
-  systems); SaveState/LoadState no-op, and the profile update (`UpdateDefault3DS`) is a
-  single RenderFrame per frame, no rewind multi-pass.
-  Harness `savestate`/`loadstate` and the F/G/L hotkeys show "This system doesn't
-  support save states" on 3DS (Aug 2026; they used to silently write a bogus 0-byte
-  .sav0 and claim success). NOTE (Aug 27 2026): the fork's libretro layer DOES implement
-  an in-memory state round-trip (retro_serialize via System::SaveStateBuffer with async
-  draining) - the paused-refresh pin uses it (see round 7) and it works in practice, so
-  wiring real 3DS savestates for F/G is a plausible follow-up; the frontend still forces
-  m_maxSaveStateSize = 0 pending that. The 3DS depth scale DEFAULTS to 155%
+- SAVESTATES (corrected Aug 27 2026): the old "core has no savestates / retro_serialize
+  always fails" claim was WRONG - the fork's libretro layer implements a real round-trip
+  (retro_serialize_size drains async ops then System::SaveStateBuffer; retro_unserialize
+  loads); the boot-time probe in InitEmulator just fails before the game runs, which is
+  where the myth came from. What remains true: the state is a VARIABLE-SIZE zstd blob
+  (tens of MB), so the fixed-slot buffer machinery is unsuitable - InitEmulator still
+  FORCES `m_maxSaveStateSize = 0` for 3DS, SaveState/LoadState(slot) still no-op, and
+  the profile update (`UpdateDefault3DS`) stays a single RenderFrame per frame with no
+  rewind multi-pass. F/G/L and harness `savestate`/`loadstate` DO work on 3DS now via
+  Save3DSStateToFile/Load3DSStateFromFile (fresh serialize through a temporary buffer
+  into the normal saves/3ds/<rom>.sav0 path; loading while paused auto-refreshes the
+  frozen screen and re-pins the paused-refresh state). Old bogus 0-byte .sav0 files
+  fail the load with a clear message. The 3DS depth scale DEFAULTS to 155%
   (SetEmulatorData; was 90% until Seth's Aug 27 request; a user [ ] / holo.DepthScale
   adjustment overrides it for the session).
 - ROMs are huge (512MB): LoadRom does NOT read the file into RAM for 3DS; it hashes the

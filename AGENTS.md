@@ -389,11 +389,16 @@ but burns the 5.6 escape hatch like any other resave.
   core through PushHoloViewParams (called from every InitLayers, ResetRom, and a 1Hz Tick
   self-heal - it used to be pushed only on a keypress, so the default never arrived; a
   missing export = stale core DLL now warns once instead of failing silently). { and }
-  (`holo.ViewWidth`, 0-5) are a SECOND gain on the multiview view separation, stacked
-  multiplicatively with the depth scale (in the shear model adjacent-view difference IS
-  the depth quantity; the core clamps the product to 8). A viz/depth change while PAUSED
+  nudge the multiview CONVERGENCE (the zero-parallax plane: how much pops out vs sinks
+  behind the screen; 5% per step, `holo.Convergence` stays the console twin, -1 restores
+  the 0.35 core default). A "view width" knob was tried on those keys first and removed:
+  in the shear model adjacent-view difference IS the depth quantity, so it duplicated
+  [ ]. A viz/depth change while PAUSED
   re-renders the frozen 3DS screen with zero time advance via the core's
-  retro_holo_refresh_paused state pin (fallback on old DLLs: 2/60s per change). USER ZOOM
+  retro_holo_refresh_paused state pin (fallback on old DLLs: 4/60s per change). 3DS
+  SAVESTATES WORK now (F/G/L + harness): Save3DSStateToFile/Load3DSStateFromFile
+  serialize fresh per save (variable-size zstd state, tens of MB) - the fixed-slot
+  rewind machinery stays disabled for 3DS (m_maxSaveStateSize 0). USER ZOOM
   (= and -, `holo.Zoom <factor>`) is a persistent factor applied INSIDE the camera/capture
   fits since Aug 27 2026 - the old ScaleLayersXY zoom was normalized away by the next
   AABB-driven refit, which read as "R reset my zoom". 3DS debug visualizations: Shift+1-7 /

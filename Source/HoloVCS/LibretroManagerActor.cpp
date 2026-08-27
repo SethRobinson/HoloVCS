@@ -83,16 +83,6 @@ static FAutoConsoleCommand CCmdHoloConvergence(
 		pActor->ApplyLayerDepth(); //pushes retro_holo_set_view_params with the new value
 	}));
 
-//Console twin of the { and } hotkeys (3DS multiview view-separation gain)
-static FAutoConsoleCommand CCmdHoloViewWidth(
-	TEXT("holo.ViewWidth"),
-	TEXT("3DS multiview view-separation gain, same as the { and } hotkeys (0..5, stacks with holo.DepthScale). Usage: holo.ViewWidth 1.5"),
-	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
-	{
-		if (args.Num() < 1 || !g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
-		g_pLibretroManager->m_pLibretroManagedActor->SetUserViewWidth(FCString::Atof(*args[0]));
-	}));
-
 //Console twin of the = and - hotkeys.  The factor is applied inside the camera/capture
 //fits (framing crop), so it survives resets, rom switches, and every refit.
 static FAutoConsoleCommand CCmdHoloZoom(
@@ -641,16 +631,13 @@ bool ALibretroManagerActor::PushHoloViewParams()
 		}
 		return false;
 	}
-	//the separation the core sees is depth * width (the "width" knob is an extra gain on
-	//the same per-view separation; the core clamps the product to [0,8])
-	const float sep = m_userDepthScale * m_userViewWidth;
-	g_pLibretroManager->m_core.retro_holo_set_view_params(sep, m_userConv01);
-	if (sep != m_lastPushedSep || m_userConv01 != m_lastPushedConv)
+	g_pLibretroManager->m_core.retro_holo_set_view_params(m_userDepthScale, m_userConv01);
+	if (m_userDepthScale != m_lastPushedSep || m_userConv01 != m_lastPushedConv)
 	{
-		m_lastPushedSep = sep;
+		m_lastPushedSep = m_userDepthScale;
 		m_lastPushedConv = m_userConv01;
-		LogMsg("Multiview view params pushed: separation %.2f (depth %.2f x width %.2f), convergence %.2f",
-			sep, m_userDepthScale, m_userViewWidth, m_userConv01);
+		LogMsg("Multiview view params pushed: depth scale %.2f, convergence %.2f",
+			m_userDepthScale, m_userConv01);
 		//while paused there is no core frame to show the change on - regenerate the
 		//frozen screen (no-op unless 3DS and paused; change-gated so the 1Hz self-heal
 		//never steps the emulator)
@@ -797,17 +784,18 @@ void ALibretroManagerActor::SetUserDepthScale(float scale, bool bShowStatus)
 	ShowStatusMessage(st);
 }
 
-//3DS multiview "width" ({ and } hotkeys): extra gain on the per-view separation, pushed
-//to the core as depth * width.  Same clamp/snap ergonomics as the depth knob.
-void ALibretroManagerActor::SetUserViewWidth(float width, bool bShowStatus)
+//'{' and '}': nudge the multiview convergence.  0 = nearest content AT the screen
+//(everything sinks behind), 1 = farthest content at the screen (everything pops out);
+//the core default is 0.35 (m_userConv01 -1 = keep default, so the first nudge starts
+//from there).  holo.Convergence remains the console twin (-1 restores the default).
+void ALibretroManagerActor::NudgeConvergence(float delta)
 {
-	m_userViewWidth = FMath::Clamp(width, 0.0f, 5.0f);
-	if (m_userViewWidth < 0.05f) m_userViewWidth = 0.0f;
-	ApplyLayerDepth(); //re-pushes the view params (and refreshes a paused screen)
+	const float cur = (m_userConv01 >= 0.0f) ? m_userConv01 : 0.35f;
+	m_userConv01 = FMath::Clamp(cur + delta, 0.0f, 1.0f);
+	ApplyLayerDepth(); //pushes the new value (and refreshes a paused screen)
 
-	if (!bShowStatus) return;
 	char st[64];
-	snprintf(st, sizeof(st), "3D width: %d%%", (int)roundf(m_userViewWidth * 100));
+	snprintf(st, sizeof(st), "Convergence: %d%% pop-out", (int)roundf(m_userConv01 * 100));
 	ShowStatusMessage(st);
 }
 

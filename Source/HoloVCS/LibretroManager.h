@@ -193,6 +193,11 @@ public:
 		FLinearColor colorKey, FLinearColor colorKey2, const byte* pKeepList, int keepListSize);
 	void SaveStateToFile();
 	void LoadStateFromFile();
+	//3DS-only file savestates: the state size varies per moment on this core, so these
+	//serialize fresh through a temporary buffer instead of the fixed slot buffers (which
+	//stay disabled = the per-frame rewind machinery keeps no-oping on 3DS)
+	void Save3DSStateToFile();
+	void Load3DSStateFromFile();
 	string GetSaveStateDir(); //saves/<romdir>/, keeps the top-level folder clean and avoids cross-system name collisions
 	string GetSaveStatePath(); //full path of the current rom's .sav0 in GetSaveStateDir()
 	void ResetRom();
