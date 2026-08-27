@@ -98,6 +98,9 @@ public:
 	//ABI v4 addition: debug visualization mask + cutaway plane (Shift+number hotkeys /
 	//holo.Viz / holo.Cutaway).  Optional; old core DLLs simply lack the export.
 	retro_holo_set_debug_t retro_holo_set_debug = nullptr;
+	//ABI v4 addition: zero-time-advance paused refresh (state pin + rewind inside the
+	//core).  Optional; without it RefreshPausedFrame advances 2/60s per change instead.
+	retro_holo_refresh_paused_t retro_holo_refresh_paused = nullptr;
 	void (*retro_set_audio_sample)(retro_audio_sample_t);
 	void (*retro_set_audio_sample_batch)(retro_audio_sample_batch_t);
 	void (*retro_set_input_poll)(retro_input_poll_t);

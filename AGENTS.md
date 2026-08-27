@@ -381,13 +381,19 @@ but burns the 5.6 escape hatch like any other resave.
 - Hotkeys [ and ] scale the 3D depth spread live (m_userDepthScale on ALibretroManagerActor,
   multiplies m_total3dDepth, survives rom switches; ApplyLayerDepth re-spreads the existing
   layer actors absolutely and re-runs both camera/capture fits - no InitLayers hitch).
-  Per-system DEFAULT: 90% for 3DS, 100% otherwise, applied in SetEmulatorData only until
+  Per-system DEFAULT: 155% for 3DS (Seth request Aug 27 2026; was 90%), 100% otherwise,
+  applied in SetEmulatorData only until
   the user touches the scale (m_bUserDepthScaleTouched latch set by SetUserDepthScale). Console
   twin for the harness: `holo.DepthScale <mult>` (clamped 0.0-5.0; below 0.05 snaps to a true
   0 = completely flat, and `]` climbs back out of 0). On 3DS multiview the value reaches the
   core through PushHoloViewParams (called from every InitLayers, ResetRom, and a 1Hz Tick
   self-heal - it used to be pushed only on a keypress, so the default never arrived; a
-  missing export = stale core DLL now warns once instead of failing silently). USER ZOOM
+  missing export = stale core DLL now warns once instead of failing silently). { and }
+  (`holo.ViewWidth`, 0-5) are a SECOND gain on the multiview view separation, stacked
+  multiplicatively with the depth scale (in the shear model adjacent-view difference IS
+  the depth quantity; the core clamps the product to 8). A viz/depth change while PAUSED
+  re-renders the frozen 3DS screen with zero time advance via the core's
+  retro_holo_refresh_paused state pin (fallback on old DLLs: 2/60s per change). USER ZOOM
   (= and -, `holo.Zoom <factor>`) is a persistent factor applied INSIDE the camera/capture
   fits since Aug 27 2026 - the old ScaleLayersXY zoom was normalized away by the next
   AABB-driven refit, which read as "R reset my zoom". 3DS debug visualizations: Shift+1-7 /

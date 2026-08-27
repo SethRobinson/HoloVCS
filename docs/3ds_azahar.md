@@ -325,15 +325,23 @@ Round 7 (Aug 27 2026): SETTINGS PERSISTENCE FIXES + DEBUG VISUALIZATIONS.
     mostly or entirely on one side of the pinned plane (the title attract's scene
     swaps go fully black at deep cuts) - that is the pin working, not the runaway;
     judge cutaway in-level where the scene is continuous.
-  PAUSED INSPECTION (fix, Aug 27 2026 after Seth's "Shift hotkeys don't work while
-  paused"): the core only renders inside retro_run and has no savestates, so a viz or
-  depth/convergence change on a P-paused screen had nothing to redraw. A change while
-  paused now runs LibretroManager::RefreshPausedFrame(): TWO muted core frames (the
-  holo delivery is one present behind through the PBO rings, so frame 1 renders the
-  new look and frame 2 delivers it; m_useAudio trashes the audio, the same trick the
-  multi-pass profiles use). The game advances 2/60s per change. Change-gated at the
-  push sites (PushHoloViewParams / ApplyHoloViz memos) so the 1Hz self-heal can never
-  step a paused emulator.
+  PAUSED INSPECTION (Aug 27 2026, two rounds after Seth's "Shift hotkeys don't work
+  while paused" then "time must NOT advance"): the core only renders inside retro_run,
+  so a viz or depth/convergence change on a P-paused screen had nothing to redraw. A
+  change while paused runs LibretroManager::RefreshPausedFrame(), which calls the
+  core's retro_holo_refresh_paused export: the core PINS its emulated state in memory
+  (System::SaveStateBuffer - the fork's libretro serialize machinery, once per paused
+  stretch), runs FOUR internal frames so the renderer re-executes the draws with the
+  new params (four, not two: games render internally at 30Hz and the holo delivery is
+  one present behind through the PBO rings - two frames alternated between delivering
+  and stranding the new look in the ring), then
+  loads the pin back - ZERO emulated-time advance, sweep the cutaway all day. Any
+  normal retro_run drops the pin. m_useAudio trashes the refresh frames' audio (the
+  multi-pass profiles' trick). Fallbacks: export missing (old DLL) or the state
+  round-trip fails = two real frames, 2/60s per change (the round-1 behavior).
+  Change-gated at the push sites (PushHoloViewParams / ApplyHoloViz memos) so the 1Hz
+  self-heal can never step a paused emulator. First change in a paused stretch pays
+  the state save (a brief hitch); later changes only pay load-back.
   Plumbing: frontend state on ALibretroManagerActor (m_holoVizFlags/m_cutaway01,
   session-sticky within 3DS, cleared on system switch; ApplyHoloViz pushes, re-pushed
   at InitLayers/reset/1Hz) -> new optional export retro_holo_set_debug(mask, cutaway01)
@@ -381,8 +389,13 @@ requirements are missing).
   single RenderFrame per frame, no rewind multi-pass.
   Harness `savestate`/`loadstate` and the F/G/L hotkeys show "This system doesn't
   support save states" on 3DS (Aug 2026; they used to silently write a bogus 0-byte
-  .sav0 and claim success). The 3DS depth scale also DEFAULTS to 90% (SetEmulatorData;
-  a user [ ] / holo.DepthScale adjustment overrides it for the session).
+  .sav0 and claim success). NOTE (Aug 27 2026): the fork's libretro layer DOES implement
+  an in-memory state round-trip (retro_serialize via System::SaveStateBuffer with async
+  draining) - the paused-refresh pin uses it (see round 7) and it works in practice, so
+  wiring real 3DS savestates for F/G is a plausible follow-up; the frontend still forces
+  m_maxSaveStateSize = 0 pending that. The 3DS depth scale DEFAULTS to 155%
+  (SetEmulatorData; was 90% until Seth's Aug 27 request; a user [ ] / holo.DepthScale
+  adjustment overrides it for the session).
 - ROMs are huge (512MB): LoadRom does NOT read the file into RAM for 3DS; it hashes the
   first 1MB for the GameProfileManager key and passes only ginfo.path (the core loads the
   file itself, need_fullpath).

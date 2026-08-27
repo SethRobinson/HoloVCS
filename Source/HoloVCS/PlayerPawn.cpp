@@ -1448,6 +1448,12 @@ void APlayerPawn::OnLeftBracketKey()
 	if (!g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
 	if (HelpSwallowedInput()) return;
 	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+	//'{' (Shift+[) = less 3D width (multiview view-separation gain, stacks with depth)
+	if (IsShiftDown())
+	{
+		pActor->SetUserViewWidth((pActor->m_userViewWidth / 1.15f) - 0.01f);
+		return;
+	}
 	//subtract-with-divide hybrid so repeated presses actually REACH 0 instead of only
 	//approaching it (SetUserDepthScale snaps the last sliver to a true 0)
 	pActor->SetUserDepthScale((pActor->m_userDepthScale / 1.15f) - 0.01f);
@@ -1458,6 +1464,12 @@ void APlayerPawn::OnRightBracketKey()
 	if (!g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
 	if (HelpSwallowedInput()) return;
 	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+	//'}' (Shift+]) = more 3D width; the additive floor climbs back out of a true 0
+	if (IsShiftDown())
+	{
+		pActor->SetUserViewWidth(FMath::Max(pActor->m_userViewWidth * 1.15f, pActor->m_userViewWidth + 0.06f));
+		return;
+	}
 	//the additive floor lets ] climb back out of a true-0 flat setting
 	pActor->SetUserDepthScale(FMath::Max(pActor->m_userDepthScale * 1.15f, pActor->m_userDepthScale + 0.06f));
 }

@@ -91,6 +91,14 @@ typedef void (*retro_holo_set_view_params_t)(float separation_scale, float conve
 #define HOLO_VIZ_CUTAWAY       (1u << 7) /* discard fragments nearer than the cutaway plane */
 typedef void (*retro_holo_set_debug_t)(unsigned viz_flags, float cutaway01);
 
+/* v4 addition (additive): optional export `int retro_holo_refresh_paused(void)` -
+   regenerate the current frame's holo output with the latest debug/view params WITHOUT
+   advancing emulated time (the core pins its state in memory once per paused stretch,
+   runs two internal frames, and loads the pin back; any normal retro_run drops the
+   pin). The frontend calls it when a setting changes while its emulation is paused.
+   Returns 1 when frames were rendered; 0 = could not render, run real frames instead. */
+typedef int (*retro_holo_refresh_paused_t)(void);
+
 #ifdef __cplusplus
 }
 #endif

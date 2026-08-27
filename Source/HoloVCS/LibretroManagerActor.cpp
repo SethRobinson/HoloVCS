@@ -83,6 +83,16 @@ static FAutoConsoleCommand CCmdHoloConvergence(
 		pActor->ApplyLayerDepth(); //pushes retro_holo_set_view_params with the new value
 	}));
 
+//Console twin of the { and } hotkeys (3DS multiview view-separation gain)
+static FAutoConsoleCommand CCmdHoloViewWidth(
+	TEXT("holo.ViewWidth"),
+	TEXT("3DS multiview view-separation gain, same as the { and } hotkeys (0..5, stacks with holo.DepthScale). Usage: holo.ViewWidth 1.5"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		if (args.Num() < 1 || !g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
+		g_pLibretroManager->m_pLibretroManagedActor->SetUserViewWidth(FCString::Atof(*args[0]));
+	}));
+
 //Console twin of the = and - hotkeys.  The factor is applied inside the camera/capture
 //fits (framing crop), so it survives resets, rom switches, and every refit.
 static FAutoConsoleCommand CCmdHoloZoom(
@@ -631,12 +641,16 @@ bool ALibretroManagerActor::PushHoloViewParams()
 		}
 		return false;
 	}
-	g_pLibretroManager->m_core.retro_holo_set_view_params(m_userDepthScale, m_userConv01);
-	if (m_userDepthScale != m_lastPushedSep || m_userConv01 != m_lastPushedConv)
+	//the separation the core sees is depth * width (the "width" knob is an extra gain on
+	//the same per-view separation; the core clamps the product to [0,8])
+	const float sep = m_userDepthScale * m_userViewWidth;
+	g_pLibretroManager->m_core.retro_holo_set_view_params(sep, m_userConv01);
+	if (sep != m_lastPushedSep || m_userConv01 != m_lastPushedConv)
 	{
-		m_lastPushedSep = m_userDepthScale;
+		m_lastPushedSep = sep;
 		m_lastPushedConv = m_userConv01;
-		LogMsg("Multiview view params pushed: depth scale %.2f, convergence %.2f", m_userDepthScale, m_userConv01);
+		LogMsg("Multiview view params pushed: separation %.2f (depth %.2f x width %.2f), convergence %.2f",
+			sep, m_userDepthScale, m_userViewWidth, m_userConv01);
 		//while paused there is no core frame to show the change on - regenerate the
 		//frozen screen (no-op unless 3DS and paused; change-gated so the 1Hz self-heal
 		//never steps the emulator)
@@ -780,6 +794,20 @@ void ALibretroManagerActor::SetUserDepthScale(float scale, bool bShowStatus)
 
 	char st[64];
 	snprintf(st, sizeof(st), "3D depth: %d%%", (int)roundf(m_userDepthScale * 100));
+	ShowStatusMessage(st);
+}
+
+//3DS multiview "width" ({ and } hotkeys): extra gain on the per-view separation, pushed
+//to the core as depth * width.  Same clamp/snap ergonomics as the depth knob.
+void ALibretroManagerActor::SetUserViewWidth(float width, bool bShowStatus)
+{
+	m_userViewWidth = FMath::Clamp(width, 0.0f, 5.0f);
+	if (m_userViewWidth < 0.05f) m_userViewWidth = 0.0f;
+	ApplyLayerDepth(); //re-pushes the view params (and refreshes a paused screen)
+
+	if (!bShowStatus) return;
+	char st[64];
+	snprintf(st, sizeof(st), "3D width: %d%%", (int)roundf(m_userViewWidth * 100));
 	ShowStatusMessage(st);
 }
 

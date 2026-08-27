@@ -410,6 +410,8 @@ bool LibretroManager::LoadCore(string fileName)
 	m_core.retro_holo_set_view_params = (retro_holo_set_view_params_t)GetProcAddress(m_dllHandle, "retro_holo_set_view_params");
 	//ABI v4 sibling: debug visualization mask + cutaway plane (see ApplyHoloViz)
 	m_core.retro_holo_set_debug = (retro_holo_set_debug_t)GetProcAddress(m_dllHandle, "retro_holo_set_debug");
+	//ABI v4 sibling: zero-time-advance paused refresh (see RefreshPausedFrame)
+	m_core.retro_holo_refresh_paused = (retro_holo_refresh_paused_t)GetProcAddress(m_dllHandle, "retro_holo_refresh_paused");
 	m_core.retro_load_game = (decltype(m_core.retro_load_game))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_load_game));
 	m_core.retro_get_system_av_info = (decltype(m_core.retro_get_system_av_info))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_get_system_av_info));
 	m_core.retro_run = (decltype(m_core.retro_run))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_run));
@@ -1154,12 +1156,13 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 		m_pLibretroManagedActor->m_coreLayerScale = FVector2D(3.5f, 2.2f);
 		m_pLibretroManagedActor->m_corePosition = FVector2D(0, 0);
 		m_pLibretroManagedActor->m_bgAllowShadows = false;
-		//full spread reads too deep on the device for 3DS scenes; direct assign (not
-		//SetUserDepthScale) so no status text fires and InitLayers just picks it up
+		//Seth's preferred 3DS depth (Aug 27 2026: 90% read too flat once multiview was
+		//dialed in, he asked for 155%); direct assign (not SetUserDepthScale) so no
+		//status text fires and InitLayers just picks it up
 		if (!m_pLibretroManagedActor->m_bUserDepthScaleTouched)
 		{
-			m_pLibretroManagedActor->m_userDepthScale = 0.9f;
-			LogMsg("3DS: depth scale defaulting to 90%%");
+			m_pLibretroManagedActor->m_userDepthScale = 1.55f;
+			LogMsg("3DS: depth scale defaulting to 155%%");
 		}
 		m_targetFPS = 59.8331; //real 3DS refresh; audio rate comes from retro_get_system_av_info
 		m_touchCursorShownOnce = false; //re-arm the "show the cursor briefly at boot" hint
@@ -2021,21 +2024,36 @@ void LibretroManager::RenderFrame(const char* pRenderFlags)
 	m_core.retro_run(); 
 }
 
-//3DS debug views / depth changes while PAUSED: the core only renders inside retro_run and
-//has no savestates to replay, so a visualization or view-param change on a frozen screen
-//had nothing to redraw until unpause (the Shift hotkeys looked dead while paused).  Run
-//TWO muted emulator frames: the holo delivery rides one-present-behind PBO rings, so the
-//first frame renders with the new settings and the second present delivers it.  The game
-//advances 2/60s per change - invisible for inspection use; m_useAudio is the same
-//trash-the-audio trick the multi-pass profiles use for extra visual renders.
+//3DS debug views / depth changes while PAUSED: the core only renders inside retro_run,
+//so a visualization or view-param change on a frozen screen has nothing to redraw until
+//unpause (the Shift hotkeys looked dead while paused).  Preferred path: the core's
+//retro_holo_refresh_paused export renders two internal frames and REWINDS its state (an
+//in-memory pin held for the whole paused stretch), so emulated time does not advance at
+//all - Seth wants the paused moment inspectable without it drifting.  Fallback for a
+//core without the export: run two real frames (advances 2/60s per change).  Either way
+//the audio is muted via m_useAudio, the same trash-the-audio trick the multi-pass
+//profiles use for extra visual renders.
 void LibretroManager::RefreshPausedFrame()
 {
 	if (!IsCoreLoaded() || !m_bGamePaused) return;
 	if (m_emulatorType != EMULATOR_3DS) return;
 	const bool bAudioWas = m_useAudio;
 	m_useAudio = false;
-	RenderFrame("11");
-	RenderFrame("11");
+	bool bRendered = false;
+	if (m_core.retro_holo_refresh_paused)
+	{
+		bRendered = m_core.retro_holo_refresh_paused() != 0;
+	}
+	if (!bRendered)
+	{
+		//four frames, matching the core-side refresh: games render internally at 30Hz
+		//and the delivery ring is one present behind, so two frames could leave the new
+		//look stranded in the ring
+		for (int i = 0; i < 4; i++)
+		{
+			RenderFrame("11");
+		}
+	}
 	m_useAudio = bAudioWas;
 }
 

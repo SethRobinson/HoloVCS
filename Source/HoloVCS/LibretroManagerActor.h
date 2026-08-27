@@ -155,6 +155,12 @@ public:
 	float m_total3dDepth = 150;
 	float m_userDepthScale = 1.0f; //user multiplier on m_total3dDepth ([ and ] hotkeys); survives rom switches
 	bool m_bUserDepthScaleTouched = false; //true once the user sets a depth scale (hotkeys/console/harness); per-system defaults in SetEmulatorData only apply while false
+	//3DS multiview "width" ({ and } hotkeys, holo.ViewWidth): a second multiplier on the
+	//per-view separation, stacked with the depth scale (in the shear model the adjacent
+	//view difference IS the depth quantity, so this is an extra gain to play with, not an
+	//independent axis).  The core receives depth * width as its separation scale.
+	float m_userViewWidth = 1.0f;
+	void SetUserViewWidth(float width, bool bShowStatus = true);
 	//3DS multiview zero-parallax plane as a fraction of the scene depth range (0 = nearest
 	//content at the screen plane, 1 = farthest).  -1 keeps the core default (0.35).  Pushed
 	//through retro_holo_set_view_params by ApplyLayerDepth; holo.Convergence sets it live.
