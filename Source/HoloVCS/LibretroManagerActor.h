@@ -124,6 +124,16 @@ public:
 	int GetLayerCount() { return m_layerCount; }
 	void SetUserDepthScale(float scale, bool bShowStatus = true); //clamps, re-spreads the live layers; bShowStatus=false for per-tick ramps (no text in GIF frames)
 	void ApplyLayerDepth(); //reposition existing layer actors to the current depth spread (no respawn)
+	bool PushHoloViewParams(); //push depth/conv to the 3DS multiview core; warns ONCE if the export is missing (stale DLL)
+	void SetUserZoom(float factor, bool bShowStatus = true); //user zoom as a persistent framing factor (= and - hotkeys, holo.Zoom)
+	void RepositionBottomScreen(); //3DS: deterministic bottom-screen placement; idempotent, re-run from every depth/zoom apply
+	//3DS debug visualizations (Shift+number hotkeys, holo.Viz / holo.Cutaway console twins).
+	//The mask + cutaway plane travel to the core through the optional retro_holo_set_debug
+	//export; see cores/holo_abi/holo_layer_abi.h for the HOLO_VIZ_* bits.
+	void ApplyHoloViz(); //push the current mask + cutaway to the core (core dedupes repeats)
+	void ToggleHoloViz(uint32 flag, const char* pName); //xor one bit, status text, push
+	void ClearHoloViz(); //Shift+0: all debug views off, cutaway reset
+	void NudgeCutaway(float delta); //';' and ''' in 3DS multiview: slide the cutaway plane
 	void SetLayersPeeled(int count); //debug: hide the N nearest layers (';' and ''' hotkeys) to see the back
 	int GetLayersPeeled() { return m_layersPeeled; }
 	//3DS multiview (mode 2): (re)create the quilt carrier quad at m_layerInfo[count+1] -
@@ -149,6 +159,15 @@ public:
 	//content at the screen plane, 1 = farthest).  -1 keeps the core default (0.35).  Pushed
 	//through retro_holo_set_view_params by ApplyLayerDepth; holo.Convergence sets it live.
 	float m_userConv01 = -1.0f;
+	//user zoom from the = and - keys, applied as a framing crop INSIDE the camera/capture
+	//fits (an actor-scale zoom got normalized right back out by the AABB-driven fits, which
+	//is why zoom appeared to reset on every depth press, rebuild, or R).  Survives rom
+	//switches and resets like m_userDepthScale.
+	float m_userZoomFactor = 1.0f;
+	//3DS debug visualization state (HOLO_VIZ_* mask + cutaway plane); session-sticky within
+	//3DS, cleared by SetEmulatorData when switching to another system
+	uint32 m_holoVizFlags = 0;
+	float m_cutaway01 = 0.0f;
 	float m_depthOffsetForAllLayers = 0;
 	bool m_setTextureSmoothing = false;
 	int m_layerWidth = 256;
@@ -199,6 +218,11 @@ public:
 
 	int m_framesRendered = 0;
 	float m_timeOfNextFPSUpdate = 0;
+	//PushHoloViewParams bookkeeping: change-gated logging (ApplyLayerDepth runs per tick
+	//during holo.DepthRamp) and the one-shot stale-DLL warning
+	float m_lastPushedSep = -999.0f;
+	float m_lastPushedConv = -999.0f;
+	bool m_bWarnedNoViewParamExport = false;
 	bool m_bShowLKGFPS = false; //fps readout on the in-world status text, on for Looking Glass builds
 	eLightingMode m_curLightingMode = LIGHTING_MODE_NORMAL;
 

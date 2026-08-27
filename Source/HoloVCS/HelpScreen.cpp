@@ -133,11 +133,13 @@ FString HelpScreen::BuildHelpText() const
 	s += TEXT("V / click both sticks\tFly camera on/off\n");
 	s += TEXT("\n");
 	s += TEXT("[ / ]\tLess / more 3D depth\n");
-	s += TEXT("; / '\tHide / show nearest layers\n");
+	s += TEXT("; / '\tPeel layers (3DS multiview: cutaway)\n");
 	s += TEXT("= / -\tZoom in / out\n");
 	s += TEXT("0\tToggle FPS cap\n");
 	s += TEXT("1-5\tFrameskip\n");
 	s += TEXT("6 / 7 / 8\tSmoothing / shadows / lighting\n");
+	s += TEXT("Shift+1-7\tDebug views: wire/clay/unlit/depth/heat/rainbow/x-ray\n");
+	s += TEXT("Shift+0\tDebug views off\n");
 	s += TEXT("\n");
 	s += TEXT("Press any key to close");
 	return s;

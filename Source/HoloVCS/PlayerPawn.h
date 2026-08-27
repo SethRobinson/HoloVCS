@@ -255,6 +255,11 @@ public:
 	void JoyPad_RightStick_Released();
 
 
+	//Shift+number = 3DS debug visualization toggles.  No latch: the number handlers poll the
+	//live modifier state, so the harness can drive chords with `key LeftShift 8` + `key One`.
+	bool IsShiftDown() const;
+	void HandleVizHotkey(int num);
+
 	void OnNum0Key();
 	void OnNum1Key();
 	void OnNum2Key();

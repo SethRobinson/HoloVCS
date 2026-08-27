@@ -216,6 +216,13 @@ float APlayerPawn::ComputeFlatCameraFitDist(const FRotator& camRot) const
 		dist = FMath::Max(dist, (FMath::Abs((float)(vOff | vUp)) * m_flatCameraMargin) / tanHalfV - fwd);
 	}
 
+	//user zoom (= and -) as a framing crop, mirroring the LKG capture fit; this runs every
+	//frame so flat-view zoom persists across every rebuild for free
+	if (g_pLibretroManager && g_pLibretroManager->m_pLibretroManagedActor)
+	{
+		dist /= g_pLibretroManager->m_pLibretroManagedActor->m_userZoomFactor;
+	}
+
 	return dist;
 }
 
@@ -1126,9 +1133,40 @@ void APlayerPawn::JoyPad_RShoulder_Released()
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R] = false;
 }
 
+//Live modifier poll for the Shift+number debug-view chords.  BindKey fires regardless of
+//modifiers, so the number handlers route on this instead of a latch - which also lets the
+//automation harness drive chords: `key LeftShift 8` records the shift into UPlayerInput
+//through the real Slate path, then `key One` sees it held.
+bool APlayerPawn::IsShiftDown() const
+{
+	APlayerController* pPC = Cast<APlayerController>(GetController());
+	return pPC && (pPC->IsInputKeyDown(EKeys::LeftShift) || pPC->IsInputKeyDown(EKeys::RightShift));
+}
+
+//Shift+number: 3DS debug visualization toggles (dev-blog eye candy; see holo_layer_abi.h
+//for the HOLO_VIZ_* bits and docs/3ds_azahar.md for what each mode shows)
+void APlayerPawn::HandleVizHotkey(int num)
+{
+	ALibretroManagerActor* pActor = g_pLibretroManager ? g_pLibretroManager->m_pLibretroManagedActor : nullptr;
+	if (!pActor) return;
+	switch (num)
+	{
+	case 0: pActor->ClearHoloViz(); break;
+	case 1: pActor->ToggleHoloViz(HOLO_VIZ_WIREFRAME, "Wireframe"); break;
+	case 2: pActor->ToggleHoloViz(HOLO_VIZ_CLAY, "Clay (untextured)"); break;
+	case 3: pActor->ToggleHoloViz(HOLO_VIZ_UNLIT, "3DS lighting off"); break;
+	case 4: pActor->ToggleHoloViz(HOLO_VIZ_DEPTH_GRAY, "Depth B&W"); break;
+	case 5: pActor->ToggleHoloViz(HOLO_VIZ_DEPTH_HEAT, "Depth heatmap"); break;
+	case 6: pActor->ToggleHoloViz(HOLO_VIZ_SLICE_RAINBOW, "Slice rainbow"); break;
+	case 7: pActor->ToggleHoloViz(HOLO_VIZ_XRAY, "X-ray (multiview only)"); break;
+	default: break; //Shift+8/9 reserved; swallowing keeps the chord from firing the bare hotkey
+	}
+}
+
 void APlayerPawn::OnNum0Key()
 {
 	if (HelpSwallowedInput()) return;
+	if (IsShiftDown()) { HandleVizHotkey(0); return; }
 	//toggle every frame limiter (vsync, engine cap and the emulator pacing busy-wait) to see
 	//true throughput on the fps counter - the game runs fast while uncapped, like frameskip
 	static bool bUncapped = false;
@@ -1148,31 +1186,37 @@ void APlayerPawn::OnNum0Key()
 void APlayerPawn::OnNum1Key()
 {
 	if (HelpSwallowedInput()) return;
+	if (IsShiftDown()) { HandleVizHotkey(1); return; }
 	g_pLibretroManager->SetFrameSkip(0);
 }
 void APlayerPawn::OnNum2Key()
 {
 	if (HelpSwallowedInput()) return;
+	if (IsShiftDown()) { HandleVizHotkey(2); return; }
 	g_pLibretroManager->SetFrameSkip(1);
 }
 void APlayerPawn::OnNum3Key()
 {
 	if (HelpSwallowedInput()) return;
+	if (IsShiftDown()) { HandleVizHotkey(3); return; }
 	g_pLibretroManager->SetFrameSkip(2);
 }
 void APlayerPawn::OnNum4Key()
 {
 	if (HelpSwallowedInput()) return;
+	if (IsShiftDown()) { HandleVizHotkey(4); return; }
 	g_pLibretroManager->SetFrameSkip(3);
 }
 void APlayerPawn::OnNum5Key()
 {
 	if (HelpSwallowedInput()) return;
+	if (IsShiftDown()) { HandleVizHotkey(5); return; }
 	g_pLibretroManager->SetFrameSkip(4);
 }
 void APlayerPawn::OnNum6Key()
 {
 	if (HelpSwallowedInput()) return;
+	if (IsShiftDown()) { HandleVizHotkey(6); return; }
 	bool bTextureSmoothing = g_pLibretroManager->m_pLibretroManagedActor->GetTextureSmoothingToUse();
 
 	bTextureSmoothing = !bTextureSmoothing;
@@ -1194,6 +1238,7 @@ void APlayerPawn::OnNum6Key()
 void APlayerPawn::OnNum7Key()
 {
 	if (HelpSwallowedInput()) return;
+	if (IsShiftDown()) { HandleVizHotkey(7); return; }
 	//The rig's light of record is the point light (the old build's setup); fall back to a
 	//directional for maps that only have that. m_pLight is an editor-set property that isn't
 	//wired up in every map.
@@ -1243,6 +1288,14 @@ void APlayerPawn::OnSemicolonKey()
 {
 	if (HelpSwallowedInput()) return;
 	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+	//3DS multiview has no band layers to peel - ; and ' slide the CUTAWAY plane instead
+	//(clips away the nearest geometry, exposing the occluded geometry the core really
+	//renders per view).  Band mode and the other systems keep the classic layer peel.
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && g_pLibretroManager->m_holoCaptureMode == 2)
+	{
+		pActor->NudgeCutaway(0.04f);
+		return;
+	}
 	pActor->SetLayersPeeled(pActor->GetLayersPeeled() + 1);
 	ShowStatusMessage(string("Hiding " + toString(pActor->GetLayersPeeled()) + " nearest layer(s)"));
 }
@@ -1251,6 +1304,11 @@ void APlayerPawn::OnApostropheKey()
 {
 	if (HelpSwallowedInput()) return;
 	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && g_pLibretroManager->m_holoCaptureMode == 2)
+	{
+		pActor->NudgeCutaway(-0.04f);
+		return;
+	}
 	pActor->SetLayersPeeled(pActor->GetLayersPeeled() - 1);
 	if (pActor->GetLayersPeeled() == 0)
 	{
@@ -1265,6 +1323,7 @@ void APlayerPawn::OnApostropheKey()
 void APlayerPawn::OnNum8Key()
 {
 	if (HelpSwallowedInput()) return;
+	if (IsShiftDown()) { HandleVizHotkey(8); return; }
 	g_pLibretroManager->m_pLibretroManagedActor->m_curLightingMode =
 		(eLightingMode) (
 			((int)g_pLibretroManager->m_pLibretroManagedActor->m_curLightingMode + 1) % (int)LIGHTING_MODE_COUNT
@@ -1307,15 +1366,17 @@ void APlayerPawn::OnPKey()
 void APlayerPawn::OnAddKey()
 {
 	if (HelpSwallowedInput()) return;
-	g_pLibretroManager->m_pLibretroManagedActor->ScaleLayersXY(1.05f);
-	ShowStatusMessage("Zooming in");
+	//zoom is a persistent framing factor applied inside the camera/capture fits now -
+	//scaling the quads got normalized right back out by the AABB-driven fits
+	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+	pActor->SetUserZoom(pActor->m_userZoomFactor * 1.05f);
 }
 
 void APlayerPawn::OnSubtractKey()
 {
 	if (HelpSwallowedInput()) return;
-	g_pLibretroManager->m_pLibretroManagedActor->ScaleLayersXY(0.95f);
-	ShowStatusMessage("Zooming out");
+	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+	pActor->SetUserZoom(pActor->m_userZoomFactor * 0.95f);
 }
 
 //Save/load state keys.  F saves, G loads, L is a load alias.  These are direct key
@@ -1474,10 +1535,15 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(EKeys::RightBracket, IE_Pressed, this, &APlayerPawn::OnRightBracketKey);
 	PlayerInputComponent->BindKey(EKeys::RightBracket, IE_Repeat, this, &APlayerPawn::OnRightBracketKey);
 	PlayerInputComponent->BindKey(EKeys::Slash, IE_Pressed, this, &APlayerPawn::OnSlashKey); //Slash also fires with Shift held, so ? works
+	//; and ' repeat so holding a key sweeps the 3DS multiview cutaway plane (band-mode
+	//peel just steps faster, harmless)
 	PlayerInputComponent->BindKey(EKeys::Semicolon, IE_Pressed, this, &APlayerPawn::OnSemicolonKey);
+	PlayerInputComponent->BindKey(EKeys::Semicolon, IE_Repeat, this, &APlayerPawn::OnSemicolonKey);
 	//the physical ' key reaches UE as Quote on Windows keyboards; Apostrophe stays bound too
 	PlayerInputComponent->BindKey(EKeys::Quote, IE_Pressed, this, &APlayerPawn::OnApostropheKey);
+	PlayerInputComponent->BindKey(EKeys::Quote, IE_Repeat, this, &APlayerPawn::OnApostropheKey);
 	PlayerInputComponent->BindKey(EKeys::Apostrophe, IE_Pressed, this, &APlayerPawn::OnApostropheKey);
+	PlayerInputComponent->BindKey(EKeys::Apostrophe, IE_Repeat, this, &APlayerPawn::OnApostropheKey);
 	//"press any key to close" for the help screen - keys without a binding of their own land
 	//here.  MUST NOT consume, or it would eat every keypress meant for the game/hotkeys.
 	//(The help's same-frame show/hide guards keep this from fighting the ? toggle.)

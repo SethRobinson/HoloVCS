@@ -75,6 +75,22 @@ typedef void (*retro_video_refresh_holo_t)(const void* data, unsigned width, uns
    Callable from the frontend's emulation thread at any time. */
 typedef void (*retro_holo_set_view_params_t)(float separation_scale, float convergence01);
 
+/* v4 addition (additive, NO version bump): optional export `void retro_holo_set_debug(
+   unsigned viz_flags, float cutaway01)` - debug/dev-blog visualization toggles, resolved
+   by GetProcAddress like the view-params export. viz_flags is a HOLO_VIZ_* mask;
+   cutaway01 (0..1) slides a clip plane into the scene from the near side, discarding
+   nearer geometry so the occluded geometry behind it shows (0 = nothing cut). The
+   frontend ORs HOLO_VIZ_CUTAWAY into the mask whenever cutaway01 is meaningful. */
+#define HOLO_VIZ_WIREFRAME     (1u << 0) /* scene draws as GL_LINE wireframe */
+#define HOLO_VIZ_CLAY          (1u << 1) /* white textures, lighting kept */
+#define HOLO_VIZ_UNLIT         (1u << 2) /* lighting short-circuited to full-bright */
+#define HOLO_VIZ_DEPTH_GRAY    (1u << 3) /* per-pixel depth as grayscale, near = white */
+#define HOLO_VIZ_DEPTH_HEAT    (1u << 4) /* per-pixel depth through a color ramp */
+#define HOLO_VIZ_SLICE_RAINBOW (1u << 5) /* tint per depth band (mode 1) / per view (mode 2) */
+#define HOLO_VIZ_XRAY          (1u << 6) /* multiview: depth test off + additive mirror draws */
+#define HOLO_VIZ_CUTAWAY       (1u << 7) /* discard fragments nearer than the cutaway plane */
+typedef void (*retro_holo_set_debug_t)(unsigned viz_flags, float cutaway01);
+
 #ifdef __cplusplus
 }
 #endif

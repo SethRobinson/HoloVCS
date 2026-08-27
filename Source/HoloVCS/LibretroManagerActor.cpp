@@ -8,6 +8,8 @@
 #include "Engine/PointLight.h"
 #include "Engine/DirectionalLight.h"
 #include "Components/MeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/Engine.h"
@@ -79,6 +81,54 @@ static FAutoConsoleCommand CCmdHoloConvergence(
 		ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
 		pActor->m_userConv01 = FCString::Atof(*args[0]);
 		pActor->ApplyLayerDepth(); //pushes retro_holo_set_view_params with the new value
+	}));
+
+//Console twin of the = and - hotkeys.  The factor is applied inside the camera/capture
+//fits (framing crop), so it survives resets, rom switches, and every refit.
+static FAutoConsoleCommand CCmdHoloZoom(
+	TEXT("holo.Zoom"),
+	TEXT("Set the view zoom factor, same as the = and - hotkeys (0.2..5, 1 = default framing). Usage: holo.Zoom 1.3"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		if (args.Num() < 1 || !g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
+		g_pLibretroManager->m_pLibretroManagedActor->SetUserZoom(FCString::Atof(*args[0]));
+	}));
+
+//Console twin of the Shift+number debug visualization hotkeys (3DS only)
+static FAutoConsoleCommand CCmdHoloViz(
+	TEXT("holo.Viz"),
+	TEXT("Toggle a 3DS debug view: wire, clay, unlit, depthbw, heat, rainbow, xray, off, or a raw numeric mask. Usage: holo.Viz wire"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		if (args.Num() < 1 || !g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
+		ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+		FString s = args[0].ToLower();
+		if (s == TEXT("off")) pActor->ClearHoloViz();
+		else if (s == TEXT("wire")) pActor->ToggleHoloViz(HOLO_VIZ_WIREFRAME, "Wireframe");
+		else if (s == TEXT("clay")) pActor->ToggleHoloViz(HOLO_VIZ_CLAY, "Clay (untextured)");
+		else if (s == TEXT("unlit")) pActor->ToggleHoloViz(HOLO_VIZ_UNLIT, "3DS lighting off");
+		else if (s == TEXT("depthbw")) pActor->ToggleHoloViz(HOLO_VIZ_DEPTH_GRAY, "Depth B&W");
+		else if (s == TEXT("heat")) pActor->ToggleHoloViz(HOLO_VIZ_DEPTH_HEAT, "Depth heatmap");
+		else if (s == TEXT("rainbow")) pActor->ToggleHoloViz(HOLO_VIZ_SLICE_RAINBOW, "Slice rainbow");
+		else if (s == TEXT("xray")) pActor->ToggleHoloViz(HOLO_VIZ_XRAY, "X-ray (multiview only)");
+		else
+		{
+			pActor->m_holoVizFlags = (uint32)FCString::Atoi(*args[0]);
+			pActor->ApplyHoloViz();
+		}
+	}));
+
+//Cutaway plane, the multiview successor of the band-mode layer peel (';' and ''' drive it
+//on 3DS multiview; this cvar works in every capture mode for the harness)
+static FAutoConsoleCommand CCmdHoloCutaway(
+	TEXT("holo.Cutaway"),
+	TEXT("3DS cutaway plane 0..1 (0 = off): discards geometry nearer than the plane so what's behind shows. Usage: holo.Cutaway 0.5"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		if (args.Num() < 1 || !g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
+		ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
+		pActor->m_cutaway01 = FMath::Clamp(FCString::Atof(*args[0]), 0.0f, 1.0f);
+		pActor->ApplyHoloViz();
 	}));
 
 EPixelFormat TEX_PIXEL_FORMAT = EPixelFormat::PF_B8G8R8A8;
@@ -371,36 +421,20 @@ void ALibretroManagerActor::InitLayers()
 			vScale.X = m_coreLayerScale.X * 320.0f / 400.0f;
 			vScale.Y = m_coreLayerScale.Y;
 			pActor->SetActorScale3D(vScale);
-			//world Y = horizontal, world Z = vertical; one screen-height down plus a gap.
-			//On the portrait Go (device aspect ~0.56) the hologram frame is bound by WIDTH,
-			//so there's free vertical room for a real 80px gap between the screens.  Squarer
-			//panels (Portrait 0.75 etc) are height-bound - a big gap would shrink both
-			//screens to fit, so they keep the near-touching layout.
-			const float quadWorldHeight = pActor->GetComponentsBoundingBox().GetSize().Z;
-			float gapFactor = 1.04f;
-			const float deviceAspect = GetLookingGlassDeviceAspect(GetWorld());
-			if (deviceAspect > 0.0f && deviceAspect < 0.6f)
-			{
-				gapFactor = 1.0f + 80.0f / 240.0f; //80 bottom-screen pixels of daylight
-			}
-			FVector vPos = pActor->GetActorLocation();
-			vPos.Y = m_corePosition.X;
-			vPos.Z = m_corePosition.Y - quadWorldHeight * gapFactor;
-			pActor->SetActorLocation(vPos);
+			RepositionBottomScreen(); //deterministic placement, shared with the 1Hz self-heal
 		}
 	}
 
-	//layers moved/scaled, so reframe the flat camera (does nothing on LG hardware)
-	if (m_libretroManager.m_pPlayerPawn)
-	{
-		m_libretroManager.m_pPlayerPawn->FitFlatCameraToLayers();
-	}
-
-	//and reframe the Looking Glass capture actor if one exists (hardware map only)
-	FitLookingGlassCaptureToLayers(GetWorld());
-
 	//re-apply the debug layer peel (';' and ''' hotkeys) to the freshly spawned actors
+	//BEFORE the fits below, so they see the final visibility/tag state
 	SetLayersPeeled(m_layersPeeled);
+
+	//One deterministic finish for every rebuild: re-spread to the current depth scale,
+	//re-place the bottom screen, push the view params to the core (the per-system depth
+	//default never used to arrive - the core sat at its own 1.0 until a hotkey press),
+	//and run both camera/capture fits.
+	ApplyLayerDepth();
+	ApplyHoloViz(); //debug views survive rom switches and core reloads too
 }
 
 //Debug view: hide the N nearest layers so the back of the diorama is visible on the
@@ -415,7 +449,20 @@ void ALibretroManagerActor::SetLayersPeeled(int count)
 	{
 		if (m_layerInfo[i].m_pActor)
 		{
-			m_layerInfo[i].m_pActor->SetActorHiddenInGame(i >= GetLayerCount() - m_layersPeeled);
+			const bool bPeeled = (i >= GetLayerCount() - m_layersPeeled);
+			m_layerInfo[i].m_pActor->SetActorHiddenInGame(bPeeled);
+			//Tag peeled actors so the capture fit keeps them in the framing AABB: peeling
+			//must never move the focal plane or capture size (an off-focal-plane quilt
+			//carrier picks up a whole-frame parallax no depth setting can remove).  Other
+			//hidden actors (unused layers, another game's geometry) stay excluded.
+			if (bPeeled)
+			{
+				m_layerInfo[i].m_pActor->Tags.AddUnique(FName(TEXT("PeelHidden")));
+			}
+			else
+			{
+				m_layerInfo[i].m_pActor->Tags.Remove(FName(TEXT("PeelHidden")));
+			}
 		}
 	}
 }
@@ -552,11 +599,10 @@ void ALibretroManagerActor::ApplyLayerDepth()
 
 	//multiview (mode 2): the hologram's parallax lives in the core's per-view shear now -
 	//push the depth knob live through the ABI v4 export (the core ignores repeats)
-	if (g_pLibretroManager && g_pLibretroManager->m_core.retro_holo_set_view_params &&
-		g_pLibretroManager->m_holoCaptureMode == 2)
-	{
-		g_pLibretroManager->m_core.retro_holo_set_view_params(m_userDepthScale, m_userConv01);
-	}
+	PushHoloViewParams();
+
+	//3DS: keep the bottom screen parked correctly (cheap and idempotent)
+	RepositionBottomScreen();
 
 	//the spread changed: reframe the flat camera (or it crops a deeper stack) and the Looking
 	//Glass capture (which also re-parks the LayerBG wall behind the new deepest layer)
@@ -565,6 +611,147 @@ void ALibretroManagerActor::ApplyLayerDepth()
 		m_libretroManager.m_pPlayerPawn->FitFlatCameraToLayers();
 	}
 	FitLookingGlassCaptureToLayers(GetWorld());
+}
+
+//Push the current depth/convergence to the 3DS multiview core - in capture mode 2 the
+//core's per-view shear is the ONLY parallax source, so a push that silently fails reads
+//as "the depth keys do nothing".  Safe to call often (the core ignores repeated values).
+bool ALibretroManagerActor::PushHoloViewParams()
+{
+	if (!g_pLibretroManager || g_pLibretroManager->m_holoCaptureMode != 2) return false;
+	if (!g_pLibretroManager->m_core.retro_holo_set_view_params)
+	{
+		//mode 2 was negotiated, so a multiview-capable core asked for it - a missing
+		//export means the loaded azahar_libretro.dll predates the view-params ABI
+		if (!m_bWarnedNoViewParamExport)
+		{
+			m_bWarnedNoViewParamExport = true;
+			LogMsg("WARNING: core negotiated multiview but exports no retro_holo_set_view_params - stale azahar_libretro.dll?");
+			ShowStatusMessage("3D depth control unavailable (stale 3DS core DLL?)");
+		}
+		return false;
+	}
+	g_pLibretroManager->m_core.retro_holo_set_view_params(m_userDepthScale, m_userConv01);
+	if (m_userDepthScale != m_lastPushedSep || m_userConv01 != m_lastPushedConv)
+	{
+		m_lastPushedSep = m_userDepthScale;
+		m_lastPushedConv = m_userConv01;
+		LogMsg("Multiview view params pushed: depth scale %.2f, convergence %.2f", m_userDepthScale, m_userConv01);
+	}
+	return true;
+}
+
+//3DS: (re)park the bottom-screen quad one screen-height below the top-screen stack.
+//Deterministic on purpose: the height comes from the mesh ASSET bounds through the live
+//component transform (a just-spawned actor's cached world bounds can read zero, which
+//used to land the bottom screen exactly ON the top screen), and the device-aspect gap is
+//recomputed at call time because the plugin can resolve the panel aspect well after the
+//first InitLayers.  Idempotent and cheap - called from every depth/zoom apply and the
+//1Hz self-heal in Tick.
+void ALibretroManagerActor::RepositionBottomScreen()
+{
+	if (!g_pLibretroManager || g_pLibretroManager->m_emulatorType != EMULATOR_3DS) return;
+	if ((int)m_layerInfo.size() <= GetLayerCount()) return;
+	AActor* pActor = m_layerInfo[GetLayerCount()].m_pActor;
+	if (!pActor) return;
+
+	float quadWorldHeight = 0.0f;
+	UStaticMeshComponent* pMesh = (UStaticMeshComponent*)pActor->GetComponentByClass(UStaticMeshComponent::StaticClass());
+	if (pMesh && pMesh->GetStaticMesh())
+	{
+		FBox worldBox = pMesh->GetStaticMesh()->GetBoundingBox().TransformBy(pMesh->GetComponentTransform());
+		quadWorldHeight = (float)worldBox.GetSize().Z;
+	}
+	if (quadWorldHeight <= 0.0f)
+	{
+		quadWorldHeight = (float)pActor->GetComponentsBoundingBox().GetSize().Z; //no static mesh - old path
+	}
+	if (quadWorldHeight <= 0.0f) return; //nothing sane to place against yet
+
+	//world Y = horizontal, world Z = vertical; one screen-height down plus a gap.  On the
+	//portrait Go (device aspect ~0.56) the hologram frame is bound by WIDTH, so there's
+	//free vertical room for a real 80px gap between the screens.  Squarer panels
+	//(Portrait 0.75 etc) are height-bound - a big gap would shrink both screens to fit,
+	//so they keep the near-touching layout.
+	float gapFactor = 1.04f;
+	const float deviceAspect = GetLookingGlassDeviceAspect(GetWorld());
+	if (deviceAspect > 0.0f && deviceAspect < 0.6f)
+	{
+		gapFactor = 1.0f + 80.0f / 240.0f; //80 bottom-screen pixels of daylight
+	}
+	FVector vPos = pActor->GetActorLocation();
+	vPos.Y = m_corePosition.X;
+	vPos.Z = m_corePosition.Y - quadWorldHeight * gapFactor;
+	pActor->SetActorLocation(vPos);
+}
+
+void ALibretroManagerActor::SetUserZoom(float factor, bool bShowStatus)
+{
+	m_userZoomFactor = FMath::Clamp(factor, 0.2f, 5.0f);
+	ApplyLayerDepth(); //refits both views with the new framing, repositions the bottom screen
+
+	if (!bShowStatus) return;
+	char st[64];
+	snprintf(st, sizeof(st), "Zoom: %d%%", (int)roundf(m_userZoomFactor * 100));
+	ShowStatusMessage(st);
+}
+
+//Push the debug visualization mask + cutaway plane to the 3DS core.  No-op without the
+//optional export (old DLL) or outside 3DS; the core dedupes repeated values.
+void ALibretroManagerActor::ApplyHoloViz()
+{
+	if (!g_pLibretroManager || !g_pLibretroManager->m_core.retro_holo_set_debug) return;
+	if (g_pLibretroManager->m_emulatorType != EMULATOR_3DS) return;
+	uint32 mask = m_holoVizFlags;
+	if (m_cutaway01 > 0.001f) mask |= HOLO_VIZ_CUTAWAY;
+	g_pLibretroManager->m_core.retro_holo_set_debug(mask, m_cutaway01);
+}
+
+void ALibretroManagerActor::ToggleHoloViz(uint32 flag, const char* pName)
+{
+	if (!g_pLibretroManager) return;
+	if (g_pLibretroManager->m_emulatorType != EMULATOR_3DS)
+	{
+		ShowStatusMessage("Debug views are 3DS-only");
+		return;
+	}
+	if (!g_pLibretroManager->m_core.retro_holo_set_debug)
+	{
+		ShowStatusMessage("This 3DS core DLL has no debug views (update azahar_libretro.dll)");
+		return;
+	}
+	m_holoVizFlags ^= flag;
+	//the two depth palettes are either/or
+	if (flag == HOLO_VIZ_DEPTH_GRAY && (m_holoVizFlags & HOLO_VIZ_DEPTH_GRAY)) m_holoVizFlags &= ~HOLO_VIZ_DEPTH_HEAT;
+	if (flag == HOLO_VIZ_DEPTH_HEAT && (m_holoVizFlags & HOLO_VIZ_DEPTH_HEAT)) m_holoVizFlags &= ~HOLO_VIZ_DEPTH_GRAY;
+	ApplyHoloViz();
+	char st[96];
+	snprintf(st, sizeof(st), "%s %s", pName, (m_holoVizFlags & flag) ? "ON" : "off");
+	ShowStatusMessage(st);
+}
+
+void ALibretroManagerActor::ClearHoloViz()
+{
+	m_holoVizFlags = 0;
+	m_cutaway01 = 0.0f;
+	ApplyHoloViz();
+	ShowStatusMessage("Debug views off");
+}
+
+void ALibretroManagerActor::NudgeCutaway(float delta)
+{
+	m_cutaway01 = FMath::Clamp(m_cutaway01 + delta, 0.0f, 1.0f);
+	ApplyHoloViz();
+	char st[64];
+	if (m_cutaway01 <= 0.001f)
+	{
+		snprintf(st, sizeof(st), "Cutaway off");
+	}
+	else
+	{
+		snprintf(st, sizeof(st), "Cutaway: %d%%", (int)roundf(m_cutaway01 * 100));
+	}
+	ShowStatusMessage(st);
 }
 
 void ALibretroManagerActor::SetUserDepthScale(float scale, bool bShowStatus)
@@ -689,7 +876,11 @@ void FitLookingGlassCaptureToLayers(UWorld* pWorld)
 	FBox box(ForceInit);
 	for (AActor* pActor : layerActors)
 	{
-		if (pActor->IsHidden()) { LogMsg("LKG fit: skipping hidden layer actor %s", TCHAR_TO_ANSI(*pActor->GetName())); continue; }
+		//Peel-hidden actors (the ';' debug peel) stay IN the framing: peeling must never move
+		//the focal plane or capture size, or the quilt carrier ends up off the focal plane and
+		//the whole hologram picks up a parallax shift no depth setting can remove.
+		const bool bPeelHidden = pActor->ActorHasTag(FName(TEXT("PeelHidden")));
+		if (pActor->IsHidden() && !bPeelHidden) { LogMsg("LKG fit: skipping hidden layer actor %s", TCHAR_TO_ANSI(*pActor->GetName())); continue; }
 		FBox actorBox(ForceInit);
 		for (UActorComponent* pC : pActor->GetComponents())
 		{
@@ -843,6 +1034,13 @@ void FitLookingGlassCaptureToLayers(UWorld* pWorld)
 			}
 			float captureSize = FMath::Max(vSize.Y, vSize.Z * deviceAspect) * 0.5f * 1.10f;
 			FParse::Value(FCommandLine::Get(), TEXT("lkgsize="), captureSize); //tuning override, no rebuild needed
+			//user zoom (= and - keys) as a framing crop: dividing the capture size zooms in
+			//without touching any world quad.  Scaling the quads instead got normalized right
+			//back out by this very fit, which is why zoom used to revert on every refit.
+			if (g_pLibretroManager && g_pLibretroManager->m_pLibretroManagedActor)
+			{
+				captureSize /= g_pLibretroManager->m_pLibretroManagedActor->m_userZoomFactor;
+			}
 
 			if (UFunction* pFunc = pComp->FindFunction(TEXT("SetSize")))
 			{
@@ -1136,6 +1334,17 @@ void ALibretroManagerActor::Tick(float DeltaTime)
 		}
 		m_framesRendered = 0;
 		m_timeOfNextFPSUpdate = GetWorld()->GetRealTimeSeconds() + 1.0f;
+
+		//3DS 1Hz self-heal: the core dedupes repeated view-param/viz pushes and the bottom
+		//screen reposition is idempotent, so this cheaply covers a late-resolving device
+		//aspect and any future code path that forgets to re-push after a core reload
+		if (g_pLibretroManager && g_pLibretroManager->m_emulatorType == EMULATOR_3DS &&
+			m_libretroManager.IsCoreLoaded())
+		{
+			PushHoloViewParams();
+			ApplyHoloViz();
+			RepositionBottomScreen();
+		}
 	}
 
 	m_framesRendered++;

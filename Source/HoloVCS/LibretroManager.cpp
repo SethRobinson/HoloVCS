@@ -408,6 +408,8 @@ bool LibretroManager::LoadCore(string fileName)
 	m_core.retro_set_video_refresh_holo = (decltype(m_core.retro_set_video_refresh_holo))GetProcAddress(m_dllHandle, "retro_set_video_refresh_holo");
 	//ABI v4 sibling: live multiview separation/convergence (see ApplyLayerDepth)
 	m_core.retro_holo_set_view_params = (retro_holo_set_view_params_t)GetProcAddress(m_dllHandle, "retro_holo_set_view_params");
+	//ABI v4 sibling: debug visualization mask + cutaway plane (see ApplyHoloViz)
+	m_core.retro_holo_set_debug = (retro_holo_set_debug_t)GetProcAddress(m_dllHandle, "retro_holo_set_debug");
 	m_core.retro_load_game = (decltype(m_core.retro_load_game))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_load_game));
 	m_core.retro_get_system_av_info = (decltype(m_core.retro_get_system_av_info))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_get_system_av_info));
 	m_core.retro_run = (decltype(m_core.retro_run))MapFunction(m_dllHandle, GET_VARIABLE_NAME(m_core.retro_run));
@@ -1069,6 +1071,12 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 	m_pLibretroManagedActor->m_bgAllowShadows = true;
 	//per-system depth default (3DS overrides below); a user adjustment sticks for the session
 	if (!m_pLibretroManagedActor->m_bUserDepthScaleTouched) m_pLibretroManagedActor->m_userDepthScale = 1.0f;
+	//3DS debug views (Shift+number) don't apply to the other systems; clear when switching away
+	if (emu != EMULATOR_3DS)
+	{
+		m_pLibretroManagedActor->m_holoVizFlags = 0;
+		m_pLibretroManagedActor->m_cutaway01 = 0.0f;
+	}
 	m_bGamePaused = false;
 	m_targetFPS = 60;
 	
@@ -1429,6 +1437,15 @@ void LibretroManager::ResetRom()
 	m_core.retro_reset();
 	m_core.retro_run();
 	SaveState(0);
+
+	//re-assert the user's view settings after the core reboot: the reset path never used to
+	//re-push depth/convergence (or re-place the 3DS bottom screen), so R looked like it reset
+	//the 3D settings whenever the core came back with its own defaults
+	if (m_pLibretroManagedActor)
+	{
+		m_pLibretroManagedActor->ApplyLayerDepth();
+		m_pLibretroManagedActor->ApplyHoloViz();
+	}
 }
 
 void LibretroManager::SetRomByIndex(int index)

@@ -384,7 +384,15 @@ but burns the 5.6 escape hatch like any other resave.
   Per-system DEFAULT: 90% for 3DS, 100% otherwise, applied in SetEmulatorData only until
   the user touches the scale (m_bUserDepthScaleTouched latch set by SetUserDepthScale). Console
   twin for the harness: `holo.DepthScale <mult>` (clamped 0.0-5.0; below 0.05 snaps to a true
-  0 = completely flat, and `]` climbs back out of 0). NES Select is Tab now (was
+  0 = completely flat, and `]` climbs back out of 0). On 3DS multiview the value reaches the
+  core through PushHoloViewParams (called from every InitLayers, ResetRom, and a 1Hz Tick
+  self-heal - it used to be pushed only on a keypress, so the default never arrived; a
+  missing export = stale core DLL now warns once instead of failing silently). USER ZOOM
+  (= and -, `holo.Zoom <factor>`) is a persistent factor applied INSIDE the camera/capture
+  fits since Aug 27 2026 - the old ScaleLayersXY zoom was normalized away by the next
+  AABB-driven refit, which read as "R reset my zoom". 3DS debug visualizations: Shift+1-7 /
+  Shift+0 and the ; ' multiview cutaway, console `holo.Viz` / `holo.Cutaway` - see
+  docs/3ds_azahar.md round 7. NES Select is Tab now (was
   Backslash), and the old A-key "auto adjust audio" hotkey is REMOVED (it also collided with
   WASD left; per-frame audio stats code went with it).
 - AUDIO (Aug 2026): the libretro batch callback (LibretroManager.cpp) feeds mono float chunks to

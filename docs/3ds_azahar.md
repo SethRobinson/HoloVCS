@@ -140,7 +140,11 @@ Key architecture lessons (all learned the hard way on SM3DL, see the fork commit
   `holo_dump_request.txt` still dumps 10 raw composite+depth frames to holo_dump/.
   LAYER PEEL HOTKEYS: ';' hides one more of the NEAREST layers, ''' shows one again
   (works on the device too; the sprite path skips hidden actors). For looking behind
-  the front of the diorama while debugging band content. GOTCHAS: PlayerPawn.cpp's
+  the front of the diorama while debugging band content. BAND MODE ONLY since Aug 27
+  2026: on 3DS multiview the same keys drive the CUTAWAY plane instead (see the
+  debug-visualization section below), and peel-hidden actors now stay in the capture
+  framing AABB (tagged "PeelHidden", exempted in FitLookingGlassCaptureToLayers) so
+  peeling can never move the focal plane off the quilt carrier. GOTCHAS: PlayerPawn.cpp's
   SetupPlayerInputComponent has a DEAD `#if PLATFORM_ANDROID` binding list ABOVE the
   live `#else` list - new hotkeys must go in the EKeys:: styled else-branch (the first
   peel attempt landed in the Android block and silently did nothing). The engine's
@@ -229,8 +233,8 @@ identical core work and was rejected.
   (rotated capture / fly cam) draws the raw quilt collage quad. Phase D options
   (extension-probed VS gl_Layer, stereo-pair auto calibration) in the plan file.
 - THE WRONG-DEPTH BUG (Aug 27 2026, Seth: "wrong depths, hurts my eyes"): FOUND AND
-  FIXED, uncommitted pending Seth's eye sign-off (DO NOT COMMIT either repo until
-  then). Root cause was suspect 1: the VIEW SWEEP WAS PSEUDOSCOPIC. The shear sign
+  FIXED, Seth-verified and committed in both repos (HoloVCS 9608d43, fork 97b20ddc7).
+  Root cause was suspect 1: the VIEW SWEEP WAS PSEUDOSCOPIC. The shear sign
   (g_view_strength positive) had been picked from a dump that "showed parallax" but
   swept the views backwards. KEY CONVENTION FACT (proven by the band path, where
   band 0 = lowest buffer value displays nearest on device): gl_Position.z/w ASCENDS
@@ -271,6 +275,58 @@ identical core work and was rejected.
 - ROM partial gotcha rediscovered while testing: `-rom=3d` matches the `.3ds`
   EXTENSION (loaded Metroid), and `-rom=Land` matched Virtual Boy Wario Land; use a
   quoted unique fragment like `-rom="3D Land"` (FParse handles quoted values).
+
+Round 7 (Aug 27 2026): SETTINGS PERSISTENCE FIXES + DEBUG VISUALIZATIONS.
+- VIEW-PARAM DELIVERY FIXED: nothing used to push depth/convergence to the core after a
+  load, so the frontend's 3DS 90% default NEVER arrived (the core ran at its own 1.0
+  until the first [ ] press), and FreeLibrary on rom/core switch reset the core statics
+  while nothing re-sent them. Now ALibretroManagerActor::PushHoloViewParams() (extracted
+  from ApplyLayerDepth) is called from every InitLayers (whose tail is now a single
+  ApplyLayerDepth call), from ResetRom, and from a 1Hz self-heal in Tick (the core
+  dedupes repeats). It also logs each changed push and warns ONCE (log + status) when
+  mode 2 was negotiated but the export is missing = stale azahar_libretro.dll, which
+  used to be a totally silent "depth keys do nothing".
+- ZOOM REWORKED (all systems): = and - used to multiply actor scales, which the very
+  next AABB-driven camera/capture fit normalized right back out (why zoom "reset" on
+  every depth press, rebuild, or R). Zoom is now a persistent m_userZoomFactor
+  (clamp 0.2..5) applied INSIDE the fits (captureSize /= zoom in
+  FitLookingGlassCaptureToLayers, dist /= zoom in ComputeFlatCameraFitDist); console
+  twin holo.Zoom <factor>. Quads never change size, so zoom cannot cause screen overlap.
+- BOTTOM SCREEN PLACEMENT deterministic: RepositionBottomScreen() computes the quad
+  height from the static mesh ASSET bounds through the live component transform (the
+  old just-spawned-actor bounds could read 0 = bottom screen landed exactly ON the top
+  screen after a reset) and recomputes the device-aspect gap at call time; re-run from
+  ApplyLayerDepth and the 1Hz self-heal, so a late-resolving panel aspect self-corrects.
+- DEBUG VISUALIZATIONS (Shift+number, 3DS only; console twins holo.Viz
+  <wire|clay|unlit|depthbw|heat|rainbow|xray|off|mask> and holo.Cutaway <0..1>):
+  - Shift+1 wireframe (glPolygonMode wrap around scene draws, primary + mirror pass)
+  - Shift+2 clay: white textures, real lighting (UserConfig FS variant)
+  - Shift+3 unlit: lighting forced full-bright (UserConfig FS variant)
+  - Shift+4 depth B&W: per-pixel scene depth as grayscale, near = white
+  - Shift+5 depth heatmap: same normalized depth through an orange->yellow->blue ramp
+    (4/5 are mutually exclusive, frontend-enforced)
+  - Shift+6 slice rainbow: band mode tints each depth band a hue (THE shadow-buffer
+    showpiece); multiview tints each VIEW a hue, so head movement sweeps the rainbow
+    on device (pack compute uniform, zero shader recompile)
+  - Shift+7 x-ray: multiview only; mirrored scene draws skip the depth test and blend
+    additively, so occluded geometry glows through with true per-view parallax
+  - Shift+0 all off. ; and ' on 3DS MULTIVIEW drive the CUTAWAY plane (hold to sweep,
+    4%/step): an FS discard clips everything nearer than the plane, revealing occluded
+    geometry that genuinely re-renders per view (the layer-peel successor; in band
+    mode ; ' keep the classic peel).
+  Plumbing: frontend state on ALibretroManagerActor (m_holoVizFlags/m_cutaway01,
+  session-sticky within 3DS, cleared on system switch; ApplyHoloViz pushes, re-pushed
+  at InitLayers/reset/1Hz) -> new optional export retro_holo_set_debug(mask, cutaway01)
+  (ABI v4 addition, HOLO_VIZ_* bits in both holo_layer_abi.h copies, NO version bump;
+  old DLL degrades to a status message) -> HoloSlicer::SetDebugViz -> HoloHook state
+  (viz_flags + derived buffer-depth cutaway/near/inv_range from the smoothed range) ->
+  gl_rasterizer per-draw UserConfig bits (scene-scoped draws only, so HUD/UI stays
+  clean; 5 new bits in pica_fs_config.h, variants excluded from the disk cache; UBO
+  binding 8 carries the cutaway/depth values) and pack-shader u_viz uniforms for the
+  rainbow. Shift chords work headlessly via harness `key LeftShift 8` + `key Four 2`
+  (the number handlers poll live modifier state, no latch). Enabling a UserConfig-bit
+  mode costs a one-time lazy shader-variant compile hitch on first use; toggling back
+  is free.
 
 NOT yet done: per-game depth-band profiles, near-band HUD routing knob, sound
 verification, release-bat/core-build integration, non-uniform bands via depth01.

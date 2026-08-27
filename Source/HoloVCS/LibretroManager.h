@@ -95,6 +95,9 @@ public:
 	//ABI v4: live multiview tuning (separation scale = our depth-scale knob, convergence
 	//as a fraction of the scene depth range, negative keeps the core default).
 	retro_holo_set_view_params_t retro_holo_set_view_params = nullptr;
+	//ABI v4 addition: debug visualization mask + cutaway plane (Shift+number hotkeys /
+	//holo.Viz / holo.Cutaway).  Optional; old core DLLs simply lack the export.
+	retro_holo_set_debug_t retro_holo_set_debug = nullptr;
 	void (*retro_set_audio_sample)(retro_audio_sample_t);
 	void (*retro_set_audio_sample_batch)(retro_audio_sample_batch_t);
 	void (*retro_set_input_poll)(retro_input_poll_t);
