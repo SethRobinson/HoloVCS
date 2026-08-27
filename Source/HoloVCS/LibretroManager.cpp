@@ -2056,6 +2056,7 @@ bool LibretroManager::RenderFrameWithNesBackgroundTileFilter(const char* pRender
 void LibretroManager::SetFrameSkip(int frameSkip)
 {
 	m_frameSkip = frameSkip;
+	LogMsg("Frameskip set to %d", m_frameSkip); //status text is not logged; keep a trace for harness verification
 	ShowStatusMessage(string("Frameskip: " + toString(m_frameSkip)));
 }
 

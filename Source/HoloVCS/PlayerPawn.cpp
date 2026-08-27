@@ -880,6 +880,12 @@ void APlayerPawn::JoyPad_B_Pressed(FKey key)
 	{
 		return;
 	}
+	//with the L3 chord modifier held that same button is the frameskip hotkey (JoyPad_X
+	//handler); its B alias must not also leak a run/jump into the game
+	if (m_bPadL3Held && key == EKeys::Gamepad_FaceButton_Left)
+	{
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = true;
 }
 
@@ -948,6 +954,13 @@ void APlayerPawn::JoyPad_Y_Released(FKey key)
 void APlayerPawn::JoyPad_X_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
+	//L-stick click + X = frameskip 4 toggle (pad fast-forward; keys 1-5 set it from the
+	//keyboard).  Checked before the fly gate like the pause chord so it works while flying.
+	if (m_bPadL3Held && key.IsGamepadKey())
+	{
+		g_pLibretroManager->SetFrameSkip(g_pLibretroManager->m_frameSkip == 0 ? 4 : 0);
+		return;
+	}
 	if (m_bFlyCam && key.IsGamepadKey()) return;
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::Gamepad_FaceButton_Left)
 	{
@@ -1108,7 +1121,7 @@ void APlayerPawn::JoyPad_LTrigger_Pressed()
 	if (m_bFlyCam) return; //gamepad-only binding; the analog trigger axes fly the camera up/down
 	if (m_bPadL3Held)
 	{
-		OnResetGame(); //L-stick click + left trigger = reset game
+		g_pLibretroManager->ModRom(-1); //L-stick click + left trigger = previous game (Seth: pad reset not needed, R key still resets)
 		return;
 	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L2] = true;

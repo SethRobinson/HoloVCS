@@ -479,8 +479,11 @@ but burns the 5.6 escape hatch like any other resave.
   Castlevania. When the LG plugin is active it takes over the viewport, so the pawn camera is
   inert on hardware.
 - PAD HOTKEY CHORDS (reworked Aug 27 2026): the LEFT-STICK CLICK (L3) is the chord modifier
-  for every gamepad system hotkey - L3+LB/RB = save/load state, L3+LT/RT = reset/next game,
-  L3+Y = pause, L3+R3 = fly camera. m_bPadL3Held on the pawn tracks it, and L3 is a PURE
+  for every gamepad system hotkey - L3+LB/RB = save/load state, L3+LT/RT = prev/next game
+  (LT was reset game until Seth dropped it: R still resets from the keyboard), L3+Y = pause,
+  L3+X = frameskip 4 toggle (pad fast-forward; GOTCHA: the left face button is ALSO bound to
+  JoyPad_B as the retro run-on-X alias, so JoyPad_B_Pressed swallows it while L3 is held or
+  the chord leaks a run/jump), L3+R3 = fly camera. m_bPadL3Held on the pawn tracks it, and L3 is a PURE
   modifier, never forwarded to the core (Start was the old modifier and every chord also
   popped the game's Start menu; no supported core uses a stick click - the L3/L2 bits some
   cores read come from the right-stick AXIS in RMove_YAxis, untouched). Bare R3 keeps its
