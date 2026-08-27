@@ -435,10 +435,26 @@ SW-vertex-path gap: MSR hardware-accelerates everything (skip sw=0).
   An intermediate buffer-LINEAR attempt looked depth-reversed on the MSR title
   (Seth: "the planet is in front instead of behind"): a distant starfield stretches
   the linear range so 35% conv landed beyond the WHOLE planet (all of it popped in
-  front of the screen-locked logo) while the far field ate the parallax budget. In
-  disparity space the same 35% lands just past the planet's face: body and stars
-  sink behind the logo, parallax decays naturally with distance. { } / 
-  holo.Convergence still move the plane when a scene wants a different split.
+  front of the screen-locked logo) while the far field ate the parallax budget.
+- STEREO GROUND-TRUTH PROBE + CONVERGENCE DEFAULT = NEAR END (Seth: "on a real 3ds
+  the title is OVER the planet... test against the stereo output from azahar").
+  New core debug facility: drop holo_stereo_probe_request.txt in the game process
+  working directory - the emulated 3D slider jumps to 100 (the game then renders its
+  own TRUE stereo pair; MSR renders both eyes even at slider 0, so this costs it
+  nothing) and three pairs are written at ship: holo_stereo_L/R_NN.bmp (landscape)
+  + holo_stereo_D_NN.bin (float depth, same orientation; one frame stale, probe on
+  static scenes). scratchpad stereo_fit.py correlates L vs R per patch and fits
+  parallax vs depth. MEASURED (MSR title AND in-level): the game's own zero-parallax
+  plane sits AT the scene's nearest content (zero crossing buffer 0.067, scene floor
+  0.066; NOTHING renders crossed - the whole world is behind the screen, logo/HUD at
+  the screen), and its parallax-vs-depth curve is disparity-linear (predicted 25px
+  vs measured 26px at mid-depth) - independently validating the shear model. So the
+  core conv default changed 0.35 -> 0.02 (the old default popped 35% of the scene
+  out - the "planet sticking out" report; 0.02 keeps the nearest sliver from
+  flickering across the plane as the smoothed range wobbles). This applies to ALL
+  3DS multiview (SM3DL now also sits behind the focal plane = the real-3DS look);
+  { } / holo.Convergence raise it live when someone wants pop-out, and the
+  NudgeConvergence first-press baseline + cvar help text follow the new default.
   VERIFIED in-level (gunship-arrival savestate, flat build -holomultiview, 175%
   default, views 0->24 measured with quilt_patch_shift.py): far sky +69px RIGHT,
   near gunship -36px LEFT, depth-ordered spread between; x-ray now floods visibly

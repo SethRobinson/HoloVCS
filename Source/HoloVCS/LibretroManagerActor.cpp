@@ -74,7 +74,7 @@ static FAutoConsoleCommand CCmdHoloDepthScale(
 //content at the screen (everything pops out), core default 0.35.  -1 returns to the default.
 static FAutoConsoleCommand CCmdHoloConvergence(
 	TEXT("holo.Convergence"),
-	TEXT("3DS multiview zero-parallax plane as a fraction of scene depth (0..1, -1 = core default 0.35). Usage: holo.Convergence 0.5"),
+	TEXT("3DS multiview zero-parallax plane as a fraction of scene depth (0..1, -1 = core default 0.02 = near end, the real-3DS look). Usage: holo.Convergence 0.5"),
 	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
 	{
 		if (args.Num() < 1 || !g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
@@ -823,12 +823,14 @@ void ALibretroManagerActor::SetUserDepthScale(float scale, bool bShowStatus)
 
 //'{' and '}': nudge the multiview convergence.  0 = nearest content AT the screen
 //(everything sinks behind), 1 = farthest content at the screen (everything pops out);
-//the core default is 0.35 (m_userConv01 -1 = keep default, so the first nudge starts
-//from there).  holo.Convergence remains the console twin (-1 restores the default).
+//the core default is 0.02 = the near end, matching what real 3DS games do - measured
+//from Metroid's own stereo pair, the game converges AT its nearest scene content
+//(m_userConv01 -1 = keep default, so the first nudge starts from there).
+//holo.Convergence remains the console twin (-1 restores the default).
 void ALibretroManagerActor::NudgeConvergence(float delta)
 {
 	if (RefusePausedHoloChange(true)) return;
-	const float cur = (m_userConv01 >= 0.0f) ? m_userConv01 : 0.35f;
+	const float cur = (m_userConv01 >= 0.0f) ? m_userConv01 : 0.02f;
 	m_userConv01 = FMath::Clamp(cur + delta, 0.0f, 1.0f);
 	ApplyLayerDepth(); //pushes the new value (and refreshes a paused screen)
 
