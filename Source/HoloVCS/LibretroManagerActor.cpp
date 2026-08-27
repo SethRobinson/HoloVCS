@@ -781,7 +781,6 @@ void ALibretroManagerActor::SetUserDepthScale(float scale, bool bShowStatus)
 	if (RefusePausedHoloChange(true)) return;
 	//0 = completely flat is allowed (Seth request); a hair below 0.05 snaps to true 0 so
 	//the [ key can land exactly on "no 3d at all"
-	m_bUserDepthScaleTouched = true;
 	m_userDepthScale = FMath::Clamp(scale, 0.0f, 5.0f);
 	if (m_userDepthScale < 0.05f) m_userDepthScale = 0.0f;
 	ApplyLayerDepth();

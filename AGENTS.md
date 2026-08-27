@@ -380,11 +380,14 @@ but burns the 5.6 escape hatch like any other resave.
   unoccupied depth plane looks broken on the device.
 - Hotkey 0 toggles the fps cap (vsync + t.MaxFPS) to measure true throughput; 1-5 set frameskip.
 - Hotkeys [ and ] scale the 3D depth spread live (m_userDepthScale on ALibretroManagerActor,
-  multiplies m_total3dDepth, survives rom switches; ApplyLayerDepth re-spreads the existing
+  multiplies m_total3dDepth; ApplyLayerDepth re-spreads the existing
   layer actors absolutely and re-runs both camera/capture fits - no InitLayers hitch).
   Per-system DEFAULT: 175% for 3DS (Seth request Aug 27 2026; was 90%, then 155%), 100%
-  otherwise, applied in SetEmulatorData only until
-  the user touches the scale (m_bUserDepthScaleTouched latch set by SetUserDepthScale). Console
+  otherwise. EVERY game switch resets the user view adjustments (depth scale, convergence,
+  zoom, the '\' 2D-toggle stash) to that game's defaults in SetEmulatorData - Seth request
+  Aug 27 2026 after a depth tweak leaked into the Atari core and looked horrible (the old
+  m_bUserDepthScaleTouched session latch is gone). R (ResetRom) skips SetEmulatorData, so
+  resetting the CURRENT game still keeps the user's view. Console
   twin for the harness: `holo.DepthScale <mult>` (clamped 0.0-5.0; below 0.05 snaps to a true
   0 = completely flat, and `]` climbs back out of 0). `\` is an instant 2D/3D toggle
   (Toggle2D3D: zeroing stashes the current depth, the next press restores it; Backslash
@@ -402,9 +405,10 @@ but burns the 5.6 escape hatch like any other resave.
   SAVESTATES WORK now (F/G/L + harness): Save3DSStateToFile/Load3DSStateFromFile
   serialize fresh per save (variable-size zstd state, tens of MB) - the fixed-slot
   rewind machinery stays disabled for 3DS (m_maxSaveStateSize 0). USER ZOOM
-  (= and -, `holo.Zoom <factor>`) is a persistent factor applied INSIDE the camera/capture
+  (= and -, `holo.Zoom <factor>`) is a factor applied INSIDE the camera/capture
   fits since Aug 27 2026 - the old ScaleLayersXY zoom was normalized away by the next
-  AABB-driven refit, which read as "R reset my zoom". 3DS debug visualizations: Shift+1-7 /
+  AABB-driven refit, which read as "R reset my zoom". It persists within a game (rebuilds,
+  R, depth presses) and resets to 100% on a game switch like the depth scale. 3DS debug visualizations: Shift+1-7 /
   Shift+0 and the ; ' multiview cutaway, console `holo.Viz` / `holo.Cutaway` - see
   docs/3ds_azahar.md round 7. NES Select is Tab now (was
   Backslash), and the old A-key "auto adjust audio" hotkey is REMOVED (it also collided with

@@ -1069,8 +1069,14 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 	m_pLibretroManagedActor->m_bg_color = FVector(0, 0, 0);
 	m_pLibretroManagedActor->m_bg_color_strength = 1;
 	m_pLibretroManagedActor->m_bgAllowShadows = true;
-	//per-system depth default (3DS overrides below); a user adjustment sticks for the session
-	if (!m_pLibretroManagedActor->m_bUserDepthScaleTouched) m_pLibretroManagedActor->m_userDepthScale = 1.0f;
+	//Every game switch starts from that game's proper view defaults (Seth, Aug 27 2026: a
+	//[ ] depth tweak made for one game carried into the Atari core and looked horrible).
+	//Depth/convergence/zoom/2D-toggle adjustments last only until the next switch; R
+	//(ResetRom) does not come through here, so resetting the CURRENT game keeps them.
+	m_pLibretroManagedActor->m_userDepthScale = 1.0f; //3DS overrides below
+	m_pLibretroManagedActor->m_stashed3DDepth = 0.0f; //'\' 2D/3D toggle: new game starts in 3D
+	m_pLibretroManagedActor->m_userConv01 = -1.0f; //multiview convergence back to the core default
+	m_pLibretroManagedActor->m_userZoomFactor = 1.0f;
 	//3DS debug views (Shift+number) don't apply to the other systems; clear when switching away
 	if (emu != EMULATOR_3DS)
 	{
@@ -1157,11 +1163,8 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 		//Seth's preferred 3DS depth (Aug 27 2026: 90% -> 155% -> 175% as multiview got
 		//dialed in); direct assign (not SetUserDepthScale) so no status text fires and
 		//InitLayers just picks it up
-		if (!m_pLibretroManagedActor->m_bUserDepthScaleTouched)
-		{
-			m_pLibretroManagedActor->m_userDepthScale = 1.75f;
-			LogMsg("3DS: depth scale defaulting to 175%%");
-		}
+		m_pLibretroManagedActor->m_userDepthScale = 1.75f;
+		LogMsg("3DS: depth scale defaulting to 175%%");
 		m_targetFPS = 59.8331; //real 3DS refresh; audio rate comes from retro_get_system_av_info
 		m_touchCursorShownOnce = false; //re-arm the "show the cursor briefly at boot" hint
 		break;

@@ -158,9 +158,8 @@ public:
 
 	int m_layerCount = 5;
 	float m_total3dDepth = 150;
-	float m_userDepthScale = 1.0f; //user multiplier on m_total3dDepth ([ and ] hotkeys); survives rom switches
+	float m_userDepthScale = 1.0f; //user multiplier on m_total3dDepth ([ and ] hotkeys); SetEmulatorData resets it to the per-system default on every game switch
 	float m_stashed3DDepth = 0.0f; //what the '\' 2D/3D toggle restores (the depth before it zeroed)
-	bool m_bUserDepthScaleTouched = false; //true once the user sets a depth scale (hotkeys/console/harness); per-system defaults in SetEmulatorData only apply while false
 	//'{' and '}' hotkeys: nudge the multiview convergence (m_userConv01 below) - the
 	//depth knob's true sibling: it moves the zero-parallax plane instead of scaling the
 	//spread, so it changes how much of the scene POPS OUT vs sinks behind the screen.
@@ -171,8 +170,8 @@ public:
 	float m_userConv01 = -1.0f;
 	//user zoom from the = and - keys, applied as a framing crop INSIDE the camera/capture
 	//fits (an actor-scale zoom got normalized right back out by the AABB-driven fits, which
-	//is why zoom appeared to reset on every depth press, rebuild, or R).  Survives rom
-	//switches and resets like m_userDepthScale.
+	//is why zoom appeared to reset on every depth press, rebuild, or R).  Resets to 1 on
+	//every game switch like m_userDepthScale.
 	float m_userZoomFactor = 1.0f;
 	//3DS debug visualization state (HOLO_VIZ_* mask + cutaway plane); session-sticky within
 	//3DS, cleared by SetEmulatorData when switching to another system

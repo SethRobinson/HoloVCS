@@ -403,7 +403,8 @@ requirements are missing).
   now WARNS and attempts the load; a genuinely incompatible archive still throws and
   fails with the frontend's message. The 3DS depth scale DEFAULTS to 175%
   (SetEmulatorData; 90% then 155% until Seth's Aug 27 requests; a user [ ] /
-  holo.DepthScale adjustment overrides it for the session).
+  holo.DepthScale adjustment lasts only until the next game switch - every switch
+  resets depth/convergence/zoom to the new game's defaults, Seth request Aug 27 2026).
 - ROMs are huge (512MB): LoadRom does NOT read the file into RAM for 3DS; it hashes the
   first 1MB for the GameProfileManager key and passes only ginfo.path (the core loads the
   file itself, need_fullpath).
