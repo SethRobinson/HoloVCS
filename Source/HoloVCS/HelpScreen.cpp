@@ -116,7 +116,7 @@ FString HelpScreen::BuildHelpText() const
 	s += TEXT("Gamepad D-pad\tD-pad (3DS: camera etc)\n");
 	s += TEXT("Space\tA button\n");
 	s += TEXT("Ctrl\tB button\n");
-	s += TEXT("C\tX button (3DS)\n");
+	s += TEXT("C / Z\tX / Y buttons (3DS)\n");
 	s += TEXT("Q / E\tL / R buttons\n");
 	s += TEXT("Enter\tStart\n");
 	s += TEXT("Tab\tSelect\n");

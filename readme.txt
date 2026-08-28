@@ -39,6 +39,8 @@ Press ? at any time to show the in-game control screen. The release opens this s
 WASD / Arrow keys   Move / D-pad
 Space               A button
 Ctrl / Left click   B button
+C / Z               X / Y buttons (3DS)
+Q / E               L / R buttons
 Enter               Start
 Tab                 Select
 , / .               Previous / next game
@@ -46,12 +48,13 @@ R                   Reset game
 P                   Pause
 F / G               Save / load state (L also loads)
 [ / ]               Less / more 3D depth
+\                   Toggle 2D / 3D
 = / -               Zoom in / out
 0                   Toggle FPS cap
 1 through 5         Frameskip
 6 / 7 / 8           Smoothing / shadows / lighting
 
-Gamepads are supported. Virtual Boy controls also use the additional gamepad buttons, shoulders, triggers, and sticks. On the 3DS the sticks are the circle pad and C-stick, and the mouse (or right stick) moves a bottom-screen touch cursor; click (or right trigger) taps.
+Gamepads are supported. Virtual Boy controls also use the additional gamepad buttons, shoulders, triggers, and sticks. On the 3DS the left stick is the circle pad, and the mouse (or right stick) moves a bottom-screen touch cursor; left click, the right trigger, or clicking the right stick taps.
 
 Troubleshooting
 ---------------

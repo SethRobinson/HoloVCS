@@ -20,7 +20,7 @@ Also note that the 3D effects mostly only work with a couple hand-tweaked games 
 
 ## Features
 
-- Atari 2600, NES, and Virtual Boy emulation through customized libretro cores.
+- Atari 2600, NES, Virtual Boy, and Nintendo 3DS emulation through customized libretro cores.
 - Hand-tuned 3D profiles for supported Atari 2600 and NES games, identified by checksum rather than filename.
 - Native Virtual Boy depth layers captured directly from the customized Beetle VB core.
 - Nintendo 3DS support: a customized Azahar-based core captures true per-pixel depth from the emulated 3D GPU, so games need no hand-tuned profiles.
@@ -48,14 +48,18 @@ The core is based on [Azahar](https://github.com/azahar-emu/azahar), the open-so
 
 ## Latest versions
 
-### Version 1.5 - August 27, 2026
+### Version 1.5 - August 28, 2026
 
-- Added Nintendo 3DS support through a customized Azahar core: every game gets true per-pixel depth captured from the emulated GPU during its own rendering, so no per-game profiles are needed. Includes the bottom screen on its own panel, a mouse or stick driven touch cursor, and analog circle pad support.
-- 3DS dumps that are merely flagged as encrypted (common with dumping tools) now load automatically; only genuinely encrypted dumps are refused, with a clear on-screen message.
+- Added Nintendo 3DS support through a customized Azahar core: every game gets true per-pixel depth captured from the emulated GPU during its own rendering, so no per-game profiles are needed. Includes the bottom screen on its own panel, a mouse or stick driven touch cursor, analog circle pad support, and save states.
+- Mario Kart 7 and other games that render through padded buffers now get full 3D instead of a flat hologram.
+- Landscape displays like the original 8.9-inch Looking Glass show one 3DS screen at a time: B swaps to the bottom screen, and holding the left trigger peeks at it.
+- 3DS dumps that are merely flagged as encrypted (common with dumping tools) now load automatically; only genuinely encrypted dumps are refused, with a clear on-screen message. A failed ROM load now recovers cleanly instead of leaving a broken display, and keeps the reason on screen.
+- Switching ROMs with , and . is debounced with a Loading message, so you can skip past large 3DS games without waiting for each one to load.
 - The F and G keys now save and load state directly as documented, and the savestate hotkeys say so on systems without savestate support instead of failing silently.
-- The 3D depth defaults to 90% on the 3DS for better framing on the device; manual depth adjustments still stick for the session.
+- The 3D depth defaults to 175% on the 3DS for better framing on the device; depth, convergence, and zoom tweaks now reset to each game's own defaults when switching games. `\` instantly toggles between 2D and 3D.
 - Added a debug fly camera (V key, or hold the left stick click and press the right stick click) and scripted camera moves for capturing footage. On a Looking Glass, the fly camera flies the hologram itself so you can view the diorama layers from any angle (the frame rate drops while flying and recovers on exit).
-- Gamepad system hotkeys now chord off the left stick click instead of Start, so using them no longer opens the game's Start menu: hold the left stick click and press LB/RB for save/load state, LT/RT for reset/next game, or Y to pause.
+- Gamepad system hotkeys now chord off the left stick click instead of Start, so using them no longer opens the game's Start menu: hold the left stick click and press LB/RB for save/load state, LT/RT for previous/next game, Y to pause, or X to toggle fast-forward.
+- Looking Glass calibration is now cached per device, so a wedged calibration read (it can happen after an abnormal exit) no longer requires a reboot to get a picture.
 
 ### Version 1.4 - August 20, 2026
 
