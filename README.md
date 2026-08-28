@@ -79,19 +79,19 @@ The release does not contain copyrighted game ROMs. Put your own `.a26`, `.nes`,
 
 HoloVCS recognizes games by ROM checksum instead of filename, so you can name the files anything, but the revision has to match. These are the exact versions with hand-tuned 3D layer profiles:
 
-| Directory | Game | ROM version |
-| --- | --- | --- |
-| `atari2600` | Pitfall! | `Pitfall! (1982) (Activision) [!].a26` |
-| `nes` | Super Mario Bros. | `Super Mario Bros. (World).nes` |
-| `nes` | Castlevania | `Castlevania (USA) (Rev A).nes` |
-| `nes` | Tetris | `Tetris (USA).nes` |
-| `nes` | The Legend of Zelda | `Legend of Zelda, The (PRG 1).nes` |
-| `vb` | Virtual Boy Wario Land | `Virtual Boy Wario Land (Japan, USA).vb` |
-| `vb` | Jack Bros. | `Jack Bros.vb` |
+| Directory   | Game                   | ROM version                              |
+| ----------- | ---------------------- | ---------------------------------------- |
+| `atari2600` | Pitfall!               | `Pitfall! (1982) (Activision) [!].a26`   |
+| `nes`       | Super Mario Bros.      | `Super Mario Bros. (World).nes`          |
+| `nes`       | Castlevania            | `Castlevania (USA) (Rev A).nes`          |
+| `nes`       | Tetris                 | `Tetris (USA).nes`                       |
+| `nes`       | The Legend of Zelda    | `Legend of Zelda, The (PRG 1).nes`       |
+| `vb`        | Virtual Boy Wario Land | `Virtual Boy Wario Land (Japan, USA).vb` |
+| `vb`        | Jack Bros.             | `Jack Bros.vb`                           |
 
-Any Virtual Boy or Nintendo 3DS game works, no per-game profile needed: the customized Beetle VB and Azahar cores hand HoloVCS real depth layers. Other Atari 2600 and NES games load and play fine, they just get default layering instead of a hand-tuned depth effect.
+Any Virtual Boy or Nintendo 3DS game works, no per-game profile needed: the customized Beetle VB and Azahar cores hand HoloVCS real depth inf. Other Atari 2600 and NES games load and play fine, they just get default layering instead of a hand-tuned depth effect.
 
-Press `,` or `.` in the game to switch between the ROMs you installed; the full control list is in the next section (and on the `?` key in the game).
+Press `,` or `.` in the game (or `left stick button`+`left and right shoulder buttons` if using a gamepad) to switch between the ROMs you installed; the full control list is in the next section (and on the `?` key in the game).
 
 HoloVCS requires a connected Looking Glass display and [Looking Glass Bridge](https://lookingglassfactory.com/software-downloads).
 
@@ -101,49 +101,49 @@ Press `?` in the game at any time to show this list; any key closes it.
 
 Game controls:
 
-| Input | Action |
-| --- | --- |
-| WASD / Arrows / left stick | Move / D-pad (Circle Pad on 3DS) |
-| Gamepad D-pad | D-pad (3DS: camera etc.) |
-| Space | A button |
-| Ctrl / left click | B button |
-| C / Z | X / Y buttons (3DS) |
-| Q / E | L / R buttons |
-| Enter | Start |
-| Tab | Select |
-| Mouse / right stick | Touch cursor (3DS) |
-| Left click / right trigger / right stick click | Touch tap (3DS) |
-| B or hold left trigger | Swap to / hold the bottom screen (3DS on landscape displays) |
+| Input                                          | Action                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------ |
+| WASD / Arrows / left stick                     | Move / D-pad (Circle Pad on 3DS)                             |
+| Gamepad D-pad                                  | D-pad (3DS: camera etc.)                                     |
+| Space                                          | A button                                                     |
+| Ctrl / left click                              | B button                                                     |
+| C / Z                                          | X / Y buttons (3DS)                                          |
+| Q / E                                          | L / R buttons                                                |
+| Enter                                          | Start                                                        |
+| Tab                                            | Select                                                       |
+| Mouse / right stick                            | Touch cursor (3DS)                                           |
+| Left click / right trigger / right stick click | Touch tap (3DS)                                              |
+| B or hold left trigger                         | Swap to / hold the bottom screen (3DS on landscape displays) |
 
 System:
 
-| Input | Action |
-| --- | --- |
-| , / . | Previous / next game |
-| R | Reset game |
-| P | Pause |
-| F / G | Save / load state (L also loads) |
-| Hold left stick click + LB / RB | Save / load state (pad) |
-| Hold left stick click + LT / RT | Previous / next game (pad) |
-| Hold left stick click + Y | Pause (pad) |
-| Hold left stick click + X | Frameskip 4 on/off (pad fast-forward) |
-| V or click both sticks | Fly camera on/off |
-| D-pad while flying | Magnify / pan left-right |
+| Input                           | Action                                |
+| ------------------------------- | ------------------------------------- |
+| , / .                           | Previous / next game                  |
+| R                               | Reset game                            |
+| P                               | Pause                                 |
+| F / G                           | Save / load state (L also loads)      |
+| Hold left stick click + LB / RB | Save / load state (pad)               |
+| Hold left stick click + LT / RT | Previous / next game (pad)            |
+| Hold left stick click + Y       | Pause (pad)                           |
+| Hold left stick click + X       | Frameskip 4 on/off (pad fast-forward) |
+| V or click both sticks          | Fly camera on/off                     |
+| D-pad while flying              | Magnify / pan left-right              |
 
 View and rendering:
 
-| Input | Action |
-| --- | --- |
-| [ / ] | Less / more 3D depth |
-| \ | Toggle 2D / 3D |
-| { / } | Convergence: pop-out amount (3DS) |
-| ; / ' | Peel layers (3DS: hold to cut away) |
-| = / - | Zoom in / out |
-| 0 | Toggle FPS cap |
-| 1 through 5 | Frameskip |
-| 6 / 7 / 8 | Texture smoothing / shadows / lighting |
+| Input                   | Action                                                                 |
+| ----------------------- | ---------------------------------------------------------------------- |
+| [ / ]                   | Less / more 3D depth                                                   |
+| \                       | Toggle 2D / 3D                                                         |
+| { / }                   | Convergence: pop-out amount (3DS)                                      |
+| ; / '                   | Peel layers (3DS: hold to cut away)                                    |
+| = / -                   | Zoom in / out                                                          |
+| 0                       | Toggle FPS cap                                                         |
+| 1 through 5             | Frameskip                                                              |
+| 6 / 7 / 8               | Texture smoothing / shadows / lighting                                 |
 | Shift+1 through Shift+7 | Debug views: wireframe / clay / unlit / depth / heat / rainbow / x-ray |
-| Shift+0 | Debug views off |
+| Shift+0                 | Debug views off                                                        |
 
 ## Looking Glass integration
 
