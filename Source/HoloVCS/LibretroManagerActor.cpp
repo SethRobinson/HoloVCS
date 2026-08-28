@@ -849,8 +849,14 @@ void ALibretroManagerActor::ApplyHoloViz()
 	if (g_pLibretroManager->m_emulatorType != EMULATOR_3DS) return;
 	uint32 mask = m_holoVizFlags;
 	if (m_cutaway01 > 0.001f) mask |= HOLO_VIZ_CUTAWAY;
-	//change-gated: the 1Hz self-heal re-push would spam the log otherwise
-	if (mask != m_lastAppliedVizMask || m_cutaway01 != m_lastAppliedCutaway)
+	//log-gated: the 1Hz self-heal re-push would spam the log otherwise, and a HELD cutaway
+	//key sweeps the value every frame - log mask changes, 5% cutaway steps, and the
+	//endpoints (off / 100%) only.  Every value still reaches the core.
+	const bool bEndpointCrossed =
+		((m_cutaway01 <= 0.001f) != (m_lastAppliedCutaway <= 0.001f)) ||
+		((m_cutaway01 >= 0.999f) != (m_lastAppliedCutaway >= 0.999f));
+	if (mask != m_lastAppliedVizMask || bEndpointCrossed ||
+		FMath::Abs(m_cutaway01 - m_lastAppliedCutaway) >= 0.0495f)
 	{
 		LogMsg("Holo viz push: mask=0x%02x cutaway=%.2f", mask, m_cutaway01);
 		m_lastAppliedVizMask = mask;
@@ -892,12 +898,14 @@ void ALibretroManagerActor::ClearHoloViz()
 	ShowStatusMessage("Debug views off");
 }
 
-void ALibretroManagerActor::NudgeCutaway(float delta)
+void ALibretroManagerActor::NudgeCutaway(float delta, bool bContinuous)
 {
 	if (RefusePausedHoloChange(false)) return;
 	m_cutaway01 = FMath::Clamp(m_cutaway01 + delta, 0.0f, 1.0f);
-	//logged (status text is not) so the harness can prove which of ; and ' actually landed
-	LogMsg("NudgeCutaway %+.2f -> %.2f", delta, m_cutaway01);
+	//logged (status text is not) so the harness can prove which of ; and ' actually landed.
+	//The per-frame held-key sweep (bContinuous) would be 60 lines/s here - it relies on
+	//ApplyHoloViz's 5%-step log instead.
+	if (!bContinuous) LogMsg("NudgeCutaway %+.2f -> %.2f", delta, m_cutaway01);
 	ApplyHoloViz();
 	char st[64];
 	if (m_cutaway01 <= 0.001f)

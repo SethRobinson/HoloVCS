@@ -148,7 +148,7 @@ public:
 	bool RefusePausedHoloChange(bool bMode2Only);
 	void ToggleHoloViz(uint32 flag, const char* pName); //xor one bit, status text, push
 	void ClearHoloViz(); //Shift+0: all debug views off, cutaway reset
-	void NudgeCutaway(float delta); //';' and ''' in 3DS multiview: slide the cutaway plane
+	void NudgeCutaway(float delta, bool bContinuous = false); //';' and ''' in 3DS multiview: slide the cutaway plane (bContinuous = per-frame held-key sweep, quiet logging)
 	void SetLayersPeeled(int count); //debug: hide the N nearest layers (';' and ''' hotkeys) to see the back
 	int GetLayersPeeled() { return m_layersPeeled; }
 	//3DS multiview (mode 2): (re)create the quilt carrier quad at m_layerInfo[count+1] -

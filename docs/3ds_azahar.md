@@ -326,8 +326,13 @@ Round 7 (Aug 27 2026): SETTINGS PERSISTENCE FIXES + DEBUG VISUALIZATIONS.
     on device (pack compute uniform, zero shader recompile)
   - Shift+7 x-ray: multiview only; mirrored scene draws skip the depth test and blend
     additively, so occluded geometry glows through with true per-view parallax
-  - Shift+0 all off. ; and ' on 3DS MULTIVIEW drive the CUTAWAY plane (hold to sweep,
-    4%/step): an FS discard clips everything nearer than the plane, revealing occluded
+  - Shift+0 all off. ; and ' on 3DS MULTIVIEW drive the CUTAWAY plane (since Aug 28
+    2026 the keys sweep CONTINUOUSLY while held, frame-rate independent, full 0..100%
+    range in 1.5s = ~1.1%/frame at 60fps, so a tap is a ~1% bite; Pressed/Released
+    flags on APlayerPawn + UpdateHeldCutaway in Tick, the 3DS branch of the handlers
+    ignores OS key repeats. The old behavior was 4% per press/repeat. NudgeCutaway's
+    per-press log goes quiet during the sweep; ApplyHoloViz logs 5% steps and the
+    endpoints instead): an FS discard clips everything nearer than the plane, revealing occluded
     geometry that genuinely re-renders per view (the layer-peel successor; in band
     mode ; ' keep the classic peel). Since Aug 28 2026 the cut also removes
     SCREEN-LOCKED UI draws (title logo, HUD) once the plane passes 0.03 - they sit AT

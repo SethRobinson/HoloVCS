@@ -424,8 +424,8 @@ but burns the 5.6 escape hatch like any other resave.
   fits since Aug 27 2026 - the old ScaleLayersXY zoom was normalized away by the next
   AABB-driven refit, which read as "R reset my zoom". It persists within a game (rebuilds,
   R, depth presses) and resets to 100% on a game switch like the depth scale. 3DS debug visualizations: Shift+1-7 /
-  Shift+0 and the ; ' multiview cutaway, console `holo.Viz` / `holo.Cutaway` - see
-  docs/3ds_azahar.md round 7. NES Select is Tab now (was
+  Shift+0 and the ; ' multiview cutaway (held keys sweep continuously, 0..100% in
+  1.5s), console `holo.Viz` / `holo.Cutaway` - see docs/3ds_azahar.md round 7. NES Select is Tab now (was
   Backslash), and the old A-key "auto adjust audio" hotkey is REMOVED (it also collided with
   WASD left; per-frame audio stats code went with it).
 - AUDIO (Aug 2026): the libretro batch callback (LibretroManager.cpp) feeds mono float chunks to

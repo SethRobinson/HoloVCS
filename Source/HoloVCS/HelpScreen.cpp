@@ -138,7 +138,7 @@ FString HelpScreen::BuildHelpText() const
 	s += TEXT("[ / ]\tLess / more 3D depth\n");
 	s += TEXT("\\\tToggle 2D / 3D\n");
 	s += TEXT("{ / }\tConvergence: pop-out amount (3DS)\n");
-	s += TEXT("; / '\tPeel layers (3DS multiview: cutaway)\n");
+	s += TEXT("; / '\tPeel layers (3DS: hold to cut away)\n");
 	s += TEXT("= / -\tZoom in / out\n");
 	s += TEXT("0\tToggle FPS cap\n");
 	s += TEXT("1-5\tFrameskip\n");

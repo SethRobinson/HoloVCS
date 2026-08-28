@@ -192,6 +192,11 @@ protected:
 	void UpdateFlatCamera(float DeltaTime);
 	void UpdateFlyCamera(float DeltaTime);
 	void UpdateDepthRamp(float DeltaTime);
+	//3DS multiview cutaway: ; and ' sweep a little every frame while HELD (full range in
+	//~1.5s) instead of stepping per keypress - see UpdateHeldCutaway
+	void UpdateHeldCutaway(float DeltaTime);
+	bool m_bCutawayIncHeld = false;
+	bool m_bCutawayDecHeld = false;
 	void FinishCamScript(); //hand the camera back to the orbit at the script's final angles
 	float ComputeFlatCameraFitDist(const FRotator& camRot) const;
 
@@ -301,8 +306,10 @@ public:
 
 	void OnCommaKey();
 	void OnPeriodKey();
-	void OnSemicolonKey();   //hide one more of the nearest layers (debug peel)
+	void OnSemicolonKey();   //hide one more of the nearest layers (debug peel; 3DS multiview: start the cutaway sweep)
 	void OnApostropheKey();  //unhide one
+	void OnSemicolonKeyReleased();   //end the held 3DS cutaway sweep
+	void OnApostropheKeyReleased();
 	void OnNKey();
 	void OnVKey(); //keyboard fly-cam toggle (also makes the mode reachable from the harness `key` command)
 	void OnBKey(); //landscape 3DS: swap the 3D screen / bottom screen (pad twin: bare left trigger)

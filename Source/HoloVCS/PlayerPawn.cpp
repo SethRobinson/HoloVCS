@@ -749,6 +749,7 @@ void APlayerPawn::Tick(float DeltaTime)
 
 	UpdateDepthRamp(DeltaTime); //before the camera update so the fit sees the freshly moved layers
 	UpdateFlatCamera(DeltaTime);
+	UpdateHeldCutaway(DeltaTime);
 	UpdateTouchMouseLock();
 }
 
@@ -1428,10 +1429,18 @@ void APlayerPawn::OnSemicolonKey()
 	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
 	//3DS multiview has no band layers to peel - ; and ' slide the CUTAWAY plane instead
 	//(clips away the nearest geometry, exposing the occluded geometry the core really
-	//renders per view).  Band mode and the other systems keep the classic layer peel.
+	//renders per view).  The keys sweep CONTINUOUSLY while held, a little every frame
+	//(UpdateHeldCutaway) - a tap is a ~1% bite, so parts of the level can be exposed
+	//precisely.  Band mode and the other systems keep the classic layer peel.
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && g_pLibretroManager->m_holoCaptureMode == 2)
 	{
-		pActor->NudgeCutaway(0.04f);
+		if (m_bCutawayIncHeld) return; //OS key repeat while held - the Tick sweep owns it
+		if (g_pLibretroManager->GetGamePaused())
+		{
+			pActor->NudgeCutaway(0.0f); //shows the "can't change that while paused" refusal
+			return;
+		}
+		m_bCutawayIncHeld = true;
 		return;
 	}
 	pActor->SetLayersPeeled(pActor->GetLayersPeeled() + 1);
@@ -1444,7 +1453,13 @@ void APlayerPawn::OnApostropheKey()
 	ALibretroManagerActor* pActor = g_pLibretroManager->m_pLibretroManagedActor;
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && g_pLibretroManager->m_holoCaptureMode == 2)
 	{
-		pActor->NudgeCutaway(-0.04f);
+		if (m_bCutawayDecHeld) return;
+		if (g_pLibretroManager->GetGamePaused())
+		{
+			pActor->NudgeCutaway(0.0f);
+			return;
+		}
+		m_bCutawayDecHeld = true;
 		return;
 	}
 	pActor->SetLayersPeeled(pActor->GetLayersPeeled() - 1);
@@ -1456,6 +1471,40 @@ void APlayerPawn::OnApostropheKey()
 	{
 		ShowStatusMessage(string("Hiding " + toString(pActor->GetLayersPeeled()) + " nearest layer(s)"));
 	}
+}
+
+//no HelpSwallowedInput guard on releases: clearing a flag that was never set is harmless,
+//and a release must always end the sweep even if the press predates the help screen
+void APlayerPawn::OnSemicolonKeyReleased()
+{
+	m_bCutawayIncHeld = false;
+}
+
+void APlayerPawn::OnApostropheKeyReleased()
+{
+	m_bCutawayDecHeld = false;
+}
+
+//Held ; / ' sweep the 3DS multiview cutaway a little every frame: the full 0..100% range
+//takes CUTAWAY_SWEEP_SECONDS regardless of frame rate (~1.1%/frame at 60fps), so a tap is
+//a tiny bite and a hold glides through the level.
+static const float CUTAWAY_SWEEP_SECONDS = 1.5f;
+void APlayerPawn::UpdateHeldCutaway(float DeltaTime)
+{
+	if (m_bCutawayIncHeld == m_bCutawayDecHeld) return; //neither held, or both cancel out
+	if (!g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
+	if (g_pLibretroManager->m_emulatorType != EMULATOR_3DS || g_pLibretroManager->m_holoCaptureMode != 2)
+	{
+		m_bCutawayIncHeld = m_bCutawayDecHeld = false; //rom switched away mid-hold
+		return;
+	}
+	//idle silently while paused (the press already showed the refusal); resumes on unpause
+	if (g_pLibretroManager->GetGamePaused()) return;
+	//a hitchy frame (shader warmup after a rom load took a 28% bite in testing) must not
+	//slice away a big chunk at once - cap one frame's contribution at ~3 frames' worth
+	float delta = FMath::Min(DeltaTime, 0.05f) / CUTAWAY_SWEEP_SECONDS;
+	if (m_bCutawayDecHeld) delta = -delta;
+	g_pLibretroManager->m_pLibretroManagedActor->NudgeCutaway(delta, true);
 }
 
 void APlayerPawn::OnNum8Key()
@@ -1719,15 +1768,19 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(EKeys::RightBracket, IE_Repeat, this, &APlayerPawn::OnRightBracketKey);
 	PlayerInputComponent->BindKey(EKeys::Backslash, IE_Pressed, this, &APlayerPawn::OnBackslashKey); //2D/3D toggle (Backslash freed when NES Select moved to Tab)
 	PlayerInputComponent->BindKey(EKeys::Slash, IE_Pressed, this, &APlayerPawn::OnSlashKey); //Slash also fires with Shift held, so ? works
-	//; and ' repeat so holding a key sweeps the 3DS multiview cutaway plane (band-mode
-	//peel just steps faster, harmless)
+	//; and ' : 3DS multiview sweeps the cutaway plane every frame between Pressed and
+	//Released (UpdateHeldCutaway; the 3DS branch of the handlers ignores repeats).  The
+	//other systems' layer peel still steps per press, with IE_Repeat for hold-to-step.
 	PlayerInputComponent->BindKey(EKeys::Semicolon, IE_Pressed, this, &APlayerPawn::OnSemicolonKey);
 	PlayerInputComponent->BindKey(EKeys::Semicolon, IE_Repeat, this, &APlayerPawn::OnSemicolonKey);
+	PlayerInputComponent->BindKey(EKeys::Semicolon, IE_Released, this, &APlayerPawn::OnSemicolonKeyReleased);
 	//the physical ' key reaches UE as Quote on Windows keyboards; Apostrophe stays bound too
 	PlayerInputComponent->BindKey(EKeys::Quote, IE_Pressed, this, &APlayerPawn::OnApostropheKey);
 	PlayerInputComponent->BindKey(EKeys::Quote, IE_Repeat, this, &APlayerPawn::OnApostropheKey);
+	PlayerInputComponent->BindKey(EKeys::Quote, IE_Released, this, &APlayerPawn::OnApostropheKeyReleased);
 	PlayerInputComponent->BindKey(EKeys::Apostrophe, IE_Pressed, this, &APlayerPawn::OnApostropheKey);
 	PlayerInputComponent->BindKey(EKeys::Apostrophe, IE_Repeat, this, &APlayerPawn::OnApostropheKey);
+	PlayerInputComponent->BindKey(EKeys::Apostrophe, IE_Released, this, &APlayerPawn::OnApostropheKeyReleased);
 	//"press any key to close" for the help screen - keys without a binding of their own land
 	//here.  MUST NOT consume, or it would eat every keypress meant for the game/hotkeys.
 	//(The help's same-frame show/hide guards keep this from fighting the ? toggle.)
