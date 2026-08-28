@@ -226,6 +226,11 @@ void LibretroManager::ModEmulatorType(int mod)
 	LogMsg("Modding emu by %d", mod);
 }
 
+//,/. rom cycling is DEBOUNCED (Seth, Aug 28 2026): a 3DS rom load freezes everything for
+//multiple seconds, so committing on the keypress made it impossible to skip past a 3DS
+//game.  The press only advances a PENDING index and shows what's coming; Update commits
+//the actual load 500ms after the last press - by then the "Loading ..." text has also
+//rendered a few frames, so the freeze reads as loading instead of a hang.
 void LibretroManager::ModRom(int mod)
 {
 	LogMsg("Modding rom by %d", mod);
@@ -236,19 +241,45 @@ void LibretroManager::ModRom(int mod)
 		return;
 	}
 
+	int idx = (m_pendingRomIndex >= 0) ? m_pendingRomIndex : m_activeRomIndex;
+	idx += mod;
+	if (idx >= romCount) idx = 0;
+	if (idx < 0) idx = romCount - 1;
+	m_pendingRomIndex = idx;
+	m_pendingRomDir = (mod < 0) ? -1 : 1;
+	m_pendingRomLoadTime = FPlatformTime::Seconds() + 0.5;
+	//sticky so it stays up through the load freeze; the post-load status replaces it
+	string name = GetFileNameWithoutExtension(std::string(TCHAR_TO_ANSI(*m_romNameFileList[idx])));
+	ShowStatusMessage(("Loading " + name + "...").c_str(), 100);
+}
+
+void LibretroManager::CommitPendingRomSwitch()
+{
+	if (m_pendingRomIndex < 0 || FPlatformTime::Seconds() < m_pendingRomLoadTime) return;
+
+	const int startIdx = m_pendingRomIndex;
+	const int dir = m_pendingRomDir;
+	m_pendingRomIndex = -1;
+	const int romCount = m_romNameFileList.Num();
+	if (romCount == 0) return;
+
 	//,/. must be able to cycle PAST a rom that refuses to load (a really-encrypted 3DS dump,
 	//say) instead of dying on it - keep walking in the pressed direction until something loads
-	const int dir = (mod < 0) ? -1 : 1;
 	string skipMsg;
+	m_activeRomIndex = startIdx;
 	for (int tries = 0; tries < romCount; tries++)
 	{
-		m_activeRomIndex += (tries == 0) ? mod : dir;
-		if (m_activeRomIndex >= romCount) m_activeRomIndex = 0;
-		if (m_activeRomIndex < 0) m_activeRomIndex = romCount - 1;
+		if (tries > 0)
+		{
+			m_activeRomIndex += dir;
+			if (m_activeRomIndex >= romCount) m_activeRomIndex = 0;
+			if (m_activeRomIndex < 0) m_activeRomIndex = romCount - 1;
+		}
 
 		if (InitEmulator())
 		{
-			//explain the hole in the rotation, over the game that DID load
+			//replace the sticky "Loading ..." text; also explain any hole in the rotation
+			ShowStatusMessage(GetFileNameWithoutExtension(m_curRomName));
 			if (!skipMsg.empty()) ShowStatusMessage(skipMsg, 8);
 			return;
 		}
@@ -1318,6 +1349,7 @@ bool LibretroManager::SetRomToLoadByPartialFileName(string name)
 
 bool LibretroManager::InitEmulator()
 {
+	m_pendingRomIndex = -1; //any direct load supersedes a debounced , / . switch in flight
 	m_profManager.Init(this);
 
 	if (m_romNameFileList.Num() == 0)
@@ -2358,6 +2390,10 @@ void LibretroManager::Load3DSStateFromFile()
 void LibretroManager::Update()
 {
 	m_autoHarness.Update(); //before the early-outs so pause/unpause and rom switching work anytime
+
+	//debounced , / . rom switch: BEFORE the active/paused early-outs so cycling works
+	//while paused and even out of a failed-load state
+	CommitPendingRomSwitch();
 
 	if (!m_core.m_bActive) { m_timeOfLastFrame = 0; return; }
 

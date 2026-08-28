@@ -182,6 +182,13 @@ public:
 	void Kill();
 	void ModEmulatorType(int mod);
 	void ModRom(int mod);
+	void CommitPendingRomSwitch(); //called from Update: performs the debounced , / . rom switch
+	//debounced rom cycling (, and . / the pad chords): the switch commits 500ms after the
+	//last press so rapid presses can skip PAST a 3DS rom without paying its multi-second
+	//load freeze.  -1 = nothing pending; any direct InitEmulator cancels it.
+	int m_pendingRomIndex = -1;
+	int m_pendingRomDir = 1;
+	double m_pendingRomLoadTime = 0;
 
 	void DisableBlitPass(int blitPassIndex);
 	bool IsCoreLoaded() { return m_core.m_bActive; }

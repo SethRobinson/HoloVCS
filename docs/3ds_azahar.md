@@ -507,6 +507,17 @@ touch-tap latch fix.
   Verified headlessly (no device, `-lkglandscape -rom="3D Land"`, quilt captures): default
   = top screen only, `key B` = bottom screen alone framed full-size, `holo.BottomScreen`
   = back, portrait run unchanged, NES unaffected.
+- BOTTOM-SCREEN "ALL BUTTONS SHUT OFF" (fixed Aug 28 2026): input was never gated by the
+  hold-to-view - the azahar core's OWN screen-swap hotkey (retro_run polls JOYPAD_L3
+  every frame, swaps its internal screen layout + relayouts on every change) was firing
+  off the L3 bit our input callback derived from a right-stick UP push, i.e. exactly the
+  stick that steers the touch cursor.  Each accidental swap scrambled the core's
+  top-scene detection and the touch-rect mapping, so everything on the bottom screen
+  felt dead.  Fixed on both sides: the core skips the swap check entirely in holo mode
+  (GetHoloCallback() != null - the frontend owns the layout), and the frontend no longer
+  feeds stick deflections into the L2/L3/R2/R3 bits on 3DS (those mappings exist for
+  the other cores; side benefit: a held ZL from the trigger is no longer stomped by the
+  centered stick every frame).
 - TOUCH-TAP LATCH FIX (Seth: "if you click, it sometimes clicks the wrong spot"): the
   press-position latch rewound the cursor FIVE frames (~83ms) into its history, well past
   the real display latency of the stamped cursor (~2 frames), so clicking shortly after a

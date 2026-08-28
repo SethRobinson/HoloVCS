@@ -590,6 +590,17 @@ but burns the 5.6 escape hatch like any other resave.
   stacked two-screen layout. Detection,
   `-lkglandscape` test force, and the PeelHidden/quilt-carrier gotchas: docs/3ds_azahar.md
   round 9 (also has the touch-tap latch fix: framesBack 5 -> 2, was "clicks the wrong spot").
+  ALL input stays live during the hold - Seth's "every button shuts off on the bottom
+  screen" was the azahar core's own L3 screen-swap hotkey firing off our stick-up L3 bit
+  (the touch-cursor stick!), scrambling the core's layout and touch mapping; fixed both
+  sides Aug 28 (core skips its swap in holo mode; the frontend no longer feeds stick
+  deflections into L2/L3/R2/R3 on 3DS).
+- ROM CYCLING IS DEBOUNCED (Aug 28 2026): , / . (and the pad chords) only advance a pending
+  index and show a sticky "Loading <game>..."; the actual load commits 500ms after the last
+  press (LibretroManager::CommitPendingRomSwitch from Update), so rapid presses skip PAST a
+  3DS rom without paying its multi-second load freeze, and the freeze itself reads as
+  loading instead of a hang. Harness `rom <partial>` stays immediate; any direct
+  InitEmulator cancels the pending switch.
 - 3DS (IN PROGRESS, Aug 2026): `azahar_libretro.dll`, built from Seth's Azahar fork at
   `f:\Unreal\azahar` (branch `holo`; NOT part of BuildCores.bat yet, copied to Binaries/Win64 by
   hand). Read `docs/3ds_azahar.md` before touching EMULATOR_3DS - it differs from the other

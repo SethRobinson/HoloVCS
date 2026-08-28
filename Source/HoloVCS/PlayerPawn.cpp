@@ -841,8 +841,15 @@ void APlayerPawn::RMove_XAxis(float AxisValue)
 	//fly mode: the right stick looks around, so only the keyboard share (H/K) reaches the
 	//game - this also keeps the stick out of the 3DS touch cursor and the digital bits below
 	if (m_bFlyCam) AxisValue -= m_padRX;
-	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R2] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
-	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R3] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
+	//3DS: the stick-deflection L2/L3/R2/R3 bits are for OTHER cores (VB era) - on the 3DS
+	//the right stick is the touch cursor, and pushing it UP used to set the L3 bit, which
+	//the azahar core read as its own SCREEN SWAP hotkey: the core's layout scrambled and
+	//all interaction on the bottom screen felt dead (also disabled core-side in holo mode)
+	if (g_pLibretroManager->m_emulatorType != EMULATOR_3DS)
+	{
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R2] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_R3] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
+	}
 	g_pLibretroManager->m_joyPad.m_axisRX = FMath::Clamp(AxisValue, -1.0f, 1.0f); //3DS C-stick
 }
 
@@ -850,8 +857,11 @@ void APlayerPawn::RMove_YAxis(float AxisValue)
 {
 	if (!g_pLibretroManager) return;
 	if (m_bFlyCam) AxisValue -= m_padRY;
-	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L3] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
-	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L2] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
+	if (g_pLibretroManager->m_emulatorType != EMULATOR_3DS)
+	{
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L3] = (AxisValue < -C_JOYSTICK_DEAD_ZONE);
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L2] = (AxisValue > C_JOYSTICK_DEAD_ZONE);
+	}
 	g_pLibretroManager->m_joyPad.m_axisRY = FMath::Clamp(AxisValue, -1.0f, 1.0f); //3DS C-stick
 }
 
