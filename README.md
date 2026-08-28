@@ -34,7 +34,7 @@ The custom sprite-quilt renderer reduced the measured render-thread cost of gene
 
 ## Nintendo 3DS support
 
-Unlike the 2D systems, the 3DS is a true 3D console, so no hand-tuned per-game profiles are needed. On a Looking Glass display the customized core renders true multiview 3D: the scene is re-rendered from a slightly different camera position for every view the lens shows, so every pixel carries its real depth instead of being assigned to a layer. On the flat build the same core instead captures per-pixel depth during the game's own rendering and routes every drawn fragment into one of 24 depth-banded layers, preserving even geometry hidden behind foreground objects, which turns the game into the same kind of diorama the other systems use. The bottom screen appears on its own panel below the 3D scene, with touch input driven by the mouse or gamepad.
+Unlike the 2D systems, the 3DS is a true 3D console, so no hand-tuned per-game profiles are needed. The customized core renders true multiview 3D: the scene is re-rendered from a slightly different camera position for every view the display shows, so every pixel carries its real depth instead of being assigned to a layer. The bottom screen appears on its own panel below the 3D scene, with touch input driven by the mouse or gamepad.
 
 The core is based on [Azahar](https://github.com/azahar-emu/azahar), the open-source continuation of Citra; the modified source lives on the `holo` branch of [SethRobinson/azahar](https://github.com/SethRobinson/azahar). Like the other cores it is GPL-2.0 and remains a separate DLL loaded at runtime. The core accepts only decrypted ROM dumps, and as with the rest of HoloVCS, no ROMs, encryption keys, or decryption capability are included.
 
@@ -91,10 +91,59 @@ HoloVCS recognizes games by ROM checksum instead of filename, so you can name th
 
 Any Virtual Boy or Nintendo 3DS game works, no per-game profile needed: the customized Beetle VB and Azahar cores hand HoloVCS real depth layers. Other Atari 2600 and NES games load and play fine, they just get default layering instead of a hand-tuned depth effect.
 
-Press `?` in the game to see the current controls, and `,` or `.` to switch between the ROMs you installed.
+Press `,` or `.` in the game to switch between the ROMs you installed; the full control list is in the next section (and on the `?` key in the game).
 
 HoloVCS requires a connected Looking Glass display and [Looking Glass Bridge](https://lookingglassfactory.com/software-downloads).
 
+## Controls
+
+Press `?` in the game at any time to show this list; any key closes it.
+
+Game controls:
+
+| Input | Action |
+| --- | --- |
+| WASD / Arrows / left stick | Move / D-pad (Circle Pad on 3DS) |
+| Gamepad D-pad | D-pad (3DS: camera etc.) |
+| Space | A button |
+| Ctrl / left click | B button |
+| C / Z | X / Y buttons (3DS) |
+| Q / E | L / R buttons |
+| Enter | Start |
+| Tab | Select |
+| Mouse / right stick | Touch cursor (3DS) |
+| Left click / right trigger / right stick click | Touch tap (3DS) |
+| B or hold left trigger | Swap to / hold the bottom screen (3DS on landscape displays) |
+
+System:
+
+| Input | Action |
+| --- | --- |
+| , / . | Previous / next game |
+| R | Reset game |
+| P | Pause |
+| F / G | Save / load state (L also loads) |
+| Hold left stick click + LB / RB | Save / load state (pad) |
+| Hold left stick click + LT / RT | Previous / next game (pad) |
+| Hold left stick click + Y | Pause (pad) |
+| Hold left stick click + X | Frameskip 4 on/off (pad fast-forward) |
+| V or click both sticks | Fly camera on/off |
+| D-pad while flying | Magnify / pan left-right |
+
+View and rendering:
+
+| Input | Action |
+| --- | --- |
+| [ / ] | Less / more 3D depth |
+| \ | Toggle 2D / 3D |
+| { / } | Convergence: pop-out amount (3DS) |
+| ; / ' | Peel layers (3DS: hold to cut away) |
+| = / - | Zoom in / out |
+| 0 | Toggle FPS cap |
+| 1 through 5 | Frameskip |
+| 6 / 7 / 8 | Texture smoothing / shadows / lighting |
+| Shift+1 through Shift+7 | Debug views: wireframe / clay / unlit / depth / heat / rainbow / x-ray |
+| Shift+0 | Debug views off |
 
 ## Looking Glass integration
 
