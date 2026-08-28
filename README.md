@@ -1,6 +1,6 @@
 # HoloVCS
 
-Atari 2600, NES, Virtual Boy, and Nintendo 3DS games rendered as stacked 3D layers on Looking Glass holographic displays.
+Atari 2600, NES, and Virtual Boy games rendered as stacked 3D layers, and Nintendo 3DS games rendered in true per-pixel 3D, on Looking Glass holographic displays.
 
 ![HoloVCS](Media/holovcs.gif)
 
@@ -9,6 +9,8 @@ Atari 2600, NES, Virtual Boy, and Nintendo 3DS games rendered as stacked 3D laye
 ## What is it?
 
 HoloVCS turns classic games into small 3D dioramas. Instead of displaying a single 2D emulator image, it separates backgrounds, platforms, characters, effects, and foreground objects into textured layers placed at different depths. On a Looking Glass display, the result can be viewed from different horizontal angles without glasses or a headset.
+
+The Nintendo 3DS goes further: its games are real 3D scenes already, so on a Looking Glass the customized core re-renders each game from a slightly different camera position for every view the display shows. That is true per-pixel 3D rather than a layered diorama.
 
 The Looking Glass build has been tested on three devices:
 
@@ -23,7 +25,7 @@ Also note that the 3D effects mostly only work with a couple hand-tweaked games 
 - Atari 2600, NES, Virtual Boy, and Nintendo 3DS emulation through customized libretro cores.
 - Hand-tuned 3D profiles for supported Atari 2600 and NES games, identified by checksum rather than filename.
 - Native Virtual Boy depth layers captured directly from the customized Beetle VB core.
-- Nintendo 3DS support: a customized Azahar-based core captures true per-pixel depth from the emulated 3D GPU, so games need no hand-tuned profiles.
+- Nintendo 3DS support: a customized Azahar-based core renders true multiview 3D from the emulated GPU's real geometry, so games need no hand-tuned profiles.
 - Layered lighting, shadows, backdrop images, adjustable depth, save states, keyboard controls, and gamepad support.
 - A customized Looking Glass Unreal Engine 5.8 plugin with automatic device calibration and a project-specific high-speed quilt renderer.
 - Complete HoloVCS, emulator-core, and Looking Glass plugin source included in this repository.
@@ -32,7 +34,7 @@ The custom sprite-quilt renderer reduced the measured render-thread cost of gene
 
 ## Nintendo 3DS support
 
-Unlike the 2D systems, the 3DS is a true 3D console, so no hand-tuned per-game profiles are needed. A customized emulator core captures real per-pixel depth from the emulated GPU: during the game's own rendering, every drawn fragment is also routed into one of 24 depth-banded layers, so even geometry hidden behind foreground objects is preserved on its own layer and the diorama holds up when viewed from an angle. The bottom screen appears on its own panel below the 3D stack, with touch input driven by the mouse or gamepad.
+Unlike the 2D systems, the 3DS is a true 3D console, so no hand-tuned per-game profiles are needed. On a Looking Glass display the customized core renders true multiview 3D: the scene is re-rendered from a slightly different camera position for every view the lens shows, so every pixel carries its real depth instead of being assigned to a layer. On the flat build the same core instead captures per-pixel depth during the game's own rendering and routes every drawn fragment into one of 24 depth-banded layers, preserving even geometry hidden behind foreground objects, which turns the game into the same kind of diorama the other systems use. The bottom screen appears on its own panel below the 3D scene, with touch input driven by the mouse or gamepad.
 
 The core is based on [Azahar](https://github.com/azahar-emu/azahar), the open-source continuation of Citra; the modified source lives on the `holo` branch of [SethRobinson/azahar](https://github.com/SethRobinson/azahar). Like the other cores it is GPL-2.0 and remains a separate DLL loaded at runtime. The core accepts only decrypted ROM dumps, and as with the rest of HoloVCS, no ROMs, encryption keys, or decryption capability are included.
 
@@ -50,7 +52,7 @@ The core is based on [Azahar](https://github.com/azahar-emu/azahar), the open-so
 
 ### Version 1.5 - August 28, 2026
 
-- Added Nintendo 3DS support through a customized Azahar core: every game gets true per-pixel depth captured from the emulated GPU during its own rendering, so no per-game profiles are needed. Includes the bottom screen on its own panel, a mouse or stick driven touch cursor, analog circle pad support, and save states.
+- Added Nintendo 3DS support through a customized Azahar core: on the Looking Glass every game renders in true multiview 3D with real per-pixel depth (not stacked layers), so no per-game profiles are needed. Includes the bottom screen on its own panel, a mouse or stick driven touch cursor, analog circle pad support, and save states.
 - Mario Kart 7 and other games that render through padded buffers now get full 3D instead of a flat hologram.
 - Landscape displays like the original 8.9-inch Looking Glass show one 3DS screen at a time: B swaps to the bottom screen, and holding the left trigger peeks at it.
 - 3DS dumps that are merely flagged as encrypted (common with dumping tools) now load automatically; only genuinely encrypted dumps are refused, with a clear on-screen message. A failed ROM load now recovers cleanly instead of leaving a broken display, and keeps the reason on screen.

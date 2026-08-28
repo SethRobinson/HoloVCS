@@ -1,7 +1,7 @@
 HoloVCS v1.5 - Looking Glass Windows release
 ================================================
 
-HoloVCS runs Atari 2600, NES, Virtual Boy, and Nintendo 3DS games as layered 3D dioramas on Looking Glass holographic displays.
+HoloVCS runs Atari 2600, NES, and Virtual Boy games as layered 3D dioramas, and Nintendo 3DS games in true per-pixel 3D, on Looking Glass holographic displays.
 
 Requirements
 ------------
