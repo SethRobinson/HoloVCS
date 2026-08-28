@@ -38,32 +38,67 @@ def slice_quilt(path):
     return views
 
 
+def edge_runs(dark, axis):
+    """Per-line dark run length from each end along `axis` (1 = per row giving
+    left/right runs, 0 = per column giving top/bottom runs). An all-dark line reads
+    as the full extent from both ends."""
+    lit = ~dark
+    extent = dark.shape[axis]
+    any_lit = lit.any(axis=axis)
+    first = np.where(any_lit, lit.argmax(axis=axis), extent)
+    last = np.where(any_lit, np.flip(lit, axis=axis).argmax(axis=axis), extent)
+    return first, last
+
+
+def visible_margin(margins, runs, lum_lines, extent, flip):
+    """Largest per-line margin whose inward neighbor pixels are BRIGHT. A wedge that
+    borders dark scene art is invisible and cropping it only eats real content; the
+    title's wedge against the glowing nebula is the one worth trimming. `lum_lines`
+    indexes luminance per line; `flip` measures from the far end."""
+    best = 0
+    for i in np.nonzero(margins)[0]:
+        run = int(runs[i])
+        if flip:
+            nb = lum_lines(i)[max(0, extent - run - 8):extent - run]
+        else:
+            nb = lum_lines(i)[run:run + 8]
+        if nb.size and nb.mean() > 40:
+            best = max(best, int(margins[i]))
+    return best
+
+
 def measure_edge_black(views):
-    """Max run of near-black pixels from each edge, over every view: the per-view shear
-    leaves unrendered black margins on the outer views, widest where the scene is deep.
-    Returns (left, top, right, bottom) crop amounts, each capped at 40px."""
+    """Crop for the unrendered black shear margins on the OUTER views. Three filters,
+    each learned from a real scene: subtract the CENTER view's run on the same line as
+    a baseline (the center has no margins by construction; Metroid's ruins pillars are
+    exact-zero black scene art), require the margin's inward neighbors to be bright
+    (a wedge hiding against dark stone is invisible and not worth eating content over),
+    and cap at 40px. Returns (left, top, right, bottom)."""
+    lums = [np.asarray(img.convert("L")).astype(np.int16) for img in views]
+    darks = [lum < 6 for lum in lums]
+    center = darks[len(darks) // 2]
+    w = center.shape[1]
+    h = center.shape[0]
     l = t = r = b = 0
-    for img in views:
-        a = np.asarray(img.convert("L")) < 6
-        lit = ~a
-        first_lit_x = np.where(lit.any(axis=1), lit.argmax(axis=1), 0)
-        last_lit_x = np.where(lit.any(axis=1),
-                              a.shape[1] - 1 - lit[:, ::-1].argmax(axis=1), a.shape[1] - 1)
-        l = max(l, int(first_lit_x.max()))
-        r = max(r, int(a.shape[1] - 1 - last_lit_x.min()))
+    cen_l, cen_r = edge_runs(center, axis=1)
+    for a, lum in zip(darks, lums):
+        rl, rr = edge_runs(a, axis=1)
+        l = max(l, visible_margin(np.maximum(rl - cen_l, 0), rl,
+                                  lambda y: lum[y, :], w, False))
+        r = max(r, visible_margin(np.maximum(rr - cen_r, 0), rr,
+                                  lambda y: lum[y, :], w, True))
     # top/bottom measured INSIDE the x-crop: the side wedges' mostly-black columns would
     # otherwise read as huge top runs and blow the vertical crop out to the cap
     xl = min(40, l + 2 if l else 0)
     xr = min(40, r + 2 if r else 0)
-    for img in views:
-        a = np.asarray(img.convert("L")) < 6
-        a = a[:, xl:a.shape[1] - xr]
-        lit = ~a
-        first_lit_y = np.where(lit.any(axis=0), lit.argmax(axis=0), 0)
-        last_lit_y = np.where(lit.any(axis=0),
-                              a.shape[0] - 1 - lit[::-1, :].argmax(axis=0), a.shape[0] - 1)
-        t = max(t, int(first_lit_y.max()))
-        b = max(b, int(a.shape[0] - 1 - last_lit_y.min()))
+    cen_t, cen_b = edge_runs(center[:, xl:w - xr], axis=0)
+    for a, lum in zip(darks, lums):
+        rt, rb = edge_runs(a[:, xl:w - xr], axis=0)
+        lc = lum[:, xl:w - xr]
+        t = max(t, visible_margin(np.maximum(rt - cen_t, 0), rt,
+                                  lambda x: lc[:, x], h, False))
+        b = max(b, visible_margin(np.maximum(rb - cen_b, 0), rb,
+                                  lambda x: lc[:, x], h, True))
     return (xl, min(40, t + 2 if t else 0), xr, min(40, b + 2 if b else 0))
 
 

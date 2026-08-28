@@ -325,7 +325,10 @@ Round 7 (Aug 27 2026): SETTINGS PERSISTENCE FIXES + DEBUG VISUALIZATIONS.
   - Shift+0 all off. ; and ' on 3DS MULTIVIEW drive the CUTAWAY plane (hold to sweep,
     4%/step): an FS discard clips everything nearer than the plane, revealing occluded
     geometry that genuinely re-renders per view (the layer-peel successor; in band
-    mode ; ' keep the classic peel).
+    mode ; ' keep the classic peel). Since Aug 28 2026 the cut also removes
+    SCREEN-LOCKED UI draws (title logo, HUD) once the plane passes 0.03 - they sit AT
+    the screen, the nearest depth there is (core-side kHoloCutLockedThresh, counted as
+    the M line's uicut skip; see the fork's AGENTS.md).
     CUTAWAY FREEZE (fix, Aug 27 2026 after Seth's "it keeps cutting by itself"): the
     plane derives from the smoothed depth range, but the cut removes the near
     fragments the next readback would measure, so the range crept deeper and the
