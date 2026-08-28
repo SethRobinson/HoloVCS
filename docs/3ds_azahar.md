@@ -551,6 +551,37 @@ CORE-side (rebuild azahar_libretro.dll and hand-copy it, fork commit 4dac8bf80).
   the logo at +-1px across 45 views (unchanged look), and at conv 0.60 the logo sweeps
   +-105px linearly, at/ahead of the planet limb (it measured 0 before = the bug).
 
+Round 11 (Aug 28 2026): WHY MARIO KART 7 RENDERS FLAT ON THE PANEL - DIAGNOSED, NOT
+YET FIXED (fix is core-side). The good decrypted MK7 dump (Rev 1) loads and plays
+fine, but the core never delivers a single quilt: log.txt shows "3DS quilt dormant
+... (used=0 views=0 packSeq=0 mode=2)" for the whole session, so the frontend stays
+on its flat middle-band composite fallback = 2D hologram. Draw log from the staged
+build (savestate into gameplay, holo_draw_log_request armed; note the staged game's
+working directory for request files is dist\win64_lkg_test\Windows\HoloVCS\
+Binaries\Win64, where the raw holo_draw_log.txt / holo_view_log.txt evidence still
+sits). Two independent core-side gate failures, both from MK7's framebuffer layout:
+- MK7 renders BOTH screens into ONE PADDED 256x416 render target (53,314 logged
+  draws, every one at addr 180f8000: 51,042 with vp=240x400 = top scene, 2,272 with
+  vp=240x320 = bottom), unlike SM3DL/MSR whose RTs are exactly 240x400. The
+  top_sized gate (gl_rasterizer.cpp, fb width/height == 240x400 EXACT) skipped ALL
+  of them with verdict "fb": no multiview mirror ever ran (V lines: zero, mvtex=0),
+  no depth record ever landed (view log buf=[0.0000..1.0000] defaults).
+- Independently the ship gate never fires (transfer_ever=0): MK7 display-transfers
+  the scene to full padded 256x416 16bpp eye buffers (0x34000 bytes each; two
+  adjacent outputs per frame = left+right eye, same mono image at slider 0) and the
+  top LCD scans out at +0x2000 INSIDE the buffer (16 padded rows x 256 stride x 2
+  bytes), so the exact-match top-LCD destination check (to_top_lcd register +
+  IsTopLcdOut) never identifies a top destination and the scene never ships/packs.
+  The top-SOURCE side is fine (has_src=1, scene_in=1) because NoteBufferSwap's
+  resolver matches by containment already.
+Fix direction (both needed, azahar fork): (1) accept padded RTs as top-sized (a
+240x400 viewport inside a >=240 x >=400 fb; the existing top_viewport ratio check
+already passes 400*10 >= 416*9) and offset the mv capture/mirror by the draw-rect
+origin inside the padded RT; (2) match transfer outputs against learned scan-outs
+by containment (scanout in [out, out+span)) like the swap resolver does. MK7
+presenting the same mono image to both eyes is fine for multiview, which re-renders
+per view anyway.
+
 NOT yet done: per-game depth-band profiles, near-band HUD routing knob, sound
 verification, release-bat/core-build integration, non-uniform bands via depth01.
 Fallbacks: no interlock extension -> packed RGB565 opaque capture; no GL4.3 compute ->
