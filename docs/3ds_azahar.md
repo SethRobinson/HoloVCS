@@ -507,6 +507,32 @@ touch-tap latch fix.
   (LibretroManager::SetTouchDown).  The latch mechanism itself (hold until a >15px drag,
   arrow drawn at the latched point while pressing) is unchanged.
 
+Round 10 (Aug 28 2026): CONVERGENCE POP-OUT LEAK + TITLE-INSIDE-THE-PLANET, both fixed
+CORE-side (rebuild azahar_libretro.dll and hand-copy it, fork commit 4dac8bf80).
+- Seth: "pop out should be reset to default after switching to another game." The
+  frontend side was already correct (SetEmulatorData resets m_userConv01 to -1 and
+  PushHoloViewParams delivers it - log-proven), but the core's SetViewParams treated a
+  negative convergence as KEEP CURRENT, and the azahar DLL stays RESIDENT across the
+  FreeLibrary/LoadLibrary rom switch (round 7's "FreeLibrary resets the core statics"
+  assumption is wrong for this DLL - harness repro: set holo.Convergence 0.60 in SM3DL,
+  `rom Metroid`, and the core's holo_view_log still printed conv_frac=0.60). Negative
+  now restores the compiled-in default (kDefaultConvFrac 0.02), so the game-switch
+  reset and `holo.Convergence -1` both truly reset. Verified with the same repro:
+  conv_frac=0.02 after the switch.
+- Seth: with pop-out active the Metroid Samus Returns title logo "renders in the middle
+  of the planet instead of in front of it." Screen-locked UI sat AT the screen plane, so
+  any scene content the { } pop-out pushed past the screen crossed in front of it
+  stereoscopically while the logo still drew on top = depth violation. New shear mode 2
+  in the core: depth-less draws past the prev_last_depth_seq boundary (the band overlay
+  routing's stable "trailing UI pass" heuristic - title logo, HUD, badges) get a
+  constant per-view shift to the scene's NEAR END (precomputed holo_ui_shift in the
+  view UBO's old pad slot), so the UI pops out WITH the scene and stays in front.
+  Backdrops, mid-scene sheets (SM3DL clouds), and gadget-phase draws stay screen-locked;
+  scene draws unchanged. At the default near-end convergence the shift is ~0: quilt
+  patch tracking (scratchpad track_patch.py on a holo_quilt_request raw stitch) showed
+  the logo at +-1px across 45 views (unchanged look), and at conv 0.60 the logo sweeps
+  +-105px linearly, at/ahead of the planet limb (it measured 0 before = the bug).
+
 NOT yet done: per-game depth-band profiles, near-band HUD routing knob, sound
 verification, release-bat/core-build integration, non-uniform bands via depth01.
 Fallbacks: no interlock extension -> packed RGB565 opaque capture; no GL4.3 compute ->

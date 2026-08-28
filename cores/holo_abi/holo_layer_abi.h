@@ -71,7 +71,8 @@ typedef void (*retro_video_refresh_holo_t)(const void* data, unsigned width, uns
    float convergence01)` - live view tuning, resolved by GetProcAddress like
    retro_set_video_refresh_holo. separation_scale multiplies the default parallax
    strength (1.0 = default, 0 = flat); convergence01 places the zero-parallax plane as
-   a fraction of the scene depth range (pass a negative value to keep the default).
+   a fraction of the scene depth range (pass a negative value to restore the core's
+   compiled-in default - frontends push -1 to reset user tweaks on a game switch).
    Callable from the frontend's emulation thread at any time. */
 typedef void (*retro_holo_set_view_params_t)(float separation_scale, float convergence01);
 

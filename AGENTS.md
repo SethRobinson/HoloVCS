@@ -397,7 +397,13 @@ but burns the 5.6 escape hatch like any other resave.
   missing export = stale core DLL now warns once instead of failing silently). { and }
   nudge the multiview CONVERGENCE (the zero-parallax plane: how much pops out vs sinks
   behind the screen; 5% per step, `holo.Convergence` stays the console twin, -1 restores
-  the 0.35 core default). A "view width" knob was tried on those keys first and removed:
+  the 0.02 near-end core default). GOTCHA (fixed Aug 28 2026 core-side): the game-switch
+  reset pushes -1, but the core used to treat negative as "keep current" AND the azahar
+  DLL stays RESIDENT across the FreeLibrary/LoadLibrary rom switch, so a pop-out tweak
+  leaked into the next game; the core now restores its compiled default on any negative
+  push, and the UI tail (title/HUD) rides the scene's near end so a pop-out can't leave
+  it stereoscopically inside the scene - see docs/3ds_azahar.md round 10. A "view width"
+  knob was tried on those keys first and removed:
   in the shear model adjacent-view difference IS the depth quantity, so it duplicated
   [ ]. Viz/cutaway/depth/convergence changes that would need a core re-render are
   REFUSED while the 3DS is paused ("Can't change that while paused" - a savestate-pin
