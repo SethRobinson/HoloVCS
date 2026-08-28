@@ -534,6 +534,10 @@ but burns the 5.6 escape hatch like any other resave.
   docs/automation_workflow.md). Scripts drive m_dispYaw/Pitch directly in UpdateFlatCamera
   and share its fit/transform code; completion hands off like a mouse release (idle-return
   eases back ~5s later), and mouse movement cancels a running script.
+- 3DS MULTIVIEW GIF MAKER (Aug 2026): `tools\make_holo_gif.ps1` builds looping parallax-sweep
+  and smooth-cutaway GIFs for ANY running 3DS game in multiview mode, from the core's
+  native-res quilt dumps (no window capture). Usage, -MaxCut probing method, and the MSR
+  depth-layout numbers: docs/automation_workflow.md "3DS multiview GIF maker".
 
 ## Emulator cores (all three work, all dynamic DLLs)
 

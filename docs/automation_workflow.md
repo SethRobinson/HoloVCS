@@ -60,6 +60,51 @@ After a Cam script finishes, the camera holds the final angles and the normal id
 back to the sweep ~5s later - shoot while the script runs, not after. Mouse movement cancels a
 running script (user wins).
 
+## 3DS multiview GIF maker (tools/make_holo_gif.ps1)
+
+Builds looping 3D GIFs for ANY running 3DS game in multiview mode (LKG builds default to it;
+flat builds need `-holomultiview`). The frames are the core's own per-view renders at native
+3DS resolution (400x240 per view), pulled with `holo_quilt_request.txt` dumps and sliced by
+`tools/holo_gif.py` (Python + Pillow, both installed) - no window capture, no focus steal, no
+status text in frames. Made Aug 2026 for the Metroid: Samus Returns title/surface GIFs.
+
+```
+tools\make_holo_gif.ps1 -Mode sweep   -Out Media\gifs\mygame_sweep.gif            # parallax wigglegram
+tools\make_holo_gif.ps1 -Mode cutaway -Out Media\gifs\mygame_cut.gif -MaxCut 0.12 # smooth cutaway + sweep
+```
+
+- `sweep`: ONE quilt dump -> seamless sine ping-pong across all views (66 on the Go's 11x6
+  grid), left-right-left. A frozen moment; only the viewpoint moves.
+- `cutaway`: one quilt dump per output frame while `holo.Cutaway` ramps 0 -> MaxCut -> 0
+  (smoothstep + hold, per-frame increments = no visible steps), with the view sweep running
+  on top (`-Cycles`, default 2). Prewarms the cutaway once first (lazy shader-variant compile
+  would otherwise capture the first ramp frames uncut). Takes ~1-2 min for ~100 frames and
+  writes/deletes ~100MB of BMPs per frame's request in -DumpDir (6 files per dump, transient).
+- Game must be UNPAUSED (paused viz/cutaway changes are refused, and dumps need live ships).
+- `-DumpDir` = the game PROCESS's working directory: engine `Binaries\Win64` for editor runs
+  (the default), the exe's folder for staged builds. `-SavedDir` = the harness dir (staged
+  LKG: `C:\Users\<user>\AppData\Local\HoloVCS\Saved`).
+- Autocrop (in holo_gif.py, `--no-autocrop` to disable): the outer views carry unrendered
+  black shear margins at the frame edges (up to ~32px on the MSR title, none in-level where
+  scene draws fill every view); they are measured across all views (left/right first, then
+  top/bottom inside that x-crop - the side wedges would otherwise fake huge vertical runs)
+  and trimmed identically from every frame.
+- Size knobs: `-Scale 2` (default, 720-800px wide, ~13-17MB for 6-7s) vs `-Scale 1` (native
+  400x240, ~4MB); `-Colors`, `-Fps`, `-Seconds`. Dithered starfields are what cost the MB.
+- Picking `-MaxCut`: probe first (`exec holo.Cutaway <v>` + a dump) - the cut plane runs
+  through the DISPARITY-linear depth range, so near content occupies a tiny slice of it. On
+  the MSR title the whole planet dissolves inside 0..0.06 (0.02-0.04 = a glowing ring as the
+  sphere's front face goes), the starfield backdrop survives to ~0.9, and 1.0 is all black;
+  MaxCut 0.12 paces the dissolve across the ramps and holds on the revealed backdrop (with
+  the black hole that hides behind the planet). Screen-locked UI (logo, copyright) is never
+  cut - only sheared scene draws are.
+- The packed quilt layout (holo_quiltpk_NN.bmp) is cols x rows landscape 400x240 tiles,
+  view 0 at the BOTTOM-left, row-major upward; view count = cols*rows exactly (verified:
+  adjacent-view diff is uniform across all 66 views, no row-boundary spikes).
+- The three Metroid GIFs (Media\gifs\, untracked): title sweep, title cutaway (MaxCut 0.12),
+  and surface sweep (Samus on the gunship - `loadstate` first; the shipped .sav0 IS the
+  gunship arrival, do not overwrite it with a title-screen savestate).
+
 Workflow rules learned:
 - Launch is the only focus grab: `UnrealEditor.exe HoloVCS_Flat.uproject -game -windowed -resx=1280 -resy=720 -rom=<partial>`. After that, never foreground the window; the old SendKeys/CopyFromScreen approach is retired (Seth uses the machine while automated work runs).
 - Wait for `harness ready` in `Saved/Automation/ai_log.txt` before sending commands (delete the log first for a clean signal).
