@@ -627,13 +627,20 @@ Feature docs (read before working on these):
   split: with the subscreen closed, PASS1 was skipped and the PASS2 ground/sprite blits
   vanished). Use a running `pass++` index when passes are conditional.
 
-- When a rom FAILS to load (missing file, refused by the core), the flat build's viewport
-  shows unlit noise and NO error text: the status message IS set (log-proven; check
-  log.txt / HoloVCS_Flat.log) but the pawn camera was never fit (InitLayers didn't run)
-  so the StatusDisplayActor sits out of frame. Pre-existing for all load errors; judge
-  error UX from the log or the LKG on-quilt text, not the flat window. The automation
-  harness DOES keep working in that state (Tick calls LibretroManager::Update before the
-  IsCoreLoaded gate since Aug 2026 - it used to go dead, which looked like a hang).
+- ROM LOAD FAILURES RECOVER now (Aug 28 2026, after Seth's encrypted MK7 dump left the panel
+  "looking like the graphics card corrupted"): a failed/refused load never strands the app in
+  the old half-initialized state (no layer/capture fit = the panel rendered the raw unfit
+  scene: near-black with microscopic status text). InitEmulator returns bool; on failure the
+  callers recover (LibretroManager.cpp): a rom SWITCH reloads the last-good rom, the ,/. cycle
+  keys keep walking in the pressed direction past the bad rom, a bad startup rom falls back to
+  the first rom that loads, and only-if-everything-fails the empty layer display is refit so
+  the sticky error text renders readable. The failure reason stays on screen either way
+  ("Couldn't load X - <core message>" / "Skipped X - ..."). The harness `rom` reply now
+  reports loaded / REFUSED - <reason> / NOT FOUND (it used to say "loaded" for refused roms),
+  and `rom`+`-rom=` partial matching excludes the file EXTENSION (a partial like "3D" used to
+  match every ".3ds" rom; "rom 3D Land" also only searched its first word before - the harness
+  now takes the whole rest of the line). The automation harness keeps working through all of
+  this (Tick calls LibretroManager::Update before the IsCoreLoaded gate since Aug 2026).
 - `g_pLibretroManager` is a raw global set in `LibretroManager::Init` and cleared in the destructor.
   The destructor must only clear it when it is the owner (`if (g_pLibretroManager == this)`), because
   stale LibretroManager instances inside actor CDOs get GC-purged (first purge is ~61s in) and used
@@ -657,6 +664,15 @@ Feature docs (read before working on these):
   (TypedElementData.h) later in the same unity TU.
 - After a crash of a launched game/editor instance, CrashReportClientEditor.exe keeps the crashing
   module's DLL open and the next link fails with LNK1104; kill that process before rebuilding.
+- CRASH-DUMP ANALYSIS (no windbg/cdb is installed on this machine, and rundll32 comsvcs MiniDump
+  writes 0-byte files): WER dumps of the packaged game land in `%LOCALAPPDATA%\CrashDumps`
+  (crashes also log Event ID 1000 in the Application event log with the exception code).
+  `python tools\dump_threads.py <dmp>` prints every thread's stack as module+RVA frames (pip
+  package `minidump`, already installed), `tools\symbolize.ps1 -Rvas 0x...` resolves the game
+  RVAs to symbols/lines via dbghelp + the staged PDB, and `tools\writedump.ps1` snapshots a LIVE
+  hung process for the same analysis. Remember that a crash detected in a system or driver
+  module is not necessarily caused there (or by this app at all) - sweep ALL threads and check
+  the Windows event logs for other processes failing around the same time before blaming code.
 - A running editor -game instance blocks Build.bat with "Unable to build while Live Coding is
   active" - kill all UnrealEditor processes before building.
 - Looking Glass panels are horizontal-parallax-only hardware: the quilt is a horizontal camera

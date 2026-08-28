@@ -201,7 +201,13 @@ public:
 	void DisableAllBlitPasses();
 	bool GetGamePaused() { return m_bGamePaused; }
 	void SetGamePaused(bool bNew);
-	bool SwitchRomByPartialName(string name); //live rom switch, used by the automation harness
+	//live rom switch, used by the automation harness. REFUSED = the name matched but the rom
+	//would not load (a really-encrypted 3DS dump, say); a fallback game gets loaded so the app
+	//never sits in the broken half-initialized display state, and m_lastRomSwitchFailMsg holds
+	//the human-readable reason for the caller's reply.
+	enum eRomSwitchResult { ROMSWITCH_NOT_FOUND = 0, ROMSWITCH_LOADED, ROMSWITCH_REFUSED };
+	eRomSwitchResult SwitchRomByPartialName(string name);
+	string m_lastRomSwitchFailMsg;
 
 	ALibretroManagerActor* m_pLibretroManagedActor = NULL;
 	APlayerPawn* m_pPlayerPawn = NULL;
@@ -298,7 +304,13 @@ protected:
 
 	bool SetRomToLoadByPartialFileName(string name);
 
-	void InitEmulator();
+	bool InitEmulator(); //true = a game is loaded and running; on false the caller owns recovery
+	//After a failed load: reload the last game that worked, else the first rom that loads, else
+	//refit the empty layer display so the sticky error text at least renders readable (an unfit
+	//capture shows the raw scene: near-black with microscopic text that reads as broken graphics).
+	bool RecoverFromFailedLoad();
+	int m_lastGoodRomIndex = -1; //set by every successful InitEmulator; -1 until the first game runs
+	bool m_bRecoveringFromFailedLoad = false; //re-entry guard: nested load failures must not recurse into recovery
 	void ClearAllLayers();
 	void LoadRomList();
 

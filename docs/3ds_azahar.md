@@ -283,9 +283,11 @@ identical core work and was rejected.
   crop with the focal plane pinned, so tiles stay sharp - flying closer instead pushes the
   quilt off the focal plane and the lens blurs it. Harness twin for repeatable shots:
   `exec holo.FlyCam 1`, `exec holo.FlyPose <yaw> <pitch>`, `exec holo.FlyZoom 8`.
-- ROM partial gotcha rediscovered while testing: `-rom=3d` matches the `.3ds`
-  EXTENSION (loaded Metroid), and `-rom=Land` matched Virtual Boy Wario Land; use a
-  quoted unique fragment like `-rom="3D Land"` (FParse handles quoted values).
+- ROM partial gotcha (FIXED Aug 28 2026: matching now excludes the file extension, so
+  `-rom=3d` no longer matches every `.3ds` rom): different SYSTEMS can still collide on a
+  name fragment (`-rom=Land` matched Virtual Boy Wario Land); use a quoted unique fragment
+  like `-rom="3D Land"` (FParse handles quoted values, and the harness `rom` command takes
+  the whole rest of the line now).
 
 Round 7 (Aug 27 2026): SETTINGS PERSISTENCE FIXES + DEBUG VISUALIZATIONS.
 - VIEW-PARAM DELIVERY FIXED: nothing used to push depth/convergence to the core after a
@@ -558,9 +560,13 @@ requirements are missing).
   dumps): flagged-encrypted dumps load anyway and the contents are verified instead
   (exheader jump ID, ExeFS section names, RomFS IVFC magic - NCCHContainer::Load in the
   fork). A REALLY encrypted dump is refused with the core's "really is encrypted"
-  message, which the frontend now shows on the status display (the env callback forwards
-  RETRO_ENVIRONMENT_SET_MESSAGE / _EXT, and InitEmulator re-shows a core-explained load
-  failure sticky instead of the generic "Place rom" text).
+  message, which the frontend shows on the status display (the env callback forwards
+  RETRO_ENVIRONMENT_SET_MESSAGE / _EXT). Do NOT "fix" this by trusting the crypto flags:
+  Seth's working SM3DL/Metroid dumps are flag-encrypted but content-decrypted; his
+  encrypted MK7 dump (filename says "Decrypted", contents say otherwise) is the case the
+  content check exists for - verified with an NCSD/NCCH header parse Aug 28 2026. Since
+  Aug 28 2026 a refused rom also auto-recovers to a working game instead of stranding the
+  app in a half-initialized display (see the AGENTS.md gotcha).
 
 ## How the integration differs from the other cores
 

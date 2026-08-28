@@ -229,19 +229,38 @@ void LibretroManager::ModEmulatorType(int mod)
 void LibretroManager::ModRom(int mod)
 {
 	LogMsg("Modding rom by %d", mod);
-	m_activeRomIndex += mod;
-	if (m_activeRomIndex >= m_romNameFileList.Num())
+	const int romCount = m_romNameFileList.Num();
+	if (romCount == 0)
 	{
-		m_activeRomIndex = 0;
+		InitEmulator(); //shows the "no roms" messagebox
+		return;
 	}
 
-	if (m_activeRomIndex < 0)
+	//,/. must be able to cycle PAST a rom that refuses to load (a really-encrypted 3DS dump,
+	//say) instead of dying on it - keep walking in the pressed direction until something loads
+	const int dir = (mod < 0) ? -1 : 1;
+	string skipMsg;
+	for (int tries = 0; tries < romCount; tries++)
 	{
-		m_activeRomIndex = m_romNameFileList.Num() - 1;
+		m_activeRomIndex += (tries == 0) ? mod : dir;
+		if (m_activeRomIndex >= romCount) m_activeRomIndex = 0;
+		if (m_activeRomIndex < 0) m_activeRomIndex = romCount - 1;
+
+		if (InitEmulator())
+		{
+			//explain the hole in the rotation, over the game that DID load
+			if (!skipMsg.empty()) ShowStatusMessage(skipMsg, 8);
+			return;
+		}
+		if (skipMsg.empty())
+		{
+			skipMsg = "Skipped " + m_curRomName;
+			if (!m_lastCoreMessage.empty()) skipMsg += " - " + m_lastCoreMessage;
+		}
 	}
 
-	//trigger the whole reload thing
-	InitEmulator();
+	//nothing in the whole list loads; refit the empty display so the error text is readable
+	RecoverFromFailedLoad();
 }
  
 void LibretroManager::DisableBlitPass(int blitPassIndex)
@@ -1205,11 +1224,66 @@ void LibretroManager::SetGamePaused(bool bNew)
 	m_bGamePaused = bNew;
 }
 
-bool LibretroManager::SwitchRomByPartialName(string name)
+LibretroManager::eRomSwitchResult LibretroManager::SwitchRomByPartialName(string name)
 {
-	if (!SetRomToLoadByPartialFileName(name)) return false;
-	InitEmulator(); //same reload path the ,/. rom-cycle keys use
-	return true;
+	if (!SetRomToLoadByPartialFileName(name)) return ROMSWITCH_NOT_FOUND;
+	if (InitEmulator()) return ROMSWITCH_LOADED; //same reload path the ,/. rom-cycle keys use
+
+	//the rom matched but would not load (a really-encrypted dump, say): capture the reason for
+	//the caller's reply, then get a working game back on screen
+	m_lastRomSwitchFailMsg = "Couldn't load " + m_curRomName;
+	if (!m_lastCoreMessage.empty()) m_lastRomSwitchFailMsg += " - " + m_lastCoreMessage;
+	RecoverFromFailedLoad();
+	return ROMSWITCH_REFUSED;
+}
+
+//After a failed load, get SOMETHING sane on screen. Before this existed, a refused rom left the
+//app half-initialized (no layer/capture fit, capture not in show-only mode), and the panel
+//rendered the raw unfit scene: near-black with microscopic status text, which read as "the
+//shaders half loaded and corrupted the graphics card" (Seth, Aug 28 2026, encrypted MK7 dump).
+bool LibretroManager::RecoverFromFailedLoad()
+{
+	if (m_bRecoveringFromFailedLoad) return false;
+	m_bRecoveringFromFailedLoad = true;
+
+	const int failedIndex = m_activeRomIndex;
+	const string failedName = m_curRomName;
+	const string failReason = m_lastCoreMessage; //nested loads below overwrite these
+	bool bLoaded = false;
+
+	//first choice: the game that was running before the failed switch
+	if (m_romNameFileList.IsValidIndex(m_lastGoodRomIndex) && m_lastGoodRomIndex != failedIndex)
+	{
+		LogMsg("Returning to %s after the failed load", toString(m_romNameFileList[m_lastGoodRomIndex]).c_str());
+		m_activeRomIndex = m_lastGoodRomIndex;
+		bLoaded = InitEmulator();
+	}
+
+	//else (bad startup rom): the first rom in the list that loads
+	for (int i = 0; i < m_romNameFileList.Num() && !bLoaded; i++)
+	{
+		if (i == failedIndex || i == m_lastGoodRomIndex) continue;
+		m_activeRomIndex = i;
+		bLoaded = InitEmulator();
+	}
+
+	m_bRecoveringFromFailedLoad = false;
+
+	if (bLoaded)
+	{
+		//re-show why the requested rom is not the one playing (the reload's own
+		//"Loaded <other rom>" status would otherwise eat the explanation)
+		string msg = "Couldn't load " + failedName;
+		if (!failReason.empty()) msg += " - " + failReason;
+		ShowStatusMessage(msg, 12);
+	}
+	else if (m_pLibretroManagedActor)
+	{
+		//nothing in the list loads at all: rebuild/refit the (empty) layer display so the
+		//sticky error message renders readable through the sprite path
+		m_pLibretroManagedActor->InitLayers();
+	}
+	return bLoaded;
 }
 
 bool LibretroManager::SetRomToLoadByPartialFileName(string name)
@@ -1222,7 +1296,12 @@ bool LibretroManager::SetRomToLoadByPartialFileName(string name)
 
 	for (int i = 0; i < m_romNameFileList.Num(); i++)
 	{
-		if (IsInString(ToUpperCaseString( toString(m_romNameFileList[i]) ), name.c_str() ))
+		//match against the NAME only - with the extension included, a partial like "3D"
+		//matched every rom's ".3ds" extension (picked Mario Kart when asked for "3D Land")
+		string hay = ToUpperCaseString(toString(m_romNameFileList[i]));
+		const size_t dotPos = hay.find_last_of('.');
+		if (dotPos != string::npos) hay = hay.substr(0, dotPos);
+		if (IsInString(hay, name.c_str()))
 		{
 			m_activeRomIndex = i;
 			LogMsg("Loading %s by partial match to the word %s", toString(m_romNameFileList[i]).c_str(), name.c_str());
@@ -1237,19 +1316,19 @@ bool LibretroManager::SetRomToLoadByPartialFileName(string name)
 	return false;
 }
 
-void LibretroManager::InitEmulator()
+bool LibretroManager::InitEmulator()
 {
 	m_profManager.Init(this);
 
 	if (m_romNameFileList.Num() == 0)
 	{
-	
+
 #if PLATFORM_WINDOWS
 		MessageBox(NULL, (LPCWSTR)L"No game roms found.\nPut some in the atari2600 or nes dir first!\nCheck readme for which games are supported.",
 			(LPCWSTR)L"Add game roms!",
 			MB_ICONWARNING | MB_OK | MB_DEFAULT_DESKTOP_ONLY);
 
-		return;
+		return false;
 #endif
 	}
 
@@ -1293,7 +1372,7 @@ void LibretroManager::InitEmulator()
 
 		ShowStatusMessage("No roms found!", 100);
 
-		return;
+		return false;
 	}
 	strcpy(m_coreRenderFlags, "1111111");
 
@@ -1302,7 +1381,7 @@ void LibretroManager::InitEmulator()
 		string msg = string("ERROR: Can't find core ") + m_coreName;
 		LogMsg(msg.c_str());
 		ShowStatusMessage(msg.c_str(), 100);
-		return;
+		return false;
 	}
 	else
 	{
@@ -1361,7 +1440,7 @@ void LibretroManager::InitEmulator()
 			ShowStatusMessage(msg.c_str(), 100);
 			LogMsg(msg.c_str());
 		}
-		return;
+		return false;
 	}
 	m_nesHacker.Reset();
 	SetFrameSkip(0);
@@ -1404,7 +1483,7 @@ void LibretroManager::InitEmulator()
 	else
 	{
 		LogMsg("Serious error with savestate reporting, can't continue");
-		return;
+		return false;
 	}
 
 	m_core.m_bActive = true;
@@ -1425,6 +1504,9 @@ void LibretroManager::InitEmulator()
 
 	m_core.retro_run();
 	SaveState(0);
+
+	m_lastGoodRomIndex = m_activeRomIndex; //the rom to fall back to when a later load fails
+	return true;
 }
 
 void LibretroManager::ClearAllLayers()
@@ -1490,8 +1572,13 @@ void LibretroManager::Init(ALibretroManagerActor * pLibretroManagedActor)
 
 	LoadRomList();
 	SetRomByIndex(C_DEFAULT_ROM_ID);
-	InitEmulator();
-	
+	if (!InitEmulator())
+	{
+		//a bad startup rom (-rom= pointing at an encrypted dump, say) must not boot into a
+		//dead near-black screen: load anything that works and keep the explanation up
+		RecoverFromFailedLoad();
+	}
+
 }
 
 bool LibretroManager::SaveState(int index)

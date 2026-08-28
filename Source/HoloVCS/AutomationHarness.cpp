@@ -272,8 +272,24 @@ void AutomationHarness::ProcessCommandLine(const FString& line)
 	}
 	else if (cmd == TEXT("rom") && parts.Num() >= 2)
 	{
-		bool bOK = m_pManager->SwitchRomByPartialName(toString(parts[1]));
-		AppendToLog(FString::Printf(TEXT("rom '%s': %s"), *parts[1], bOK ? TEXT("loaded") : TEXT("NOT FOUND")));
+		//everything after "rom " is the partial - rom names have spaces ("3D Land"); the old
+		//parts[1] read only the first word, so "rom 3D Land" searched for just "3D"
+		FString partial = line.Mid(4).TrimStartAndEnd();
+		LibretroManager::eRomSwitchResult res = m_pManager->SwitchRomByPartialName(toString(partial));
+		switch (res)
+		{
+		case LibretroManager::ROMSWITCH_LOADED:
+			AppendToLog(FString::Printf(TEXT("rom '%s': loaded"), *partial));
+			break;
+		case LibretroManager::ROMSWITCH_REFUSED:
+			//it used to say "loaded" here, which cost a debugging session
+			AppendToLog(FString::Printf(TEXT("rom '%s': REFUSED - %s"), *partial,
+				*FString(m_pManager->m_lastRomSwitchFailMsg.c_str())));
+			break;
+		default:
+			AppendToLog(FString::Printf(TEXT("rom '%s': NOT FOUND"), *partial));
+			break;
+		}
 	}
 	else if (cmd == TEXT("exec"))
 	{
