@@ -130,12 +130,13 @@ public:
 	void RepositionBottomScreen(); //3DS: deterministic bottom-screen placement; idempotent, re-run from every depth/zoom apply
 	//Landscape Looking Glass panels (the original 8.9" etc): stacking the two 3DS screens
 	//vertically wastes a wide panel, so landscape shows ONE screen at a time - the 3D top
-	//screen by default, and the B key / bare left trigger / holo.BottomScreen swap the
-	//bottom screen in (and back).  Portrait panels and the flat build keep the stacked
-	//layout and the toggle just explains itself.  -lkglandscape forces the layout on for
-	//testing without a device.
+	//screen by default; the B key / holo.BottomScreen toggle the bottom screen in (and
+	//back), and HOLDING the bare left trigger shows it only while held.  Portrait panels
+	//and the flat build keep the stacked layout and the toggle just explains itself.
+	//-lkglandscape forces the layout on for testing without a device.
 	bool IsLandscape3DSLayout();
 	void ToggleBottomScreenFocus();
+	void SetBottomScreenFocus(bool bBottom); //the left trigger's hold-to-view path; silent no-op when already there or the layout doesn't apply
 	bool m_bBottomFocus3DS = false; //landscape only; SetEmulatorData resets it to the 3D screen on every game switch
 	//3DS debug visualizations (Shift+number hotkeys, holo.Viz / holo.Cutaway console twins).
 	//The mask + cutaway plane travel to the core through the optional retro_holo_set_debug

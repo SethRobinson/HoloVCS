@@ -1261,20 +1261,34 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 
 	// Help screen layout, computed once: text format is line 1 = title, "key\taction" = two-column
 	// row, no tab = centered, empty = half-row spacing (see the game's HelpScreen::BuildHelpText).
-	// Sized to fit the tile with the same crude width metric the status text uses.
+	// Sized to fit the tile with the same crude 10px-per-char width metric the status text uses.
+	// The rows between the title and the trailing footer flow into one or two side-by-side
+	// columns - whichever fits the tile with LARGER text (short landscape tiles fit the list
+	// much bigger in two columns; portrait tiles stay single-column).
 	struct FHelpLine
 	{
 		FString Key;
 		FString Action;
 		bool bTwoColumn = false;
 	};
+	struct FHelpCol
+	{
+		int32 Start = 0, End = 0;			// body line range [Start, End)
+		float LeftU = 0.0f;					// column left edge relative to the block left, unscaled px
+		float KeyU = 0.0f;					// key right-align edge relative to the column left, unscaled px
+		float WidthU = 0.0f;				// column width, unscaled px
+		float HeightRows = 0.0f;			// column height in HelpCharH units
+	};
 	TArray<FHelpLine> HelpLines;
-	float HelpScale = 1.0f, HelpCharH = 0.0f, HelpBlockH = 0.0f;
+	TArray<FHelpCol, TInlineAllocator<2>> HelpCols;
+	float HelpScale = 1.0f, HelpCharH = 0.0f, HelpBlockH = 0.0f, HelpColsWU = 0.0f;
+	int32 HelpFooterIdx = -1;
+	const float HelpKeyGapU = 8.0f;			// unscaled px between a key and its action
+	const float HelpColGapU = 35.0f;		// unscaled px between the two columns
 	if (!HelpText.IsEmpty() && GEngine != nullptr)
 	{
 		TArray<FString> RawLines;
 		HelpText.ParseIntoArrayLines(RawLines, false);	// keep empties, they're the row spacing
-		int32 MaxLen = 0;
 		for (const FString& Raw : RawLines)
 		{
 			FHelpLine Line;
@@ -1283,28 +1297,82 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 			{
 				Line.Action = Raw;
 			}
-			MaxLen = FMath::Max(MaxLen, Raw.Len());
 			HelpLines.Add(Line);
 		}
 		HelpCharH = FMath::Max(1.0f, GEngine->GetLargeFont()->GetMaxCharHeight());
-		HelpScale = FMath::Min(1.4f, (TileSizeX * 0.92f) / FMath::Max(1.0f, MaxLen * 10.0f));
-		auto BlockHeight = [&](float Scale)
+
+		auto IsEmptyRow = [&](int32 i) { return !HelpLines[i].bTwoColumn && HelpLines[i].Action.IsEmpty(); };
+		HelpFooterIdx = HelpLines.Num() - 1;
+		while (HelpFooterIdx > 1 && IsEmptyRow(HelpFooterIdx)) HelpFooterIdx--;
+		if (HelpFooterIdx <= 0 || HelpLines[HelpFooterIdx].bTwoColumn) HelpFooterIdx = -1;	// no footer
+
+		const int32 BodyEnd = (HelpFooterIdx > 0) ? HelpFooterIdx : HelpLines.Num();
+		auto RowH = [&](int32 i) { return IsEmptyRow(i) ? 0.625f : 1.25f; };	// HelpCharH units
+		float BodyRows = 0.0f;
+		for (int32 i = 1; i < BodyEnd; i++) BodyRows += RowH(i);
+
+		auto TryLayout = [&](int32 NumCols, TArray<FHelpCol, TInlineAllocator<2>>& OutCols, float& OutColsWU, float& OutScale, float& OutBlockRows)
 		{
-			float H = 0.0f;
-			for (int32 i = 0; i < HelpLines.Num(); i++)
+			int32 Split = BodyEnd;
+			if (NumCols == 2)
 			{
-				const bool bEmpty = !HelpLines[i].bTwoColumn && HelpLines[i].Action.IsEmpty();
-				H += HelpCharH * Scale * ((i == 0) ? 1.9f : (bEmpty ? 0.5f : 1.25f));
+				// cut where the column heights balance best, preferring a blank spacer row nearby
+				float Acc = 0.0f, BestDiff = MAX_flt, BestEmptyDiff = MAX_flt;
+				int32 Best = BodyEnd, BestEmpty = -1;
+				for (int32 i = 2; i < BodyEnd; i++)
+				{
+					Acc += RowH(i - 1);
+					const float Diff = FMath::Abs(Acc - (BodyRows - Acc));
+					if (Diff < BestDiff) { BestDiff = Diff; Best = i; }
+					if (IsEmptyRow(i) && Diff < BestEmptyDiff) { BestEmptyDiff = Diff; BestEmpty = i; }
+				}
+				Split = (BestEmpty >= 0 && BestEmptyDiff <= BestDiff + 2.5f) ? BestEmpty : Best;
 			}
-			return H;
+			OutCols.Reset();
+			OutColsWU = 0.0f;
+			float MaxRows = 0.0f;
+			for (int32 c = 0; c < NumCols; c++)
+			{
+				FHelpCol Col;
+				Col.Start = (c == 0) ? 1 : Split;
+				Col.End = (c == NumCols - 1) ? BodyEnd : Split;
+				while (Col.Start < Col.End && IsEmptyRow(Col.Start)) Col.Start++;	// no spacer at a column edge
+				while (Col.End > Col.Start && IsEmptyRow(Col.End - 1)) Col.End--;
+				float ActU = 0.0f;
+				for (int32 i = Col.Start; i < Col.End; i++)
+				{
+					Col.HeightRows += RowH(i);
+					if (HelpLines[i].bTwoColumn)
+					{
+						Col.KeyU = FMath::Max(Col.KeyU, HelpLines[i].Key.Len() * 10.0f);
+					}
+					ActU = FMath::Max(ActU, HelpLines[i].Action.Len() * 10.0f);
+				}
+				Col.WidthU = Col.KeyU + HelpKeyGapU + ActU;
+				Col.LeftU = OutColsWU;
+				OutColsWU += Col.WidthU + ((c < NumCols - 1) ? HelpColGapU : 0.0f);
+				MaxRows = FMath::Max(MaxRows, Col.HeightRows);
+				OutCols.Add(Col);
+			}
+			OutBlockRows = 1.9f + MaxRows + ((HelpFooterIdx > 0) ? 1.65f : 0.0f);	// title + body + footer with padding
+			const float WidthU = FMath::Max(OutColsWU, HelpLines[0].Action.Len() * 10.0f * 1.5f);	// title draws at 1.5x
+			OutScale = FMath::Min(1.4f, (TileSizeX * 0.92f) / FMath::Max(1.0f, WidthU));
+			OutScale = FMath::Min(OutScale, (TileSizeY * 0.82f) / FMath::Max(1.0f, OutBlockRows * HelpCharH));
 		};
-		HelpBlockH = BlockHeight(HelpScale);
-		const float MaxBlockH = TileSizeY * 0.82f;
-		if (HelpBlockH > MaxBlockH)
-		{
-			HelpScale *= MaxBlockH / HelpBlockH;
-			HelpBlockH = BlockHeight(HelpScale);
-		}
+
+		TArray<FHelpCol, TInlineAllocator<2>> Cols1, Cols2;
+		float WU1 = 0, WU2 = 0, S1 = 0, S2 = 0, Rows1 = 0, Rows2 = 0;
+		TryLayout(1, Cols1, WU1, S1, Rows1);
+		TryLayout(2, Cols2, WU2, S2, Rows2);
+		// Prefer two columns unless it costs real text size: on the 8.9" landscape tile the
+		// single column only wins by ~2% while cramming 30+ rows into the tile height - two
+		// airier columns read better there.  Portrait tiles stay single-column (S2 is far
+		// smaller, width-bound).
+		const bool bTwoCols = S2 > S1 * 0.9f;
+		HelpCols = bTwoCols ? Cols2 : Cols1;
+		HelpColsWU = bTwoCols ? WU2 : WU1;
+		HelpScale = bTwoCols ? S2 : S1;
+		HelpBlockH = (bTwoCols ? Rows2 : Rows1) * HelpCharH * HelpScale;
 	}
 
 	for (int32 View = 0; View < NumTiles; View++)
@@ -1421,45 +1489,67 @@ bool FLookingGlassViewportClient::RenderSpriteQuilt(ULookingGlassSceneCaptureCom
 		if (HelpLines.Num() > 0 && GEngine != nullptr)
 		{
 			const FLinearColor KeyColor(1.0f, 0.85f, 0.3f);
-			const float ColSplitX = TileX + TileSizeX * 0.42f;
-			const float ColGap = TileSizeX * 0.03f;
-			float Y = TileY + (TileSizeY - HelpBlockH) * 0.5f;
-			for (int32 i = 0; i < HelpLines.Num(); i++)
+			auto DrawTileCentered = [&](const FString& Text, float Y, float Scale, const FLinearColor& Color)
 			{
-				const FHelpLine& Line = HelpLines[i];
-				const bool bEmpty = !Line.bTwoColumn && Line.Action.IsEmpty();
-				if (bEmpty)
-				{
-					Y += HelpCharH * HelpScale * 0.5f;
-					continue;
-				}
-				const float Scale = (i == 0) ? HelpScale * 1.5f : HelpScale;
-				if (Line.bTwoColumn)
-				{
-					FCanvasTextItem KeyItem(FVector2D(ColSplitX - Line.Key.Len() * 10.0f * Scale, Y),
-						FText::FromString(Line.Key), GEngine->GetLargeFont(), KeyColor);
-					KeyItem.Scale = FVector2D(Scale, Scale);
-					KeyItem.EnableShadow(FLinearColor::Black);
-					Canvas.DrawItem(KeyItem);
+				const float W = Text.Len() * 10.0f * Scale;
+				FCanvasTextItem Item(FVector2D(TileX + (TileSizeX - W) * 0.5f, Y),
+					FText::FromString(Text), GEngine->GetLargeFont(), Color);
+				Item.Scale = FVector2D(Scale, Scale);
+				Item.EnableShadow(FLinearColor::Black);
+				Canvas.DrawItem(Item);
+			};
 
-					FCanvasTextItem ActionItem(FVector2D(ColSplitX + ColGap, Y),
-						FText::FromString(Line.Action), GEngine->GetLargeFont(), FLinearColor::White);
-					ActionItem.Scale = FVector2D(Scale, Scale);
-					ActionItem.EnableShadow(FLinearColor::Black);
-					Canvas.DrawItem(ActionItem);
-				}
-				else
+			const float RowStep = HelpCharH * HelpScale;
+			float Y = TileY + (TileSizeY - HelpBlockH) * 0.5f;
+			DrawTileCentered(HelpLines[0].Action, Y, HelpScale * 1.5f, KeyColor);
+			Y += RowStep * 1.9f;
+
+			const float BlockLeft = TileX + (TileSizeX - HelpColsWU * HelpScale) * 0.5f;
+			float MaxRows = 0.0f;
+			for (const FHelpCol& Col : HelpCols)
+			{
+				const float ColLeft = BlockLeft + Col.LeftU * HelpScale;
+				float RowY = Y;
+				for (int32 i = Col.Start; i < Col.End; i++)
 				{
-					// title (line 0) / centered footer
-					const float W = Line.Action.Len() * 10.0f * Scale;
-					FCanvasTextItem CenterItem(FVector2D(TileX + (TileSizeX - W) * 0.5f, Y),
-						FText::FromString(Line.Action), GEngine->GetLargeFont(),
-						(i == 0) ? KeyColor : FLinearColor(0.8f, 0.8f, 0.8f));
-					CenterItem.Scale = FVector2D(Scale, Scale);
-					CenterItem.EnableShadow(FLinearColor::Black);
-					Canvas.DrawItem(CenterItem);
+					const FHelpLine& Line = HelpLines[i];
+					if (!Line.bTwoColumn && Line.Action.IsEmpty())
+					{
+						RowY += RowStep * 0.625f;
+						continue;
+					}
+					if (Line.bTwoColumn)
+					{
+						FCanvasTextItem KeyItem(FVector2D(ColLeft + (Col.KeyU - Line.Key.Len() * 10.0f) * HelpScale, RowY),
+							FText::FromString(Line.Key), GEngine->GetLargeFont(), KeyColor);
+						KeyItem.Scale = FVector2D(HelpScale, HelpScale);
+						KeyItem.EnableShadow(FLinearColor::Black);
+						Canvas.DrawItem(KeyItem);
+
+						FCanvasTextItem ActionItem(FVector2D(ColLeft + (Col.KeyU + HelpKeyGapU) * HelpScale, RowY),
+							FText::FromString(Line.Action), GEngine->GetLargeFont(), FLinearColor::White);
+						ActionItem.Scale = FVector2D(HelpScale, HelpScale);
+						ActionItem.EnableShadow(FLinearColor::Black);
+						Canvas.DrawItem(ActionItem);
+					}
+					else
+					{
+						// centered within the column
+						const float W = Line.Action.Len() * 10.0f * HelpScale;
+						FCanvasTextItem CenterItem(FVector2D(ColLeft + (Col.WidthU * HelpScale - W) * 0.5f, RowY),
+							FText::FromString(Line.Action), GEngine->GetLargeFont(), FLinearColor::White);
+						CenterItem.Scale = FVector2D(HelpScale, HelpScale);
+						CenterItem.EnableShadow(FLinearColor::Black);
+						Canvas.DrawItem(CenterItem);
+					}
+					RowY += RowStep * 1.25f;
 				}
-				Y += HelpCharH * HelpScale * ((i == 0) ? 1.9f : 1.25f);
+				MaxRows = FMath::Max(MaxRows, Col.HeightRows);
+			}
+			if (HelpFooterIdx > 0)
+			{
+				DrawTileCentered(HelpLines[HelpFooterIdx].Action, Y + (MaxRows + 0.4f) * RowStep, HelpScale,
+					FLinearColor(0.8f, 0.8f, 0.8f));
 			}
 		}
 

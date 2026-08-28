@@ -127,6 +127,7 @@ protected:
 	//chording can't leak a button into the game (Start used to be the modifier and every
 	//chord popped the game's Start menu).
 	bool m_bPadL3Held = false;
+	bool m_bLTrigBottomHeld = false; //landscape 3DS: the left trigger's press engaged the bottom-screen hold-to-view, so its release must end it (not clear L2)
 
 	//Gamepad-only mirrors of the merged Move/RMove axes (PadLX..PadRT in DefaultInput.ini,
 	//identical key+scale, bound FIRST so they're fresh): merged - mirror = keyboard exactly,

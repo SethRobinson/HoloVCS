@@ -59,10 +59,12 @@ C_MAX_LAYERS went 30 -> 40 because the bottom-screen quad indexes
 m_layerSetupInfo[GetLayerCount()], which was out of bounds at exactly 30 layers.
 Verified in the flat build: SM3DL title screen populates 22+ distinct bands including the
 deepest (a clamped-24 core would leave layers 0-5 empty). Gamepad face buttons now map by
-PHYSICAL POSITION on 3DS (PlayerPawn JoyPad_X/Y handlers are key-aware): pad top = 3DS X,
-pad left = 3DS Y, and the pad-left "extra B" ini mapping (NES run-on-X ergonomics, kept
-for the other systems) is suppressed for 3DS - it was making the pad X button jump.
-Keyboard Z/C keep their libretro ids (Z = 3DS Y, C = 3DS X).
+PHYSICAL POSITION on 3DS (PlayerPawn JoyPad_X/Y/A/B handlers are key-aware): pad top =
+3DS X, pad left = 3DS Y, pad bottom = 3DS B, pad right = 3DS A (bottom/right added
+Aug 28 2026 - they were still id-mapped, so the pair felt reversed), and the pad-left
+"extra B" ini mapping (NES run-on-X ergonomics, kept for the other systems) is suppressed
+for 3DS - it was making the pad X button jump.
+Keyboard keys keep their libretro ids (Z = 3DS Y, C = 3DS X, Space = 3DS A, Ctrl = 3DS B).
 Frameskip (keys 2-5) works on 3DS now: UpdateDefault3DS runs m_frameSkip extra full core
 frames per paced update (no savestates = no cheap junk render, but a nonzero frameskip
 also bypasses the pacer wait, so it still fast-forwards well - measured ~3.5x game time
@@ -481,8 +483,10 @@ Round 9 (Aug 28 2026): LANDSCAPE-PANEL LAYOUT (for the original 8.9" Looking Gla
 touch-tap latch fix.
 - Landscape Looking Glass panels (device aspect > 1.0 from the plugin's GetAspectRatio;
   `-lkglandscape` forces it with no device, for testing) show ONE 3DS screen at a time
-  instead of the stacked two-screen layout: the 3D top screen by default, and the B key /
-  bare gamepad LEFT TRIGGER / `holo.BottomScreen` swap the bottom screen in and back.
+  instead of the stacked two-screen layout: the 3D top screen by default; the B key /
+  `holo.BottomScreen` toggle the bottom screen in and back, and the bare gamepad LEFT
+  TRIGGER shows it only while HELD (momentary, via SetBottomScreenFocus; the pawn's
+  m_bLTrigBottomHeld makes the release end the hold instead of clearing ZL).
   Portrait panels and the flat build keep the stacked layout; the toggle explains itself
   there ("Both screens already shown") instead of doing nothing.  Implementation lives in
   ALibretroManagerActor::RepositionBottomScreen (single chokepoint: called from every
@@ -495,8 +499,9 @@ touch-tap latch fix.
   SetLayersPeeled so the peel comes back), and EnsureQuiltCarrier repositions before its
   fit so a carrier born during bottom focus starts hidden.  The focus resets to the 3D
   screen on every game switch like depth/zoom/convergence.  On the pad, bare LT only
-  toggles when the landscape layout is live - everywhere else it stays 3DS ZL (L2), and
-  the L3+LT prev-game chord and fly-cam trigger axes are checked first, unchanged.
+  does the hold-to-view when the landscape layout is live - everywhere else it stays 3DS
+  ZL (L2), and the L3+LT prev-game chord and fly-cam trigger axes are checked first,
+  unchanged.
   Verified headlessly (no device, `-lkglandscape -rom="3D Land"`, quilt captures): default
   = top screen only, `key B` = bottom screen alone framed full-size, `holo.BottomScreen`
   = back, portrait run unchanged, NES unaffected.

@@ -943,6 +943,13 @@ void APlayerPawn::JoyPad_B_Pressed(FKey key)
 	{
 		return;
 	}
+	//3DS positional mapping (like the top/left pair in JoyPad_Y/X): the pad's RIGHT
+	//button is the 3DS A, not B.  Ctrl keeps the B id.
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::Gamepad_FaceButton_Right)
+	{
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_A] = true;
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = true;
 }
 
@@ -960,6 +967,11 @@ void APlayerPawn::JoyPad_B_Released(FKey key)
 	{
 		return; //3DS: that button is the positional Y (see JoyPad_X), no B was pressed
 	}
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::Gamepad_FaceButton_Right)
+	{
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_A] = false;
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = false;
 }
 
@@ -974,6 +986,13 @@ void APlayerPawn::JoyPad_A_Pressed(FKey key)
 		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = true;
 		return;
 	}
+	//3DS positional mapping: the pad's BOTTOM button is the 3DS B, not A.  Space keeps
+	//the A id.
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::Gamepad_FaceButton_Bottom)
+	{
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = true;
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_A] = true;
 }
 
@@ -984,12 +1003,18 @@ void APlayerPawn::JoyPad_A_Released(FKey key)
 		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = false;
 		return;
 	}
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS && key == EKeys::Gamepad_FaceButton_Bottom)
+	{
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = false;
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_A] = false;
 }
 
 //3DS gamepad face buttons map by physical POSITION: gamepad top = 3DS X, gamepad left = 3DS Y
 //(the ini binds gamepad top to JoyPad_Y and gamepad left to JoyPad_X, which is correct id-wise
-//for the other systems but positionally crossed on the 3DS). Keyboard Z/C keep their ids.
+//for the other systems but positionally crossed on the 3DS). The bottom/right pair gets the
+//same treatment in JoyPad_A/B above. Keyboard keys (Z/C/Space/Ctrl) keep their ids.
 void APlayerPawn::JoyPad_Y_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
@@ -1193,13 +1218,15 @@ void APlayerPawn::JoyPad_LTrigger_Pressed()
 		g_pLibretroManager->ModRom(-1); //L-stick click + left trigger = previous game (Seth: pad reset not needed, R key still resets)
 		return;
 	}
-	//landscape Looking Glass panels show one 3DS screen at a time: the bare left trigger
-	//swaps the 3D screen / bottom screen (keyboard twin: B).  Elsewhere it stays 3DS ZL.
+	//landscape Looking Glass panels show one 3DS screen at a time: HOLDING the bare left
+	//trigger shows the bottom screen, releasing returns to the 3D screen (keyboard B
+	//stays a plain toggle).  Elsewhere it stays 3DS ZL.
 	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS &&
 		g_pLibretroManager->m_pLibretroManagedActor &&
 		g_pLibretroManager->m_pLibretroManagedActor->IsLandscape3DSLayout())
 	{
-		g_pLibretroManager->m_pLibretroManagedActor->ToggleBottomScreenFocus();
+		m_bLTrigBottomHeld = true;
+		g_pLibretroManager->m_pLibretroManagedActor->SetBottomScreenFocus(true);
 		return;
 	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L2] = true;
@@ -1216,6 +1243,16 @@ void APlayerPawn::JoyPad_RTrigger_Released()
 
 void APlayerPawn::JoyPad_LTrigger_Released()
 {
+	//end of a bottom-screen hold-to-view (the press never reached the core as ZL)
+	if (m_bLTrigBottomHeld)
+	{
+		m_bLTrigBottomHeld = false;
+		if (g_pLibretroManager && g_pLibretroManager->m_pLibretroManagedActor)
+		{
+			g_pLibretroManager->m_pLibretroManagedActor->SetBottomScreenFocus(false);
+		}
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L2] = false;
 }
 
@@ -1520,7 +1557,8 @@ void APlayerPawn::OnVKey()
 }
 
 //landscape Looking Glass: swap the display between the 3DS 3D screen and the bottom
-//screen (pad twin: bare left trigger; the actor explains itself everywhere else)
+//screen (the bare left trigger instead shows the bottom screen only while HELD; the
+//actor explains itself everywhere else)
 void APlayerPawn::OnBKey()
 {
 	if (HelpSwallowedInput()) return;

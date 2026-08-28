@@ -122,7 +122,7 @@ FString HelpScreen::BuildHelpText() const
 	s += TEXT("Tab\tSelect\n");
 	s += TEXT("Mouse / R-stick\tTouch cursor (3DS)\n");
 	s += TEXT("Click / R-trigger\tTouch tap (3DS)\n");
-	s += TEXT("B / L-trigger\tSwap 3D / bottom screen (3DS, landscape)\n");
+	s += TEXT("B / hold L-trigger\tSwap / hold bottom screen (3DS, landscape)\n");
 	s += TEXT("\n");
 	s += TEXT(", / .\tPrevious / next game\n");
 	s += TEXT("R\tReset game\n");

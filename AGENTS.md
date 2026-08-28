@@ -41,6 +41,11 @@ F:\UnrealEngine\UE_5.8\Engine\Build\BatchFiles\Build.bat HoloVCSEditor Win64 Dev
 
 The hardware variant builds the same way with `-project="f:\Unreal\HoloVCS_UE56\HoloVCS.uproject"`.
 
+**ALWAYS restage the packaged test build after finishing a change**: Seth tests with
+`RunLKG.bat`, which launches the staged Shipping exe in `dist\win64_lkg_test` - editor-target
+builds alone leave that stale. Finish every task that touched code by running
+`BuildAndRunWin64LKG.bat nolaunch` (incremental, does not wipe the stage). 
+
 GOTCHA: the shared HoloVCSEditor target also shares ONE UBT makefile
 (`Intermediate\Build\Win64\x64\HoloVCSEditor\Development\Makefile.bin`) between both uprojects.
 After building the Flat flavor, building the LKG flavor can report "Target is up to date" WITHOUT
@@ -177,7 +182,11 @@ but burns the 5.6 escape hatch like any other resave.
   headlessly). Rendering: flat window via AHoloHUD (installed at runtime with ClientSetHUD, no
   GameMode changes); hologram via per-tile canvas text in RenderSpriteQuilt that reads the
   text from the "HelpScreen"-tagged carrier actor in the show-only list (identical per tile =
-  screen-locked). The old "SplashScreen"-tagged map actor is destroyed at BeginPlay in ALL
+  screen-locked). Both renderers flow the rows between the title and footer into ONE or TWO
+  side-by-side columns - the HUD goes two-column when one would overflow the window height,
+  the quilt picks whichever layout yields larger text for the tile shape - plus a final
+  shrink-to-fit clamp (Aug 28 2026: the key list had outgrown a 720-tall window and ran off
+  the bottom of the main-window HUD, which had no height clamp at all). The old "SplashScreen"-tagged map actor is destroyed at BeginPlay in ALL
   builds now (the umaps keep the inert actor; editing them is a one-way door).
 - SPRITE SHADOWS (rewritten Aug 2026 - one mechanism, NO thresholds): each receiving layer
   gets a per-frame 512px mask in its own quad-UV space whose alpha = (union of every nearer
@@ -565,8 +574,9 @@ but burns the 5.6 escape hatch like any other resave.
   packaging rebuilds them before staging. The core source and build recipes, not compiled DLLs,
   are the repository artifacts.
 - LANDSCAPE PANELS (Aug 28 2026, for the original 8.9" Looking Glass): 3DS shows ONE screen
-  at a time there (3D top screen by default; B key / bare left trigger / `holo.BottomScreen`
-  swap the bottom screen in). Portrait panels keep the stacked two-screen layout. Detection,
+  at a time there (3D top screen by default; B key / `holo.BottomScreen` toggle the bottom
+  screen in, the bare left trigger shows it only while HELD). Portrait panels keep the
+  stacked two-screen layout. Detection,
   `-lkglandscape` test force, and the PeelHidden/quilt-carrier gotchas: docs/3ds_azahar.md
   round 9 (also has the touch-tap latch fix: framesBack 5 -> 2, was "clicks the wrong spot").
 - 3DS (IN PROGRESS, Aug 2026): `azahar_libretro.dll`, built from Seth's Azahar fork at

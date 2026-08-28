@@ -157,7 +157,7 @@ static FAutoConsoleCommand CCmdHoloCutaway(
 //display between the 3D top screen and the 3DS bottom screen.  Harness-drivable.
 static FAutoConsoleCommand CCmdHoloBottomScreen(
 	TEXT("holo.BottomScreen"),
-	TEXT("Landscape 3DS: swap the display between the 3D top screen and the bottom screen, same as the B key / left trigger. Usage: holo.BottomScreen"),
+	TEXT("Landscape 3DS: swap the display between the 3D top screen and the bottom screen, same as the B key (the left trigger shows the bottom screen only while held). Usage: holo.BottomScreen"),
 	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
 	{
 		if (!g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
@@ -704,9 +704,10 @@ bool ALibretroManagerActor::IsLandscape3DSLayout()
 	return GetLookingGlassDeviceAspect(GetWorld()) > 1.0f;
 }
 
-//B key / bare left trigger / holo.BottomScreen: on a landscape panel, swap which 3DS
-//screen owns the display.  Everything else (visibility, placement, capture refit) is
-//enforced by RepositionBottomScreen, which ApplyLayerDepth calls.
+//B key / holo.BottomScreen: on a landscape panel, toggle which 3DS screen owns the
+//display.  The left trigger instead HOLDS the bottom screen in view (SetBottomScreenFocus
+//from the pawn's press/release).  Everything else (visibility, placement, capture refit)
+//is enforced by RepositionBottomScreen, which ApplyLayerDepth calls.
 void ALibretroManagerActor::ToggleBottomScreenFocus()
 {
 	if (!g_pLibretroManager || g_pLibretroManager->m_emulatorType != EMULATOR_3DS)
@@ -719,9 +720,17 @@ void ALibretroManagerActor::ToggleBottomScreenFocus()
 		ShowStatusMessage("Both screens already shown (toggle is for landscape displays)");
 		return;
 	}
-	m_bBottomFocus3DS = !m_bBottomFocus3DS;
+	SetBottomScreenFocus(!m_bBottomFocus3DS);
+	ShowStatusMessage(m_bBottomFocus3DS ? "Bottom screen (B to return, or hold LT)" : "3D screen");
+}
+
+void ALibretroManagerActor::SetBottomScreenFocus(bool bBottom)
+{
+	if (!g_pLibretroManager || g_pLibretroManager->m_emulatorType != EMULATOR_3DS) return;
+	if (!IsLandscape3DSLayout()) return;
+	if (m_bBottomFocus3DS == bBottom) return;
+	m_bBottomFocus3DS = bBottom;
 	ApplyLayerDepth(); //repositions the bottom screen, enforces visibility, refits camera+capture
-	ShowStatusMessage(m_bBottomFocus3DS ? "Bottom screen (B or LT to return)" : "3D screen");
 	LogMsg("Landscape 3DS: %s screen focus", m_bBottomFocus3DS ? "BOTTOM" : "top");
 }
 
