@@ -86,6 +86,15 @@ tools\make_holo_gif.ps1 -Mode cutaway -Out Media\gifs\mygame_cut.gif -MaxCut 0.1
   core-side rule added Aug 28 2026 (kHoloCutLockedThresh in MirrorDrawToMultiview, fork
   commit 01773e754) after Seth flagged the logo surviving the title cutaway. Needs that
   core DLL or newer; an older DLL just leaves the UI floating.
+- `buildup` (Seth's choreography, Aug 28 2026): starts at FULL cut, builds the scene to
+  0 with a decelerating curve (`-BuildPower 3`; cut = MaxCut*(1-t)^p, so most of the time
+  goes to the near content landing - "it's more interesting there"), camera STATIC (center
+  view) throughout the build, then the head-move sweep (`-SweepSeconds`), a still pause
+  (`-PauseSeconds`, encoded as 500ms frames), and a quick smoothstep teardown back to full
+  cut (`-TeardownSeconds 1`) so the loop wraps seamlessly. Only the build + teardown are
+  live captures; the sweep and pause are assembled from the final cut-0 quilt, which also
+  makes those phases join the build with zero scene drift. Phase lengths are all knobs;
+  defaults 4.5/3/2/1s at the given -Fps.
 - Game must be UNPAUSED (paused viz/cutaway changes are refused, and dumps need live ships).
 - `-DumpDir` = the game PROCESS's working directory: engine `Binaries\Win64` for editor runs
   (the default), the exe's folder for staged builds. `-SavedDir` = the harness dir (staged
@@ -99,8 +108,10 @@ tools\make_holo_gif.ps1 -Mode cutaway -Out Media\gifs\mygame_cut.gif -MaxCut 0.1
   silhouette pillars are exact-zero black CONTENT and were getting cropped), and margins
   only count where their inward neighbors are bright (the ruins' top-right 44px wedge hides
   against dark stone - invisible, not worth eating an eighth of the frame over).
-- Size knobs: `-Scale 2` (default, 720-800px wide, ~13-17MB for 6-7s) vs `-Scale 1` (native
-  400x240, ~4MB); `-Colors`, `-Fps`, `-Seconds`. Dithered starfields are what cost the MB.
+- Size knobs: `-Scale 1` is the DEFAULT since Aug 28 2026 (native 3DS 400x240, ~4-7MB -
+  Seth: "output at the exact 3ds resolution, no 2xing"); `-Scale 2` doubles it with nearest
+  neighbor (~13-27MB). `-Colors`, `-Fps`, `-Seconds`. Dithered starfields are what cost
+  the MB.
 - Picking `-MaxCut`: probe first (`exec holo.Cutaway <v>` + a dump) - the cut plane runs
   through the DISPARITY-linear depth range, so how much of it the playfield occupies varies
   wildly per scene. MSR title: the whole planet dissolves inside 0..0.06 (0.02-0.04 = a
@@ -111,11 +122,14 @@ tools\make_holo_gif.ps1 -Mode cutaway -Out Media\gifs\mygame_cut.gif -MaxCut 0.1
 - The packed quilt layout (holo_quiltpk_NN.bmp) is cols x rows landscape 400x240 tiles,
   view 0 at the BOTTOM-left, row-major upward; view count = cols*rows exactly (verified:
   adjacent-view diff is uniform across all 66 views, no row-boundary spikes).
-- The Metroid GIF set (Media\gifs\, untracked): title sweep, title cutaway (MaxCut 0.12,
+- The Metroid GIF set (Media\gifs\, gitignored - Seth: GIF output stays off the repo):
+  title sweep, title cutaway (MaxCut 0.12,
   logo cuts early via the locked-UI rule), surface sweep + gunship cutaway (MaxCut 0.97;
   `loadstate` first - the shipped .sav0 IS the gunship arrival, do not overwrite it with
-  another savestate), and ruins cutaway (MaxCut 0.95; from the gunship, `press right 300`
-  twice reaches the Chozo ruins with the crashed-ship background).
+  another savestate), ruins cutaway (MaxCut 0.95; from the gunship, `press right 300`
+  twice reaches the Chozo ruins with the crashed-ship background), and pillars buildup
+  (`-Mode buildup -Fps 20 -MaxCut 1.0` at the same walked-right spot; at 1.0 this scene
+  still shows a hazy far backdrop, not black).
 
 Workflow rules learned:
 - Launch is the only focus grab: `UnrealEditor.exe HoloVCS_Flat.uproject -game -windowed -resx=1280 -resy=720 -rom=<partial>`. After that, never foreground the window; the old SendKeys/CopyFromScreen approach is retired (Seth uses the machine while automated work runs).

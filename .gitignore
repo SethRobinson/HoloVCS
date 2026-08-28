@@ -96,6 +96,9 @@ agents_secret.md
 Media/*.otf
 Media/*.ttf
 
+# Generated 3DS multiview GIFs (tools/make_holo_gif.ps1 output, commercial game imagery)
+Media/gifs/
+
 # Local marketing/video assets, not needed in the repo
 Youtube/
 

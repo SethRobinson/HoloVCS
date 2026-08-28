@@ -109,34 +109,69 @@ def view_index(frame, total_frames, view_count, cycles):
     return int(round(center + center * math.sin(phase)))
 
 
+def list_frame_files(framedir):
+    files = sorted(f for f in os.listdir(framedir)
+                   if f.startswith("quilt_") and f.lower().endswith(".bmp"))
+    if not files:
+        sys.exit(f"ERROR: no quilt_*.bmp in {framedir}")
+    return [os.path.join(framedir, f) for f in files]
+
+
 def build_frames(args):
+    """Returns (frames, per-frame durations in ms)."""
     frames = []
+    tick = int(round(1000.0 / args.fps))
     crop = (0, 0, 0, 0)
-    if args.quilt:
+    if args.build_frames:
+        # buildup choreography: framedir holds build captures (cut MaxCut -> 0, camera
+        # static) then teardown captures (cut 0 -> MaxCut). Between them the assembler
+        # inserts a head-move view sweep and a still pause, both cut from the LAST build
+        # capture (the cut-0 one), so those phases join the build seamlessly.
+        files = list_frame_files(args.framedir)
+        build_files, td_files = files[:args.build_frames], files[args.build_frames:]
+        full_views = slice_quilt(build_files[-1])
+        if args.autocrop:
+            crop = measure_edge_black(full_views)
+        # same rounding as view_index at phase 0, so the sweep joins with no view jump
+        vc = int(round((len(full_views) - 1) / 2.0))
+        durations = []
+        for f in build_files:
+            frames.append(slice_quilt(f)[vc])
+            durations.append(tick)
+        n_sweep = max(2, int(round(args.sweep_seconds * args.fps)))
+        for s in range(n_sweep):
+            frames.append(full_views[view_index(s, n_sweep, len(full_views), args.cycles)])
+            durations.append(tick)
+        for _ in range(max(1, int(round(args.pause_seconds / 0.5)))):
+            frames.append(full_views[vc])
+            durations.append(500)
+        for f in td_files:
+            frames.append(slice_quilt(f)[vc])
+            durations.append(tick)
+    elif args.quilt:
         views = slice_quilt(args.quilt)
         if args.autocrop:
             crop = measure_edge_black(views)
         total = max(2, int(round(args.seconds * args.fps)))
         for k in range(total):
             frames.append(views[view_index(k, total, len(views), args.cycles)])
+        durations = [tick] * len(frames)
     else:
-        files = sorted(f for f in os.listdir(args.framedir)
-                       if f.startswith("quilt_") and f.lower().endswith(".bmp"))
-        if not files:
-            sys.exit(f"ERROR: no quilt_*.bmp in {args.framedir}")
+        files = list_frame_files(args.framedir)
         if args.autocrop:
             # measure on the first capture only: a cutaway can blacken large areas
             # mid-sequence, which must not inflate the crop
-            crop = measure_edge_black(slice_quilt(os.path.join(args.framedir, files[0])))
+            crop = measure_edge_black(slice_quilt(files[0]))
         total = len(files)
         for k, f in enumerate(files):
-            views = slice_quilt(os.path.join(args.framedir, f))
+            views = slice_quilt(f)
             frames.append(views[view_index(k, total, len(views), args.cycles)])
+        durations = [tick] * len(frames)
     if any(crop):
         l, t, r, b = crop
         print(f"autocrop: trimming L{l} T{t} R{r} B{b} (unrendered shear margins)")
         frames = [f.crop((l, t, f.width - r, f.height - b)) for f in frames]
-    return frames
+    return frames, durations
 
 
 def main():
@@ -148,13 +183,20 @@ def main():
     ap.add_argument("--fps", type=float, default=15.0)
     ap.add_argument("--seconds", type=float, default=6.0, help="sweep mode: GIF length")
     ap.add_argument("--cycles", type=float, default=1.0, help="view-sweep sine cycles over the loop")
-    ap.add_argument("--scale", type=int, default=2, help="nearest-neighbor upscale factor")
+    ap.add_argument("--scale", type=int, default=1,
+                    help="nearest-neighbor upscale factor (1 = native 3DS resolution)")
+    ap.add_argument("--build-frames", type=int, default=0,
+                    help="buildup choreography: the first N framedir captures are the build "
+                         "phase, the rest the teardown; a sweep + pause from the cut-0 "
+                         "capture goes between them")
+    ap.add_argument("--sweep-seconds", type=float, default=3.0, help="buildup: head-move phase length")
+    ap.add_argument("--pause-seconds", type=float, default=2.0, help="buildup: still pause length")
     ap.add_argument("--colors", type=int, default=256)
     ap.add_argument("--autocrop", action=argparse.BooleanOptionalAction, default=True,
                     help="trim the outer views' unrendered black edge margins (measured, capped 40px)")
     args = ap.parse_args()
 
-    frames = build_frames(args)
+    frames, durations = build_frames(args)
     if args.scale != 1:
         frames = [f.resize((f.width * args.scale, f.height * args.scale), Image.NEAREST)
                   for f in frames]
@@ -169,9 +211,8 @@ def main():
     palette_img = montage.quantize(colors=args.colors, method=Image.MEDIANCUT)
     frames = [f.quantize(palette=palette_img, dither=Image.FLOYDSTEINBERG) for f in frames]
 
-    duration_ms = int(round(1000.0 / args.fps))
     frames[0].save(args.out, save_all=True, append_images=frames[1:],
-                   duration=duration_ms, loop=0, optimize=True)
+                   duration=durations, loop=0, optimize=True)
     size_mb = os.path.getsize(args.out) / (1024.0 * 1024.0)
     print(f"wrote {args.out}: {len(frames)} frames, {frames[0].width}x{frames[0].height}, "
           f"{args.fps:g} fps, {size_mb:.1f} MB")

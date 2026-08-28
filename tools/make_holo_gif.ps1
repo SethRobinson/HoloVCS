@@ -9,12 +9,17 @@
 #   sweep    one quilt -> seamless left-right-left view sweep (parallax wigglegram)
 #   cutaway  N quilts while holo.Cutaway ramps 0 -> MaxCut -> 0 in per-frame increments
 #            (smoothstep + hold, no visible steps), view sweep running on top
+#   buildup  starts fully cut away, BUILDS the scene to cut 0 (decelerating - the near
+#            content lands last and is the interesting part; camera static), then the
+#            head-move sweep, a still pause, and a ~1s teardown back to full cut so the
+#            loop wraps seamlessly
 #
 # Examples (game already running and unpaused on the scene to shoot):
 #   tools\make_holo_gif.ps1 -Mode sweep   -Out Media\metroid_title_sweep.gif
 #   tools\make_holo_gif.ps1 -Mode cutaway -Out Media\metroid_title_cutaway.gif -Seconds 8
+#   tools\make_holo_gif.ps1 -Mode buildup -Out Media\metroid_ruins_buildup.gif -MaxCut 0.95
 param(
-    [ValidateSet("sweep", "cutaway")]
+    [ValidateSet("sweep", "cutaway", "buildup")]
     [string]$Mode = "sweep",
     [Parameter(Mandatory = $true)]
     [string]$Out,
@@ -25,11 +30,17 @@ param(
     [string]$DumpDir = "F:\UnrealEngine\UE_5.8\Engine\Binaries\Win64",
     [double]$Fps = 15,
     [double]$Seconds = 6,
-    [int]$Scale = 2,          # nearest-neighbor upscale of the 400x240 views
+    [int]$Scale = 1,          # nearest-neighbor upscale of the 400x240 views (1 = native 3DS res)
     [int]$Colors = 256,
-    [double]$Cycles = 0,      # view-sweep sine cycles per loop; 0 = default (sweep 1, cutaway 2)
-    [double]$MaxCut = 1.0,    # cutaway: deepest plane reached (1 = everything to the backdrop)
+    [double]$Cycles = 0,      # view-sweep sine cycles per loop; 0 = default (sweep 1, cutaway 2, buildup 1)
+    [double]$MaxCut = 1.0,    # cutaway/buildup: deepest plane reached
     [double]$HoldFrac = 0.2,  # cutaway: fraction of the loop held at full cut
+    # buildup phase lengths (seconds) and pacing
+    [double]$BuildSeconds = 4.5,
+    [double]$SweepSeconds = 3,
+    [double]$PauseSeconds = 2,
+    [double]$TeardownSeconds = 1,
+    [double]$BuildPower = 3,  # cut = MaxCut*(1-t)^p: higher = more of the build spent near 0
     [switch]$Keep             # keep the intermediate bmp frames next to the gif
 )
 
@@ -37,6 +48,7 @@ $ErrorActionPreference = "Stop"
 $holoAuto = Join-Path $PSScriptRoot "holo_auto.ps1"
 $holoGifPy = Join-Path $PSScriptRoot "holo_gif.py"
 if ($Cycles -le 0) { $Cycles = if ($Mode -eq "cutaway") { 2 } else { 1 } }
+$script:frameIndex = 0
 
 function Send-Harness([string[]]$commands) {
     $result = & $holoAuto -Cmd $commands -SavedDir $SavedDir
@@ -77,6 +89,16 @@ function Move-WithRetry([string]$from, [string]$to) {
     }
 }
 
+# set the cutaway, capture one quilt, and file it as the next sequential frame
+function Capture-CutFrame([double]$cut, [string]$workDir, [string]$label) {
+    Send-Harness @(("exec holo.Cutaway {0:0.####}" -f $cut))
+    Start-Sleep -Milliseconds 80   # let the push reach the core before the dump frames
+    $quilt = Capture-Quilt
+    Move-WithRetry $quilt (Join-Path $workDir ("quilt_{0:0000}.bmp" -f $script:frameIndex))
+    $script:frameIndex++
+    Write-Output ("{0}  cutaway {1:0.000}" -f $label, $cut)
+}
+
 # smoothstep ramp up / hold / ramp down, 0 at both ends = seamless loop
 function Get-CutValue([int]$k, [int]$total) {
     $t = $k / [double]$total
@@ -101,7 +123,7 @@ if ($Mode -eq "sweep") {
         --cycles $Cycles --scale $Scale --colors $Colors
     if (-not $Keep) { Remove-Item $frame -Force }
 }
-else {
+elseif ($Mode -eq "cutaway") {
     $total = [int][math]::Round($Fps * $Seconds)
     # prewarm: the first cutaway use lazily compiles shader variants; do that hitch now
     # so the early ramp frames don't capture uncut
@@ -110,16 +132,36 @@ else {
     Send-Harness @("exec holo.Cutaway 0")
     Start-Sleep -Milliseconds 300
     for ($k = 0; $k -lt $total; $k++) {
-        $cut = Get-CutValue $k $total
-        Send-Harness @(("exec holo.Cutaway {0:0.####}" -f $cut))
-        Start-Sleep -Milliseconds 80   # let the push reach the core before the dump frames
-        $quilt = Capture-Quilt
-        Move-WithRetry $quilt (Join-Path $workDir ("quilt_{0:0000}.bmp" -f $k))
-        Write-Output ("frame {0}/{1}  cutaway {2:0.000}" -f ($k + 1), $total, $cut)
+        Capture-CutFrame (Get-CutValue $k $total) $workDir ("frame {0}/{1}" -f ($k + 1), $total)
     }
     Send-Harness @("exec holo.Cutaway 0")
     python $holoGifPy --framedir $workDir --out $Out --fps $Fps `
         --cycles $Cycles --scale $Scale --colors $Colors
+    if (-not $Keep) { Remove-Item (Join-Path $workDir "quilt_*.bmp") -Force }
+}
+else {
+    # buildup: [static camera] full cut -> 0 decelerating, then (assembled from the final
+    # cut-0 capture, no extra dumps) the head-move sweep and still pause, then a quick
+    # live teardown back to full cut. First frame = last frame's cut = seamless loop.
+    $nBuild = [int][math]::Round($Fps * $BuildSeconds)
+    $nTear = [int][math]::Round($Fps * $TeardownSeconds)
+    # prewarm at full cut (also the first frame's value, so nothing pops mid-capture)
+    Send-Harness @(("exec holo.Cutaway {0:0.####}" -f $MaxCut))
+    Start-Sleep -Milliseconds 1000
+    for ($k = 0; $k -lt $nBuild; $k++) {
+        $t = $k / [double]($nBuild - 1)
+        $cut = $MaxCut * [math]::Pow(1.0 - $t, $BuildPower)
+        Capture-CutFrame $cut $workDir ("build {0}/{1}" -f ($k + 1), $nBuild)
+    }
+    for ($k = 1; $k -le $nTear; $k++) {
+        $x = $k / [double]$nTear
+        $cut = $MaxCut * ($x * $x * (3.0 - 2.0 * $x))
+        Capture-CutFrame $cut $workDir ("teardown {0}/{1}" -f $k, $nTear)
+    }
+    Send-Harness @("exec holo.Cutaway 0")
+    python $holoGifPy --framedir $workDir --out $Out --fps $Fps `
+        --cycles $Cycles --scale $Scale --colors $Colors --build-frames $nBuild `
+        --sweep-seconds $SweepSeconds --pause-seconds $PauseSeconds
     if (-not $Keep) { Remove-Item (Join-Path $workDir "quilt_*.bmp") -Force }
 }
 Remove-Item (Join-Path $DumpDir "holo_quilt*.bmp") -Force -ErrorAction SilentlyContinue
