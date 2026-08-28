@@ -551,36 +551,38 @@ CORE-side (rebuild azahar_libretro.dll and hand-copy it, fork commit 4dac8bf80).
   the logo at +-1px across 45 views (unchanged look), and at conv 0.60 the logo sweeps
   +-105px linearly, at/ahead of the planet limb (it measured 0 before = the bug).
 
-Round 11 (Aug 28 2026): WHY MARIO KART 7 RENDERS FLAT ON THE PANEL - DIAGNOSED, NOT
-YET FIXED (fix is core-side). The good decrypted MK7 dump (Rev 1) loads and plays
-fine, but the core never delivers a single quilt: log.txt shows "3DS quilt dormant
-... (used=0 views=0 packSeq=0 mode=2)" for the whole session, so the frontend stays
-on its flat middle-band composite fallback = 2D hologram. Draw log from the staged
-build (savestate into gameplay, holo_draw_log_request armed; note the staged game's
-working directory for request files is dist\win64_lkg_test\Windows\HoloVCS\
-Binaries\Win64, where the raw holo_draw_log.txt / holo_view_log.txt evidence still
-sits). Two independent core-side gate failures, both from MK7's framebuffer layout:
-- MK7 renders BOTH screens into ONE PADDED 256x416 render target (53,314 logged
-  draws, every one at addr 180f8000: 51,042 with vp=240x400 = top scene, 2,272 with
-  vp=240x320 = bottom), unlike SM3DL/MSR whose RTs are exactly 240x400. The
-  top_sized gate (gl_rasterizer.cpp, fb width/height == 240x400 EXACT) skipped ALL
-  of them with verdict "fb": no multiview mirror ever ran (V lines: zero, mvtex=0),
-  no depth record ever landed (view log buf=[0.0000..1.0000] defaults).
-- Independently the ship gate never fires (transfer_ever=0): MK7 display-transfers
-  the scene to full padded 256x416 16bpp eye buffers (0x34000 bytes each; two
-  adjacent outputs per frame = left+right eye, same mono image at slider 0) and the
-  top LCD scans out at +0x2000 INSIDE the buffer (16 padded rows x 256 stride x 2
-  bytes), so the exact-match top-LCD destination check (to_top_lcd register +
-  IsTopLcdOut) never identifies a top destination and the scene never ships/packs.
-  The top-SOURCE side is fine (has_src=1, scene_in=1) because NoteBufferSwap's
-  resolver matches by containment already.
-Fix direction (both needed, azahar fork): (1) accept padded RTs as top-sized (a
-240x400 viewport inside a >=240 x >=400 fb; the existing top_viewport ratio check
-already passes 400*10 >= 416*9) and offset the mv capture/mirror by the draw-rect
-origin inside the padded RT; (2) match transfer outputs against learned scan-outs
-by containment (scanout in [out, out+span)) like the swap resolver does. MK7
-presenting the same mono image to both eyes is fine for multiview, which re-renders
-per view anyway.
+Round 11 (Aug 28 2026): MARIO KART 7 FLAT-HOLOGRAM BUG - FIXED CORE-SIDE (fork
+commit 9b5784b8a; rebuild azahar_libretro.dll and hand-copy as usual). The good
+decrypted MK7 dump (Rev 1) loaded and played fine but the core never delivered a
+single quilt ("3DS quilt dormant ... used=0 views=0 packSeq=0" forever, frontend on
+the flat composite fallback = 2D hologram). Two independent core-side gate failures,
+both from MK7's framebuffer layout, found with the armed draw log:
+- MK7 renders BOTH screens into ONE PADDED 256x416 render target (51k draws/log with
+  vp=240x400 = top scene, 2.2k with vp=240x320 = bottom, all at one address), unlike
+  SM3DL/MSR whose RTs are exactly 240x400. The top_sized gate (fb == 240x400 EXACT)
+  skipped every draw with verdict "fb": no multiview mirror, no depth record.
+- Independently the ship gate never fired (transfer_ever=0): MK7 display-transfers
+  the whole padded buffer (0x34000 bytes, one per eye per frame - same mono image in
+  both at slider 0, fine for multiview) and the top LCD scans out at +0x2000 INSIDE
+  it (16 padded rows x 256 stride x 2 bytes), which the exact-base top-LCD
+  destination match could never see.
+THE FIX (generalizes to other padded-RT games, not MK7-specific):
+- HoloHook::IsTopScreenFb (240-256 wide x 400-512 tall) replaces every exact 240x400
+  fb check; the top-viewport bar compares against the SCREEN height (400*scale) not
+  the fb height; the 240x400 screen window's offset inside the RT is measured per
+  frame from the full-window depth-draw record (top_win_rel_x/y, "R" line in the
+  armed draw log) and subtracted by the multiview mirror viewport and band-capture
+  origin. All of it is (0,0)/no-op for exact-fit games.
+- Top-LCD destination matching is containment in both directions, bounded by the
+  transfer's OWN output byte size (a fixed span would false-positive adjacent eye
+  buffers); learning/dedup stays exact-base.
+VERIFIED on device (staged build, Seth's race savestate): quilt live packSeq
+advancing, 214 mirrored draws/frame (212 sheared + 2 screen-locked HUD), real
+depth-proportional parallax across tiles with the "8th" badge screen-locked, 60 fps.
+MK7 band mode (-holobands) also renders a proper diorama now. Regressions clean:
+SM3DL + Metroid multiview quilts live and correct, SM3DL band mode unchanged.
+Still true: 800px-wide hi-res top-screen modes (fb 240x800) are unsupported by
+design (no game we run uses one).
 
 NOT yet done: per-game depth-band profiles, near-band HUD routing knob, sound
 verification, release-bat/core-build integration, non-uniform bands via depth01.
