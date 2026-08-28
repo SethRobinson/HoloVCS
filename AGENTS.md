@@ -556,6 +556,11 @@ but burns the 5.6 escape hatch like any other resave.
   tracked or force-added. Build them from the vendored sources with `BuildCores.bat`; release
   packaging rebuilds them before staging. The core source and build recipes, not compiled DLLs,
   are the repository artifacts.
+- LANDSCAPE PANELS (Aug 28 2026, for the original 8.9" Looking Glass): 3DS shows ONE screen
+  at a time there (3D top screen by default; B key / bare left trigger / `holo.BottomScreen`
+  swap the bottom screen in). Portrait panels keep the stacked two-screen layout. Detection,
+  `-lkglandscape` test force, and the PeelHidden/quilt-carrier gotchas: docs/3ds_azahar.md
+  round 9 (also has the touch-tap latch fix: framesBack 5 -> 2, was "clicks the wrong spot").
 - 3DS (IN PROGRESS, Aug 2026): `azahar_libretro.dll`, built from Seth's Azahar fork at
   `f:\Unreal\azahar` (branch `holo`; NOT part of BuildCores.bat yet, copied to Binaries/Win64 by
   hand). Read `docs/3ds_azahar.md` before touching EMULATOR_3DS - it differs from the other

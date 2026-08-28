@@ -304,6 +304,7 @@ public:
 	void OnApostropheKey();  //unhide one
 	void OnNKey();
 	void OnVKey(); //keyboard fly-cam toggle (also makes the mode reachable from the harness `key` command)
+	void OnBKey(); //landscape 3DS: swap the 3D screen / bottom screen (pad twin: bare left trigger)
 	void OnResetGame();
 
 	//recorders for the gamepad-only mirror axes (see m_padLX comment)

@@ -128,6 +128,15 @@ public:
 	bool PushHoloViewParams(); //push depth/conv to the 3DS multiview core; warns ONCE if the export is missing (stale DLL)
 	void SetUserZoom(float factor, bool bShowStatus = true); //user zoom as a persistent framing factor (= and - hotkeys, holo.Zoom)
 	void RepositionBottomScreen(); //3DS: deterministic bottom-screen placement; idempotent, re-run from every depth/zoom apply
+	//Landscape Looking Glass panels (the original 8.9" etc): stacking the two 3DS screens
+	//vertically wastes a wide panel, so landscape shows ONE screen at a time - the 3D top
+	//screen by default, and the B key / bare left trigger / holo.BottomScreen swap the
+	//bottom screen in (and back).  Portrait panels and the flat build keep the stacked
+	//layout and the toggle just explains itself.  -lkglandscape forces the layout on for
+	//testing without a device.
+	bool IsLandscape3DSLayout();
+	void ToggleBottomScreenFocus();
+	bool m_bBottomFocus3DS = false; //landscape only; SetEmulatorData resets it to the 3D screen on every game switch
 	//3DS debug visualizations (Shift+number hotkeys, holo.Viz / holo.Cutaway console twins).
 	//The mask + cutaway plane travel to the core through the optional retro_holo_set_debug
 	//export; see cores/holo_abi/holo_layer_abi.h for the HOLO_VIZ_* bits.

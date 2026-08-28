@@ -174,7 +174,13 @@ void LibretroManager::SetTouchDown(bool bDown)
 {
 	if (bDown && !m_touchDown)
 	{
-		const int framesBack = 5; //~83ms at 60fps, roughly the cursor's display latency
+		//Rewind to where the cursor was a couple frames ago: the DISPLAYED arrow (flat
+		//window or panel - it's stamped into the bottom-screen texture at delivery, then
+		//uploaded and presented) runs ~2 frames behind the live position, and the press
+		//itself can nudge the mouse.  This was 5 frames (~83ms), well past the real
+		//latency, so clicking shortly after a move tapped a stale mid-flight position =
+		//"it sometimes clicks the wrong spot" (Seth, Aug 28 2026).
+		const int framesBack = 2;
 		const int idx = (m_touchHistPos - framesBack + C_TOUCH_HISTORY) % C_TOUCH_HISTORY;
 		m_touchLatchX = m_touchHistX[idx];
 		m_touchLatchY = m_touchHistY[idx];
@@ -1077,6 +1083,7 @@ void LibretroManager::SetEmulatorData(eEmulatorType emu)
 	m_pLibretroManagedActor->m_stashed3DDepth = 0.0f; //'\' 2D/3D toggle: new game starts in 3D
 	m_pLibretroManagedActor->m_userConv01 = -1.0f; //multiview convergence back to the core default
 	m_pLibretroManagedActor->m_userZoomFactor = 1.0f;
+	m_pLibretroManagedActor->m_bBottomFocus3DS = false; //landscape bottom-screen toggle back to the 3D screen
 	//3DS debug views (Shift+number) don't apply to the other systems; clear when switching away
 	if (emu != EMULATOR_3DS)
 	{

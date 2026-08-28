@@ -1181,6 +1181,15 @@ void APlayerPawn::JoyPad_LTrigger_Pressed()
 		g_pLibretroManager->ModRom(-1); //L-stick click + left trigger = previous game (Seth: pad reset not needed, R key still resets)
 		return;
 	}
+	//landscape Looking Glass panels show one 3DS screen at a time: the bare left trigger
+	//swaps the 3D screen / bottom screen (keyboard twin: B).  Elsewhere it stays 3DS ZL.
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_3DS &&
+		g_pLibretroManager->m_pLibretroManagedActor &&
+		g_pLibretroManager->m_pLibretroManagedActor->IsLandscape3DSLayout())
+	{
+		g_pLibretroManager->m_pLibretroManagedActor->ToggleBottomScreenFocus();
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_L2] = true;
 }
 
@@ -1498,6 +1507,17 @@ void APlayerPawn::OnVKey()
 	SetFlyCamEnabled(!m_bFlyCam);
 }
 
+//landscape Looking Glass: swap the display between the 3DS 3D screen and the bottom
+//screen (pad twin: bare left trigger; the actor explains itself everywhere else)
+void APlayerPawn::OnBKey()
+{
+	if (HelpSwallowedInput()) return;
+	if (g_pLibretroManager && g_pLibretroManager->m_pLibretroManagedActor)
+	{
+		g_pLibretroManager->m_pLibretroManagedActor->ToggleBottomScreenFocus();
+	}
+}
+
 void APlayerPawn::OnCommaKey()
 {
 	if (HelpSwallowedInput()) return;
@@ -1632,6 +1652,7 @@ void APlayerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindKey(EKeys::P, IE_Pressed, this, &APlayerPawn::OnPKey);
 	PlayerInputComponent->BindKey(EKeys::N, IE_Pressed, this, &APlayerPawn::OnNKey);
 	PlayerInputComponent->BindKey(EKeys::V, IE_Pressed, this, &APlayerPawn::OnVKey); //fly camera toggle (pad chord: L-stick click + R-stick click)
+	PlayerInputComponent->BindKey(EKeys::B, IE_Pressed, this, &APlayerPawn::OnBKey); //landscape 3DS: 3D screen / bottom screen swap
 	PlayerInputComponent->BindKey(EKeys::LeftBracket, IE_Pressed, this, &APlayerPawn::OnLeftBracketKey);
 	PlayerInputComponent->BindKey(EKeys::LeftBracket, IE_Repeat, this, &APlayerPawn::OnLeftBracketKey);
 	PlayerInputComponent->BindKey(EKeys::RightBracket, IE_Pressed, this, &APlayerPawn::OnRightBracketKey);

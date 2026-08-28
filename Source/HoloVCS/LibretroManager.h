@@ -266,10 +266,12 @@ public:
 	double m_touchLastActiveTime = 0; //FPlatformTime seconds; drives cursor auto-hide
 	bool m_touchCursorShownOnce = false; //primes a few visible seconds on the first delivered frame
 
-	//Press-position latch: the panel shows the cursor a few frames late and the act of
-	//clicking (stick-click wobble, trigger squeeze, mouse nudge) moves it right as the press
-	//lands, so a tap latches to where the cursor was ~100ms ago and stays there until the
-	//cursor clearly drags away.  All touch press/release goes through SetTouchDown.
+	//Press-position latch: the displayed cursor runs a couple frames behind the live
+	//position and the act of clicking (stick-click wobble, trigger squeeze, mouse nudge)
+	//moves it right as the press lands, so a tap latches to where the cursor was ~2 frames
+	//ago and stays there until the cursor clearly drags away.  (A 5-frame rewind here
+	//overshot the real latency and made quick clicks land behind the arrow.)  All touch
+	//press/release goes through SetTouchDown.
 	static const int C_TOUCH_HISTORY = 16;
 	float m_touchHistX[C_TOUCH_HISTORY];
 	float m_touchHistY[C_TOUCH_HISTORY];

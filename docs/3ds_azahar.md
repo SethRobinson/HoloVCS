@@ -477,6 +477,36 @@ SW-vertex-path gap: MSR hardware-accelerates everything (skip sw=0).
   signature), "Quilt carrier -> ACTIVE/dormant", and change-gated "Holo viz push:
   mask=0x.. cutaway=..".
 
+Round 9 (Aug 28 2026): LANDSCAPE-PANEL LAYOUT (for the original 8.9" Looking Glass) +
+touch-tap latch fix.
+- Landscape Looking Glass panels (device aspect > 1.0 from the plugin's GetAspectRatio;
+  `-lkglandscape` forces it with no device, for testing) show ONE 3DS screen at a time
+  instead of the stacked two-screen layout: the 3D top screen by default, and the B key /
+  bare gamepad LEFT TRIGGER / `holo.BottomScreen` swap the bottom screen in and back.
+  Portrait panels and the flat build keep the stacked layout; the toggle explains itself
+  there ("Both screens already shown") instead of doing nothing.  Implementation lives in
+  ALibretroManagerActor::RepositionBottomScreen (single chokepoint: called from every
+  ApplyLayerDepth and the 1Hz self-heal, so the layout self-heals): the inactive screen's
+  actors are SetActorHiddenInGame (the capture fit and the sprite path both skip hidden
+  actors), and with the bottom screen focused the bottom quad moves to the top stack's
+  center depth so the refit frames it alone, on the focal plane.  Gotchas encoded there:
+  peel-hidden band layers get their PeelHidden tag stripped while the bottom screen is
+  focused (tagged actors stay in the framing AABB by design; restoring goes through
+  SetLayersPeeled so the peel comes back), and EnsureQuiltCarrier repositions before its
+  fit so a carrier born during bottom focus starts hidden.  The focus resets to the 3D
+  screen on every game switch like depth/zoom/convergence.  On the pad, bare LT only
+  toggles when the landscape layout is live - everywhere else it stays 3DS ZL (L2), and
+  the L3+LT prev-game chord and fly-cam trigger axes are checked first, unchanged.
+  Verified headlessly (no device, `-lkglandscape -rom="3D Land"`, quilt captures): default
+  = top screen only, `key B` = bottom screen alone framed full-size, `holo.BottomScreen`
+  = back, portrait run unchanged, NES unaffected.
+- TOUCH-TAP LATCH FIX (Seth: "if you click, it sometimes clicks the wrong spot"): the
+  press-position latch rewound the cursor FIVE frames (~83ms) into its history, well past
+  the real display latency of the stamped cursor (~2 frames), so clicking shortly after a
+  move tapped a stale mid-flight position behind the visible arrow.  framesBack is 2 now
+  (LibretroManager::SetTouchDown).  The latch mechanism itself (hold until a >15px drag,
+  arrow drawn at the latched point while pressing) is unchanged.
+
 NOT yet done: per-game depth-band profiles, near-band HUD routing knob, sound
 verification, release-bat/core-build integration, non-uniform bands via depth01.
 Fallbacks: no interlock extension -> packed RGB565 opaque capture; no GL4.3 compute ->

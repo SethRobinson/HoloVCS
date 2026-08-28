@@ -153,6 +153,17 @@ static FAutoConsoleCommand CCmdHoloCutaway(
 		pActor->ApplyHoloViz();
 	}));
 
+//Console twin of the B key / bare left trigger (landscape Looking Glass panels): swap the
+//display between the 3D top screen and the 3DS bottom screen.  Harness-drivable.
+static FAutoConsoleCommand CCmdHoloBottomScreen(
+	TEXT("holo.BottomScreen"),
+	TEXT("Landscape 3DS: swap the display between the 3D top screen and the bottom screen, same as the B key / left trigger. Usage: holo.BottomScreen"),
+	FConsoleCommandWithArgsDelegate::CreateLambda([](const TArray<FString>& args)
+	{
+		if (!g_pLibretroManager || !g_pLibretroManager->m_pLibretroManagedActor) return;
+		g_pLibretroManager->m_pLibretroManagedActor->ToggleBottomScreenFocus();
+	}));
+
 EPixelFormat TEX_PIXEL_FORMAT = EPixelFormat::PF_B8G8R8A8;
 // Sets default values
 ALibretroManagerActor::ALibretroManagerActor()
@@ -560,7 +571,10 @@ LayerInfo* ALibretroManagerActor::EnsureQuiltCarrier(int quiltW, int quiltH, int
 	}
 	m_bQuiltCarrierActive = true;
 
-	//the capture's show-only list was built before this actor existed
+	//the capture's show-only list was built before this actor existed; the reposition runs
+	//first so a carrier born while the landscape bottom-screen focus is active starts
+	//hidden and the fit doesn't frame it
+	RepositionBottomScreen();
 	FitLookingGlassCaptureToLayers(GetWorld());
 	LogMsg("Quilt carrier ready: %dx%d px, %d views (%dx%d tiles) at focal X %.1f",
 		quiltW, quiltH, viewCount, cols, rows, midX);
@@ -679,6 +693,38 @@ bool ALibretroManagerActor::RefusePausedHoloChange(bool bMode2Only)
 	return true;
 }
 
+//Landscape panels (device aspect > 1: the original 8.9" Looking Glass etc) run the
+//one-screen-at-a-time 3DS layout; portrait panels and the flat build (aspect 0) keep the
+//stacked two-screen layout.  -lkglandscape forces it on for testing without a device.
+bool ALibretroManagerActor::IsLandscape3DSLayout()
+{
+	if (!g_pLibretroManager || g_pLibretroManager->m_emulatorType != EMULATOR_3DS) return false;
+	static const bool bForced = FParse::Param(FCommandLine::Get(), TEXT("lkglandscape"));
+	if (bForced) return true;
+	return GetLookingGlassDeviceAspect(GetWorld()) > 1.0f;
+}
+
+//B key / bare left trigger / holo.BottomScreen: on a landscape panel, swap which 3DS
+//screen owns the display.  Everything else (visibility, placement, capture refit) is
+//enforced by RepositionBottomScreen, which ApplyLayerDepth calls.
+void ALibretroManagerActor::ToggleBottomScreenFocus()
+{
+	if (!g_pLibretroManager || g_pLibretroManager->m_emulatorType != EMULATOR_3DS)
+	{
+		ShowStatusMessage("Bottom screen toggle is 3DS-only");
+		return;
+	}
+	if (!IsLandscape3DSLayout())
+	{
+		ShowStatusMessage("Both screens already shown (toggle is for landscape displays)");
+		return;
+	}
+	m_bBottomFocus3DS = !m_bBottomFocus3DS;
+	ApplyLayerDepth(); //repositions the bottom screen, enforces visibility, refits camera+capture
+	ShowStatusMessage(m_bBottomFocus3DS ? "Bottom screen (B or LT to return)" : "3D screen");
+	LogMsg("Landscape 3DS: %s screen focus", m_bBottomFocus3DS ? "BOTTOM" : "top");
+}
+
 //3DS: (re)park the bottom-screen quad one screen-height below the top-screen stack.
 //Deterministic on purpose: the height comes from the mesh ASSET bounds through the live
 //component transform (a just-spawned actor's cached world bounds can read zero, which
@@ -686,12 +732,64 @@ bool ALibretroManagerActor::RefusePausedHoloChange(bool bMode2Only)
 //recomputed at call time because the plugin can resolve the panel aspect well after the
 //first InitLayers.  Idempotent and cheap - called from every depth/zoom apply and the
 //1Hz self-heal in Tick.
+//LANDSCAPE PANELS show one screen at a time (see IsLandscape3DSLayout): this is also where
+//that layout is enforced - the bottom quad hides while the 3D screen has the display, and
+//with the bottom screen focused the top stack (band layers + multiview quilt carrier)
+//hides and the bottom quad moves to the stack's center depth so the capture fit frames it
+//alone, on the focal plane.
 void ALibretroManagerActor::RepositionBottomScreen()
 {
 	if (!g_pLibretroManager || g_pLibretroManager->m_emulatorType != EMULATOR_3DS) return;
 	if ((int)m_layerInfo.size() <= GetLayerCount()) return;
 	AActor* pActor = m_layerInfo[GetLayerCount()].m_pActor;
 	if (!pActor) return;
+
+	const bool bLandscape = IsLandscape3DSLayout();
+	const bool bBottomFocus = bLandscape && m_bBottomFocus3DS;
+
+	//bottom quad: hidden in landscape while the 3D screen owns the display
+	pActor->SetActorHiddenInGame(bLandscape && !bBottomFocus);
+
+	//top stack: hidden while the bottom screen owns the display.  Restoring goes through
+	//SetLayersPeeled so the debug peel state comes back exactly; while hidden here the
+	//PeelHidden tags are stripped so the capture fit doesn't keep peeled layers in the
+	//framing AABB (peel-tagged actors stay in the frame by design).
+	if (bBottomFocus)
+	{
+		for (int i = 0; i < FMath::Min((int)m_layerInfo.size(), GetLayerCount()); i++)
+		{
+			if (m_layerInfo[i].m_pActor)
+			{
+				m_layerInfo[i].m_pActor->SetActorHiddenInGame(true);
+				m_layerInfo[i].m_pActor->Tags.Remove(FName(TEXT("PeelHidden")));
+			}
+		}
+	}
+	else
+	{
+		SetLayersPeeled(m_layersPeeled); //idempotent; re-shows the top stack
+	}
+	const int carrierIdx = GetLayerCount() + 1;
+	if ((int)m_layerInfo.size() > carrierIdx && m_layerInfo[carrierIdx].m_pActor)
+	{
+		m_layerInfo[carrierIdx].m_pActor->SetActorHiddenInGame(bBottomFocus);
+	}
+
+	if (bBottomFocus)
+	{
+		//center the bottom screen where the top stack lives: same mid-depth the quilt
+		//carrier uses = the capture's focal plane after the refit, so it renders sharp
+		FVector vPos = pActor->GetActorLocation();
+		if (GetLayerCount() > 0 && m_layerInfo[0].m_pActor && m_layerInfo[GetLayerCount() - 1].m_pActor)
+		{
+			vPos.X = 0.5f * (m_layerInfo[0].m_pActor->GetActorLocation().X +
+				m_layerInfo[GetLayerCount() - 1].m_pActor->GetActorLocation().X);
+		}
+		vPos.Y = m_corePosition.X;
+		vPos.Z = m_corePosition.Y;
+		pActor->SetActorLocation(vPos);
+		return;
+	}
 
 	float quadWorldHeight = 0.0f;
 	UStaticMeshComponent* pMesh = (UStaticMeshComponent*)pActor->GetComponentByClass(UStaticMeshComponent::StaticClass());
