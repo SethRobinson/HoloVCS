@@ -487,7 +487,9 @@ but burns the 5.6 escape hatch like any other resave.
   modifier, never forwarded to the core (Start was the old modifier and every chord also
   popped the game's Start menu; no supported core uses a stick click - the L3/L2 bits some
   cores read come from the right-stick AXIS in RMove_YAxis, untouched). Bare R3 keeps its
-  game role (3DS touch tap / R3 bit).
+  game role (3DS touch tap / R3 bit). On ATARI the JoyPad_A action (pad bottom button /
+  Space) sets the core's JOYPAD_B bit instead of JOYPAD_A: Stella only reads JOYPAD_A as
+  the booster-grip "Fire5" which normal joystick games ignore, so A fires/jumps like B.
 - DEBUG FLY CAMERA (Aug 2026): V key or clicking both sticks (hold L-stick click, press
   R-stick click; console twin `holo.FlyCam`). Left stick moves, right stick looks, analog
   triggers rise/sink, LB/RB halve/double speed (speed auto-scales by the layer AABB so every

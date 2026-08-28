@@ -967,11 +967,23 @@ void APlayerPawn::JoyPad_A_Pressed(FKey key)
 {
 	if (HelpSwallowedInput()) return;
 	if (m_bFlyCam && key.IsGamepadKey()) return; //fly mode: pad buttons don't reach the game, Space still does
+	//Atari: Stella only reads JOYPAD_A as the booster-grip "Fire5", which normal joystick
+	//games ignore, so A (pad bottom / Space) fires the joystick trigger like B does
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_ATARI)
+	{
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = true;
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_A] = true;
 }
 
 void APlayerPawn::JoyPad_A_Released(FKey key)
 {
+	if (g_pLibretroManager->m_emulatorType == EMULATOR_ATARI)
+	{
+		g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_B] = false;
+		return;
+	}
 	g_pLibretroManager->m_joyPad.m_button[RETRO_DEVICE_ID_JOYPAD_A] = false;
 }
 
