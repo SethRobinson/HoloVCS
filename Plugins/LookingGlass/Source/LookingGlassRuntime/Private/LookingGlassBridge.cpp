@@ -339,6 +339,65 @@ bool FLookingGlassBridge::Initialize_BridgeThread()
 	return true;
 }
 
+// Per-serial disk cache of the last good calibration. The values are static per-device EEPROM
+// data, so a cached copy is exactly as good as a live read - and Bridge sometimes serves a
+// display whose calibration is ALL ZEROS (serial/name/position intact) after an abnormal game
+// exit (an Alt-F4 kill mid-session) leaves the device's USB calibration interface wedged until
+// it re-enumerates (replug or reboot). Without the fallback that boot creates a 0x0 self-render
+// window = nothing on the panel at all.
+static FString CalibCacheFilePath()
+{
+	return FPaths::ProjectSavedDir() / TEXT("lkg_calibration_cache.txt");
+}
+
+static TMap<FString, FLGDeviceCalibration> LoadCalibrationCache()
+{
+	TMap<FString, FLGDeviceCalibration> Cache;
+	TArray<FString> Lines;
+	if (!FFileHelper::LoadFileToStringArray(Lines, *CalibCacheFilePath()))
+	{
+		return Cache;
+	}
+	for (const FString& Line : Lines)
+	{
+		TArray<FString> Parts;
+		Line.ParseIntoArray(Parts, TEXT("|"), false);
+		if (Parts.Num() < 11)
+		{
+			continue;
+		}
+		FLGDeviceCalibration C;
+		C.Serial = Parts[0];
+		C.Name = Parts[1];
+		C.Center = FCString::Atof(*Parts[2]);
+		C.Pitch = FCString::Atof(*Parts[3]);
+		C.Slope = FCString::Atof(*Parts[4]);
+		C.DPI = FCString::Atof(*Parts[5]);
+		C.FlipX = FCString::Atof(*Parts[6]);
+		C.Width = FCString::Atoi(*Parts[7]);
+		C.Height = FCString::Atoi(*Parts[8]);
+		C.Aspect = FCString::Atof(*Parts[9]);
+		C.ViewCone = FCString::Atof(*Parts[10]);
+		if (!C.Serial.IsEmpty() && C.Width > 0 && C.Height > 0)
+		{
+			Cache.Add(C.Serial, C);
+		}
+	}
+	return Cache;
+}
+
+static void SaveCalibrationCache(const TMap<FString, FLGDeviceCalibration>& Cache)
+{
+	FString Out;
+	for (const auto& Pair : Cache)
+	{
+		const FLGDeviceCalibration& C = Pair.Value;
+		Out += FString::Printf(TEXT("%s|%s|%.9g|%.9g|%.9g|%.9g|%.9g|%d|%d|%.9g|%.9g\n"),
+			*C.Serial, *C.Name, C.Center, C.Pitch, C.Slope, C.DPI, C.FlipX, C.Width, C.Height, C.Aspect, C.ViewCone);
+	}
+	FFileHelper::SaveStringToFile(Out, *CalibCacheFilePath());
+}
+
 void FLookingGlassBridge::ReadDisplays_BridgeThread()
 {
 	Displays.Empty();
@@ -348,77 +407,143 @@ void FLookingGlassBridge::ReadDisplays_BridgeThread()
 		return;
 	}
 
-	int32 NumDisplays = 0;
-	BridgeController->GetDisplays(&NumDisplays, nullptr);
-	if (NumDisplays == 0)
+	// A wedged calibration read is usually persistent, but retry a couple of times anyway in
+	// case it was a transient race (e.g. another client mid-read)
+	for (int32 Attempt = 0; Attempt < 3; Attempt++)
 	{
-		return;
+		if (Attempt > 0)
+		{
+			FPlatformProcess::Sleep(0.5f);
+			LKGBridgeDiag(FString::Printf(TEXT("Re-reading displays (attempt %d) - a display had no calibration"), Attempt + 1));
+		}
+		Displays.Empty();
+
+		int32 NumDisplays = 0;
+		BridgeController->GetDisplays(&NumDisplays, nullptr);
+		if (NumDisplays == 0)
+		{
+			return;
+		}
+
+		TArray<unsigned long> DisplayIds;
+		DisplayIds.SetNumZeroed(NumDisplays);
+		BridgeController->GetDisplays(&NumDisplays, DisplayIds.GetData());
+
+		Displays.Empty(NumDisplays);
+
+		bool bAnyMissingCalibration = false;
+		for (unsigned long DisplayId : DisplayIds)
+		{
+			// Note: the string getters return the char count and do NOT null-terminate (the template
+			// loop above already handles that; this one used to hand FString a raw uninitialized buffer)
+			const int32 BufferSize = 256;
+			TCHAR Buffer[BufferSize + 1];
+			FLGDeviceCalibration& Display = Displays.AddDefaulted_GetRef();
+
+			int32 TempInt = BufferSize;
+			FMemory::Memzero(Buffer);
+			if (BridgeController->GetDeviceSerialForDisplay(DisplayId, &TempInt, Buffer))
+			{
+				Buffer[FMath::Clamp(TempInt, 0, BufferSize)] = 0;
+			}
+			Display.Serial = Buffer;
+
+			TempInt = BufferSize;
+			FMemory::Memzero(Buffer);
+			if (BridgeController->GetDeviceNameForDisplay(DisplayId, &TempInt, Buffer))
+			{
+				Buffer[FMath::Clamp(TempInt, 0, BufferSize)] = 0;
+			}
+			Display.Name = Buffer;
+
+			int InvView = 0, CellPatternMode = 0, NumberOfCells = 0;
+			float Fringe = 0;
+			BridgeController->GetCalibrationForDisplay(DisplayId,
+				&Display.Center,
+				&Display.Pitch,
+				&Display.Slope,
+				&Display.Width,
+				&Display.Height,
+				&Display.DPI,
+				&Display.FlipX,
+				&InvView,
+				&Display.ViewCone,
+				&Fringe,
+				&CellPatternMode,
+				&NumberOfCells,
+				nullptr);
+
+			BridgeController->GetDisplayAspectForDisplay(DisplayId, &Display.Aspect);
+
+			long WinX = 0, WinY = 0;
+			BridgeController->GetWindowPositionForDisplay(DisplayId, &WinX, &WinY);
+			Display.XPos = (int32)WinX;
+			Display.YPos = (int32)WinY;
+
+			int DeviceType = -1;
+			BridgeController->GetDeviceTypeForDisplay(DisplayId, &DeviceType);
+
+			LKGBridgeDiag(FString::Printf(TEXT("Display %d: '%s' serial '%s' type %d: %dx%d at %d,%d, Center=%g, Pitch=%g, Slope=%g, DPI=%g, FlipX=%g, Aspect=%g, ViewCone=%g"),
+				Displays.Num() - 1, *Display.Name, *Display.Serial, DeviceType, Display.Width, Display.Height, Display.XPos, Display.YPos,
+				Display.Center, Display.Pitch, Display.Slope, Display.DPI, Display.FlipX, Display.Aspect, Display.ViewCone));
+			if (Display.Width <= 0 || Display.Height <= 0)
+			{
+				LKGBridgeDiag(TEXT("  WARNING: calibration has no width/height - Bridge could not read this display's calibration"));
+				bAnyMissingCalibration = true;
+			}
+		}
+
+		if (!bAnyMissingCalibration)
+		{
+			break;
+		}
 	}
 
-	TArray<unsigned long> DisplayIds;
-	DisplayIds.SetNumZeroed(NumDisplays);
-	BridgeController->GetDisplays(&NumDisplays, DisplayIds.GetData());
-
-	Displays.Empty(NumDisplays);
-
-	for (unsigned long DisplayId : DisplayIds)
+	// Calibration cache: save what came through, heal what did not
+	TMap<FString, FLGDeviceCalibration> Cache = LoadCalibrationCache();
+	bool bCacheDirty = false;
+	for (FLGDeviceCalibration& Display : Displays)
 	{
-		// Note: the string getters return the char count and do NOT null-terminate (the template
-		// loop above already handles that; this one used to hand FString a raw uninitialized buffer)
-		const int32 BufferSize = 256;
-		TCHAR Buffer[BufferSize + 1];
-		FLGDeviceCalibration& Display = Displays.AddDefaulted_GetRef();
-
-		int32 TempInt = BufferSize;
-		FMemory::Memzero(Buffer);
-		if (BridgeController->GetDeviceSerialForDisplay(DisplayId, &TempInt, Buffer))
+		if (Display.Serial.IsEmpty())
 		{
-			Buffer[FMath::Clamp(TempInt, 0, BufferSize)] = 0;
+			continue;
 		}
-		Display.Serial = Buffer;
-
-		TempInt = BufferSize;
-		FMemory::Memzero(Buffer);
-		if (BridgeController->GetDeviceNameForDisplay(DisplayId, &TempInt, Buffer))
+		if (Display.Width > 0 && Display.Height > 0)
 		{
-			Buffer[FMath::Clamp(TempInt, 0, BufferSize)] = 0;
+			const FLGDeviceCalibration* Cached = Cache.Find(Display.Serial);
+			if (Cached == nullptr || Cached->Width != Display.Width || Cached->Height != Display.Height ||
+				Cached->Center != Display.Center || Cached->Pitch != Display.Pitch || Cached->Slope != Display.Slope ||
+				Cached->DPI != Display.DPI || Cached->FlipX != Display.FlipX || Cached->Aspect != Display.Aspect ||
+				Cached->ViewCone != Display.ViewCone)
+			{
+				Cache.Add(Display.Serial, Display);
+				bCacheDirty = true;
+			}
 		}
-		Display.Name = Buffer;
-
-		int InvView = 0, CellPatternMode = 0, NumberOfCells = 0;
-		float Fringe = 0;
-		BridgeController->GetCalibrationForDisplay(DisplayId,
-			&Display.Center,
-			&Display.Pitch,
-			&Display.Slope,
-			&Display.Width,
-			&Display.Height,
-			&Display.DPI,
-			&Display.FlipX,
-			&InvView,
-			&Display.ViewCone,
-			&Fringe,
-			&CellPatternMode,
-			&NumberOfCells,
-			nullptr);
-
-		BridgeController->GetDisplayAspectForDisplay(DisplayId, &Display.Aspect);
-
-		long WinX = 0, WinY = 0;
-		BridgeController->GetWindowPositionForDisplay(DisplayId, &WinX, &WinY);
-		Display.XPos = (int32)WinX;
-		Display.YPos = (int32)WinY;
-
-		int DeviceType = -1;
-		BridgeController->GetDeviceTypeForDisplay(DisplayId, &DeviceType);
-
-		LKGBridgeDiag(FString::Printf(TEXT("Display %d: '%s' serial '%s' type %d: %dx%d at %d,%d, Center=%g, Pitch=%g, Slope=%g, DPI=%g, FlipX=%g, Aspect=%g, ViewCone=%g"),
-			Displays.Num() - 1, *Display.Name, *Display.Serial, DeviceType, Display.Width, Display.Height, Display.XPos, Display.YPos,
-			Display.Center, Display.Pitch, Display.Slope, Display.DPI, Display.FlipX, Display.Aspect, Display.ViewCone));
-		if (Display.Width <= 0 || Display.Height <= 0)
+		else if (const FLGDeviceCalibration* Cached = Cache.Find(Display.Serial))
 		{
-			LKGBridgeDiag(TEXT("  WARNING: calibration has no width/height - Bridge could not read this display's calibration"));
+			// keep the live serial/name/window position; restore the static per-device values
+			Display.Center = Cached->Center;
+			Display.Pitch = Cached->Pitch;
+			Display.Slope = Cached->Slope;
+			Display.DPI = Cached->DPI;
+			Display.FlipX = Cached->FlipX;
+			Display.Width = Cached->Width;
+			Display.Height = Cached->Height;
+			Display.Aspect = Cached->Aspect;
+			Display.ViewCone = Cached->ViewCone;
+			LKGBridgeDiag(FString::Printf(TEXT("  RECOVERED with cached calibration for serial '%s' (%dx%d): the device would not serve it (a wedged USB calibration interface - replug the Looking Glass USB cable or reboot to heal it for other apps too)"),
+				*Display.Serial, Display.Width, Display.Height));
 		}
+		else
+		{
+			LKGBridgeDiag(FString::Printf(TEXT("  no cached calibration for serial '%s' either - the panel will stay dark; replug the Looking Glass USB cable and restart the app"),
+				*Display.Serial));
+		}
+	}
+	if (bCacheDirty)
+	{
+		SaveCalibrationCache(Cache);
 	}
 }
 

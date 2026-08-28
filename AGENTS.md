@@ -477,6 +477,17 @@ but burns the 5.6 escape hatch like any other resave.
   the device Name and falls back by panel orientation (landscape = legacy 8.9" preset) instead of
   always assuming Portrait; Bridge 2.6.3 reports the original 8.9" as name `8.9" Looking Glass`,
   serial `LKG-2K-xxxxx`.
+- CALIBRATION WEDGE + CACHE (Aug 28 2026): an abnormal exit (Alt-F4 kill mid-game) can leave the
+  panel's USB calibration interface wedged - every later boot then gets the display with
+  serial/name/position intact but ALL-ZERO calibration (lkg_diag: "calibration has no
+  width/height"), which used to become a 0x0 self-render window = nothing on the panel until a
+  reboot, while the main window looked fine. ReadDisplays_BridgeThread now retries the read and
+  then falls back to `<Saved>/lkg_calibration_cache.txt` (rewritten on every good boot, one line
+  per device serial - calibration is static per-device EEPROM data, so cached values are exactly
+  as good). Verified live against a wedged device. A USB replug or reboot is still what heals the
+  DEVICE for other Looking Glass apps. Also established: the game does NOT need the
+  LookingGlassBridge.exe tray app running at all (calibration arrives via bridge_inproc.dll);
+  a stopped service is neither the cause of nor the cure for the zero-calibration state.
 - Benign noise: "Failed to load ... LookingGlassCore.dll" at startup is upstream legacy (the DLL
   never shipped); Bridge does the real work.
 - The flat camera: `APlayerPawn` owns a `UCameraComponent` root (FOV 14).
