@@ -103,15 +103,25 @@ copy /Y "Binaries\Win64\fceumm_libretro.dll" "%WINDOWS_DIR%\%STAGED_PROJ%\Binari
 if errorlevel 1 goto :fail
 copy /Y "Binaries\Win64\beetle-vb-libretro.dll" "%WINDOWS_DIR%\%STAGED_PROJ%\Binaries\Win64\" >nul
 if errorlevel 1 goto :fail
+rem The 3DS core is built by hand from the separate Azahar fork (see AGENTS.md), not by
+rem BuildCores.bat. It is REQUIRED: v1.5+ advertises 3DS support, so a zip without it is broken.
+if not exist "Binaries\Win64\azahar_libretro.dll" (
+	echo azahar_libretro.dll is missing from Binaries\Win64 - build the Azahar fork and copy it there first
+	goto :fail
+)
+copy /Y "Binaries\Win64\azahar_libretro.dll" "%WINDOWS_DIR%\%STAGED_PROJ%\Binaries\Win64\" >nul
+if errorlevel 1 goto :fail
 copy /Y "readme.txt" "%WINDOWS_DIR%\" >nul
 if errorlevel 1 goto :fail
 
 mkdir "%WINDOWS_DIR%\atari2600" 2>nul
 mkdir "%WINDOWS_DIR%\nes" 2>nul
 mkdir "%WINDOWS_DIR%\vb" 2>nul
+mkdir "%WINDOWS_DIR%\3ds" 2>nul
 copy /Y "atari2600\*.txt" "%WINDOWS_DIR%\atari2600\" >nul
 copy /Y "nes\*.txt" "%WINDOWS_DIR%\nes\" >nul
 copy /Y "vb\*.txt" "%WINDOWS_DIR%\vb\" >nul
+copy /Y "3ds\*.txt" "%WINDOWS_DIR%\3ds\" >nul
 
 mkdir "%WINDOWS_DIR%\licenses" 2>nul
 copy /Y "LICENSE.md" "%WINDOWS_DIR%\licenses\LICENSE-HoloVCS.md" >nul
@@ -124,6 +134,10 @@ copy /Y "cores\stella\License.txt" "%WINDOWS_DIR%\licenses\LICENSE-Stella-GPL-2.
 if errorlevel 1 goto :fail
 copy /Y "cores\beetle-vb\COPYING" "%WINDOWS_DIR%\licenses\LICENSE-BeetleVB-GPL-2.0.txt" >nul
 if errorlevel 1 goto :fail
+rem The Azahar source is not vendored here (SethRobinson/azahar branch holo); take the license
+rem from the fork checkout the distributed DLL was built from.
+copy /Y "F:\Unreal\azahar\license.txt" "%WINDOWS_DIR%\licenses\LICENSE-Azahar-GPL-2.0.txt" >nul
+if errorlevel 1 goto :fail
 
 del /S /Q "%WINDOWS_DIR%\*.pdb" >nul 2>&1
 del /Q "%WINDOWS_DIR%\Manifest_UFSFiles_Win64.txt" >nul 2>&1
@@ -132,7 +146,7 @@ del /Q "%WINDOWS_DIR%\Manifest_DebugFiles_Win64.txt" >nul 2>&1
 del /Q "%WINDOWS_DIR%\log.txt" >nul 2>&1
 
 set "FORBIDDEN_FILE="
-for /R "%WINDOWS_DIR%" %%F in (*.a26 *.nes *.vb *.vboy *.sav0) do set "FORBIDDEN_FILE=%%F"
+for /R "%WINDOWS_DIR%" %%F in (*.a26 *.nes *.vb *.vboy *.3ds *.cci *.sav0) do set "FORBIDDEN_FILE=%%F"
 if defined FORBIDDEN_FILE (
 	echo Forbidden ROM or save-state file found: %FORBIDDEN_FILE%
 	goto :fail
@@ -163,6 +177,8 @@ if errorlevel 1 goto :fail
 call :sign "%WINDOWS_DIR%\%STAGED_PROJ%\Binaries\Win64\fceumm_libretro.dll"
 if errorlevel 1 goto :fail
 call :sign "%WINDOWS_DIR%\%STAGED_PROJ%\Binaries\Win64\beetle-vb-libretro.dll"
+if errorlevel 1 goto :fail
+call :sign "%WINDOWS_DIR%\%STAGED_PROJ%\Binaries\Win64\azahar_libretro.dll"
 if errorlevel 1 goto :fail
 
 timeout /T 4 /NOBREAK >nul

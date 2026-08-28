@@ -846,7 +846,10 @@ overworld start).
   `dist\win64_lkg_release\Windows` and the legacy public-download filename `HoloVCS_Win64.zip`.
   It rebuilds all cores, forces the LKG editor modules to rebuild before cooking, copies only ROM
   directory placeholder text files, includes project/plugin/core licenses, and fails if a ROM or
-  save state reaches the release stage. It also repairs UE 5.8's out-of-bounds certificate-table
+  save state reaches the release stage (the scan covers .3ds/.cci too). Since v1.5 it REQUIRES
+  `Binaries\Win64\azahar_libretro.dll` (hand-built from the Azahar fork, NOT rebuilt by this
+  script - verify it is current before releasing), stages and signs it, and copies the GPL
+  license from `F:\Unreal\azahar\license.txt`. It also repairs UE 5.8's out-of-bounds certificate-table
   entry in the generated bootstrap exe before Authenticode signing. It does not upload anything.
 - Standing preference (Seth): after finishing code changes, ALWAYS build the relevant Shipping
   test build (BuildAndRunWin64Release.bat / BuildAndRunWin64LKG.bat). file:/// links to exes are

@@ -1,0 +1,1 @@
+Put decrypted Nintendo 3DS roms (.3ds or .cci) in here. Encrypted dumps will be refused with a message.
